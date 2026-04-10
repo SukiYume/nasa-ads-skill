@@ -288,7 +288,7 @@ ADS abstract page: `https://ui.adsabs.harvard.edu/abs/<bibcode>`
 ## Implementation Pattern (Python)
 
 ```python
-import requests, json
+import os, requests, json
 from urllib.parse import urlencode
 
 token = os.environ.get("ADS_API_TOKEN", "<user_token>")
