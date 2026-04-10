@@ -1,20 +1,27 @@
 # NASA ADS Skill
 
-This plugin provides skills and commands for interacting with the NASA Astrophysics Data System (ADS) API.
+Skill for interacting with the NASA Astrophysics Data System (ADS) API.
 
-## Available Commands
+## Commands
 
-- `/ads-search <query>` - Search for papers (supports natural language, author, title, bibcode, arxiv ID)
+- `/ads-search <query>` - Search for papers (natural language, author, title, bibcode, arxiv ID)
 - `/ads-bibtex <bibcodes>` - Export BibTeX or other citation formats
 - `/ads-library [subcommand]` - List, view, create, and manage ADS libraries
 - `/ads-metrics <bibcodes>` - Get citation metrics (h-index, citation count, etc.)
 
 ## API Token
 
-The ADS API requires a personal token. Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, prompt the user.
+Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, prompt the user.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
 
-## Skill Reference
+## API Reference
 
-See skills/nasa-ads/SKILL.md for full ADS API reference including search syntax, export formats, library management, metrics, citation helper, and resolver endpoints.
+The full ADS API reference is in `skills/nasa-ads/SKILL.md`, covering:
+
+- **Search**: query syntax, fields, filters, sorting, pagination, big query
+- **Export**: BibTeX, AASTeX, MNRAS, RIS, EndNote, custom formats
+- **Libraries**: list, view, create, add/remove papers, set operations, permissions
+- **Metrics**: h-index, g-index, i10-index, citation/read stats
+- **Citation Helper**: suggest missing citations
+- **Resolver**: links to full text, data archives

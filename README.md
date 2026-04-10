@@ -77,7 +77,7 @@ Then add to `~/.claude/plugins/installed_plugins.json` or reinstall via the CLI.
 
 ### OpenAI Codex CLI
 
-Codex supports `AGENTS.md` for configuration. Clone this repo into your project and Codex will pick up the `AGENTS.md` file (which points to `CLAUDE.md`):
+Codex supports `AGENTS.md` for configuration. Clone this repo into your project and Codex will pick up the `AGENTS.md` file:
 
 ```bash
 # Option 1: Clone as a subdirectory in your project
@@ -88,7 +88,7 @@ mkdir -p .agents/skills
 cp nasa-ads-skill/skills/nasa-ads/SKILL.md .agents/skills/nasa-ads.md
 ```
 
-You can also copy the contents of `CLAUDE.md` into your project's `AGENTS.md` to make the commands available.
+You can also append the contents of `AGENTS.md` into your project's existing `AGENTS.md`.
 
 ### Gemini CLI
 
