@@ -34,7 +34,7 @@ GET /search/query?q=<query>&fl=<fields>&rows=<N>&sort=<field>+<dir>
 | `fl` | Comma-separated return fields (default: `id` only) |
 | `rows` | Number of results (default: 10, max: 2000) |
 | `start` | Offset for pagination |
-| `sort` | Sort field + direction, e.g. `citation_count+desc`, `date+desc`, `read_count+desc` |
+| `sort` | Sort field + direction, e.g. `citation_count desc`, `date desc`, `read_count desc` (`+` = space in URL) |
 | `fq` | Filter query, e.g. `database:astronomy`, `property:refereed`, `doctype:article` |
 
 ### Available Fields (`fl=`)
@@ -127,6 +127,7 @@ bibcode
 |--------|----------|----------|
 | `bibtex` | `/export/bibtex` | Standard BibTeX |
 | `bibtexabs` | `/export/bibtexabs` | BibTeX + abstract |
+| `ads` | `/export/ads` | ADS generic tagged format |
 | `aastex` | `/export/aastex` | AASTeX (LaTeX) |
 | `mnras` | `/export/mnras` | MNRAS style |
 | `icarus` | `/export/icarus` | Icarus style |
@@ -134,10 +135,15 @@ bibcode
 | `endnote` | `/export/endnote` | EndNote |
 | `ris` | `/export/ris` | RIS/Refman |
 | `refworks` | `/export/refworks` | RefWorks |
+| `medlars` | `/export/medlars` | MEDLARS |
+| `procite` | `/export/procite` | ProCite |
 | `ieee` | `/export/ieee` | IEEE format |
 | `custom` | `/export/custom` | Custom format string |
 | `votable` | `/export/votable` | VOTable XML |
 | `dcxml` | `/export/dcxml` | Dublin Core XML |
+| `refxml` | `/export/refxml` | REF-XML |
+| `refabsxml` | `/export/refabsxml` | REFABS-XML |
+| `rss` | `/export/rss` | RSS feed XML |
 
 **Custom format** requires a `format` field: `{"bibcode": [...], "format": "%m %Y %T"}`
 
@@ -351,9 +357,15 @@ TOKEN="$ADS_API_TOKEN"
 curl -s -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/search/query?q=author%3A%22Einstein%22&fl=bibcode,title,author&rows=5"
 
-# Export BibTeX
+# Export BibTeX (single, GET)
 curl -s -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/export/bibtex/2016PhRvL.116f1102A"
+
+# Export BibTeX (multiple, POST)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -X POST "https://api.adsabs.harvard.edu/v1/export/bibtex" \
+  -d '{"bibcode":["2016PhRvL.116f1102A","2017ApJ...848L..12A"]}'
 
 # List libraries
 curl -s -H "Authorization: Bearer $TOKEN" \

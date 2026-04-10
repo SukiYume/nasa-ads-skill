@@ -8,6 +8,7 @@ Skill for interacting with the NASA Astrophysics Data System (ADS) API.
 - `/ads-bibtex <bibcodes>` - Export BibTeX or other citation formats
 - `/ads-library [subcommand]` - List, view, create, and manage ADS libraries
 - `/ads-metrics <bibcodes>` - Get citation metrics (h-index, citation count, etc.)
+- `/ads-cite [subcommand]` - Suggest missing citations, find similar papers, get full text links
 
 ## API Token
 

@@ -55,7 +55,7 @@ Or from within a Claude Code session:
 /plugin install --from https://github.com/SukiYume/nasa-ads-skill
 ```
 
-After installation, the skill activates automatically when you mention papers, literature, BibTeX, arXiv, ADS, etc. You can also use the slash commands: `/ads-search`, `/ads-bibtex`, `/ads-library`, `/ads-metrics`.
+After installation, the skill activates automatically when you mention papers, literature, BibTeX, arXiv, ADS, etc. You can also use the slash commands: `/ads-search`, `/ads-bibtex`, `/ads-library`, `/ads-metrics`, `/ads-cite`.
 
 ### Claude Code (VS Code / JetBrains Extension)
 
@@ -155,6 +155,11 @@ The `nasa-ads` skill activates automatically when you mention:
 
 # Get metrics
 /ads-metrics 2016PhRvL.116f1102A
+
+# Find related papers and links
+/ads-cite suggest 2016PhRvL.116f1102A
+/ads-cite links 2016PhRvL.116f1102A
+/ads-cite similar 2016PhRvL.116f1102A
 ```
 
 ### Natural Language (via Skill)
@@ -181,7 +186,8 @@ nasa-ads-skill/
 │   ├── ads-search.md         # /ads-search slash command
 │   ├── ads-bibtex.md         # /ads-bibtex slash command
 │   ├── ads-library.md        # /ads-library slash command
-│   └── ads-metrics.md        # /ads-metrics slash command
+│   ├── ads-metrics.md        # /ads-metrics slash command
+│   └── ads-cite.md           # /ads-cite slash command
 ├── .gitignore                # Git ignore rules
 ├── CLAUDE.md                 # Project instructions (Claude Code)
 ├── AGENTS.md                 # Agent instructions (Codex)
