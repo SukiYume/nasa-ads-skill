@@ -1,0 +1,43 @@
+---
+description: Search NASA ADS for papers by keyword, author, title, bibcode, or arxiv ID and display results with metadata
+argument-hint: <search query, e.g. "author:Einstein gravitational waves">
+allowed-tools: [Bash, Read, Write]
+---
+
+# NASA ADS Search
+
+Search the NASA Astrophysics Data System for academic papers.
+
+## Arguments
+
+The user's search query: $ARGUMENTS
+
+## Instructions
+
+1. Check for ADS API token in environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, ask the user.
+
+2. Parse the user's query from `$ARGUMENTS`. Interpret natural language:
+   - "papers by Einstein on relativity" -> `q=author:"Einstein" title:"relativity"`
+   - "gravitational waves 2020-2024" -> `q=gravitational+waves year:2020-2024`
+   - A bibcode like "2016PhRvL.116f1102A" -> `q=bibcode:2016PhRvL.116f1102A`
+   - An arxiv ID like "1602.03837" -> `q=arxiv:1602.03837`
+   - "refereed papers about dark matter" -> `q=dark+matter&fq=property:refereed`
+   - "papers citing 2016PhRvL.116f1102A" -> `q=citations(bibcode:2016PhRvL.116f1102A)`
+
+3. Execute the search using curl:
+```bash
+curl -s -H "Authorization: Bearer $ADS_API_TOKEN" \
+  "https://api.adsabs.harvard.edu/v1/search/query?q=<encoded_query>&fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count&rows=10&sort=citation_count+desc"
+```
+
+4. For each result, display in a clean format:
+   - **Title**
+   - **Authors** (first 5, then "et al." if more)
+   - **Year** | **Journal** | **Citations**: count
+   - **ADS**: `https://ui.adsabs.harvard.edu/abs/<bibcode>`
+   - **arXiv**: extract from identifier array if available
+   - **DOI**: if available
+
+5. If the user asks for BibTeX, fetch it via `/export/bibtex`.
+
+6. Present results clearly in markdown format.
