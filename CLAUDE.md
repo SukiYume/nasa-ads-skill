@@ -1,4 +1,4 @@
-# NASA ADS Plugin
+# NASA ADS Skill
 
 This plugin provides skills and commands for interacting with the NASA Astrophysics Data System (ADS) API.
 
@@ -11,6 +11,10 @@ This plugin provides skills and commands for interacting with the NASA Astrophys
 
 ## API Token
 
-The ADS API requires a personal token. The plugin checks `ADS_API_TOKEN` or `ADS_DEV_KEY` environment variables first. If neither is set, prompt the user.
+The ADS API requires a personal token. Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, prompt the user.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
+
+## Skill Reference
+
+@skills/nasa-ads/SKILL.md

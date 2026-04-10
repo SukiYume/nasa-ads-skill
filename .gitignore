@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python (if using ads client)
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Node
+node_modules/
+
+# Local config (never commit tokens)
+.claude/*.local.md
+.claude/*.local.json
+*.secret
+*.token
