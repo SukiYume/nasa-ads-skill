@@ -92,18 +92,21 @@ You can also copy the contents of `CLAUDE.md` into your project's `AGENTS.md` to
 
 ### Gemini CLI
 
-Gemini CLI loads skill files from `GEMINI.md` or the project's agent config:
+This project includes a `GEMINI.md` that auto-loads the skill. Clone into your project:
 
 ```bash
-# Copy the skill into your project
-mkdir -p .gemini/skills
-cp nasa-ads-skill/skills/nasa-ads/SKILL.md .gemini/skills/nasa-ads.md
+git clone https://github.com/SukiYume/nasa-ads-skill.git .plugins/nasa-ads
 ```
 
-Or reference the CLAUDE.md in your `GEMINI.md`:
+Or copy manually:
 
-```markdown
-@CLAUDE.md
+```bash
+# Option 1: Copy the skill file
+mkdir -p .gemini/skills
+cp nasa-ads-skill/skills/nasa-ads/SKILL.md .gemini/skills/nasa-ads.md
+
+# Option 2: Reference in your GEMINI.md
+echo '@./nasa-ads-skill/GEMINI.md' >> GEMINI.md
 ```
 
 ### Generic / Manual Installation
@@ -170,7 +173,7 @@ Just ask in plain language:
 ```
 nasa-ads-skill/
 ├── .claude-plugin/
-│   └── plugin.json           # Plugin metadata
+│   └── plugin.json           # Plugin metadata (name, version, homepage)
 ├── skills/
 │   └── nasa-ads/
 │       └── SKILL.md          # Auto-triggered skill (complete API reference)
@@ -179,8 +182,10 @@ nasa-ads-skill/
 │   ├── ads-bibtex.md         # /ads-bibtex slash command
 │   ├── ads-library.md        # /ads-library slash command
 │   └── ads-metrics.md        # /ads-metrics slash command
-├── CLAUDE.md                 # Project instructions (Claude Code / Codex)
-├── AGENTS.md                 # Agent config pointer (Codex / Gemini)
+├── .gitignore                # Git ignore rules
+├── CLAUDE.md                 # Project instructions (Claude Code)
+├── AGENTS.md                 # Agent instructions (Codex)
+├── GEMINI.md                 # Skill loader (Gemini CLI)
 ├── LICENSE
 └── README.md
 ```
