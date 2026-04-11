@@ -39,38 +39,30 @@ export ADS_API_TOKEN="your-token-here"
 [System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "your-token-here", "User")
 ```
 
-## Installation
+## Installation for Humans
 
-### Claude Code
+Step-by-step instructions for researchers and developers who want to install this skill manually.
 
-This repo is now structured as a Claude plugin marketplace. Add the marketplace first, then install the plugin from that marketplace.
+### Claude Code (CLI / Desktop / VS Code / JetBrains)
 
-CLI:
+Add this repository as a plugin marketplace, then install the plugin:
 
 ```bash
+# Step 1: Add the marketplace
 claude plugin marketplace add SukiYume/nasa-ads-skill
+
+# Step 2: Install the plugin
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
-Inside Claude Code:
+Or from inside a Claude Code session:
 
 ```text
 /plugin marketplace add SukiYume/nasa-ads-skill
 /plugin install nasa-ads@nasa-ads-community
 ```
 
-Local validation flow:
-
-```text
-/plugin marketplace add .
-/plugin install nasa-ads@nasa-ads-community
-```
-
-Claude Code IDE extensions use the same marketplace and install flow.
-
-### Claude Commands
-
-Claude plugin commands are namespaced by plugin id. Use:
+After installation, you get five slash commands:
 
 ```text
 /nasa-ads:ads-search author:Einstein gravitational waves
@@ -80,63 +72,123 @@ Claude plugin commands are namespaced by plugin id. Use:
 /nasa-ads:ads-cite similar 2016PhRvL.116f1102A
 ```
 
-The `nasa-ads` skill can also activate from plain-language requests about papers, citations, ADS, BibTeX, arXiv, libraries, or citation metrics.
+The skill also activates automatically from plain-language requests about papers, citations, ADS, BibTeX, arXiv, libraries, or metrics.
 
-### Codex Plugin Install
+### Codex
 
-Codex plugin discovery is local: install the plugin through a repo or personal marketplace.
+**Option A: Repo-local plugin install**
 
-Repo-local install in another project:
+1. Copy the `plugins/nasa-ads` directory into your project
+2. Copy `.agents/plugins/marketplace.json` into your project
 
-1. Copy `plugins/nasa-ads` into `<repo>/plugins/nasa-ads`
-2. Add this entry to `<repo>/.agents/plugins/marketplace.json`
-
-```json
-{
-  "name": "local-repo",
-  "plugins": [
-    {
-      "name": "nasa-ads",
-      "source": {
-        "source": "local",
-        "path": "./plugins/nasa-ads"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Research"
-    }
-  ]
-}
+```bash
+git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
+cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
+mkdir -p .agents/plugins
+cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
 ```
 
-Personal install across repos:
+**Option B: Personal install (available in all repos)**
 
-1. Copy `plugins/nasa-ads` to `~/plugins/nasa-ads`
-2. Add the same plugin entry to `~/.agents/plugins/marketplace.json`
-3. Restart Codex
+```bash
+cp -r plugins/nasa-ads ~/plugins/nasa-ads
+mkdir -p ~/.agents/plugins
+# Add the plugin entry to ~/.agents/plugins/marketplace.json (see repo for format)
+```
 
-This repo already includes a working repo marketplace at `.agents/plugins/marketplace.json` for local testing.
-
-### Codex Skill-Only Install
-
-If you only want the instruction bundle and do not need Codex plugin metadata, copy the skill directory, not a flat markdown file:
+**Option C: Skill-only (no plugin metadata)**
 
 ```bash
 mkdir -p .agents/skills/nasa-ads
 cp plugins/nasa-ads/skills/nasa-ads/SKILL.md .agents/skills/nasa-ads/SKILL.md
 ```
 
-### Gemini
+### Gemini CLI
 
-Reference the packaged skill path:
+Add this line to your project's `GEMINI.md`:
 
 ```text
 @./plugins/nasa-ads/skills/nasa-ads/SKILL.md
 ```
 
-Or copy that directory into your Gemini skill location.
+Or copy the skill file into your Gemini skill directory.
+
+### Other AI Assistants
+
+The core file is `plugins/nasa-ads/skills/nasa-ads/SKILL.md` — a self-contained ADS API reference in Markdown. Copy it into any assistant's skill/prompt directory.
+
+---
+
+## Installation for AI Agents
+
+Instructions for AI agents (Claude, Codex, etc.) that need to install this skill programmatically on behalf of a user.
+
+### Claude Code Agent
+
+Run these two shell commands:
+
+```bash
+claude plugin marketplace add SukiYume/nasa-ads-skill
+claude plugin install nasa-ads@nasa-ads-community
+```
+
+No further configuration is needed. The skill and commands will be available immediately.
+
+For local development or testing:
+
+```bash
+git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
+cd /tmp/nasa-ads-skill
+claude plugin marketplace add .
+claude plugin install nasa-ads@nasa-ads-community
+```
+
+### Codex Agent
+
+Clone the repo and wire up the marketplace:
+
+```bash
+git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
+cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
+mkdir -p .agents/plugins
+cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+```
+
+Or for skill-only (no plugin scaffold):
+
+```bash
+mkdir -p .agents/skills/nasa-ads
+curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
+  -o .agents/skills/nasa-ads/SKILL.md
+```
+
+### Gemini Agent
+
+Append the skill reference to `GEMINI.md`:
+
+```bash
+echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
+```
+
+Or fetch the skill file directly:
+
+```bash
+mkdir -p plugins/nasa-ads/skills/nasa-ads
+curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
+  -o plugins/nasa-ads/skills/nasa-ads/SKILL.md
+echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
+```
+
+### Generic Agent
+
+For any agent that supports Markdown-based skills, fetch the single reference file:
+
+```bash
+curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
+  -o nasa-ads-skill.md
+```
+
+Then load `nasa-ads-skill.md` into the agent's system prompt or skill directory. The file is self-contained — no other files are required for basic functionality.
 
 ## Usage
 
