@@ -138,14 +138,11 @@ bibcode
 | `medlars` | `/export/medlars` | MEDLARS |
 | `procite` | `/export/procite` | ProCite |
 | `ieee` | `/export/ieee` | IEEE format |
-| `custom` | `/export/custom` | Custom format string |
 | `votable` | `/export/votable` | VOTable XML |
 | `dcxml` | `/export/dcxml` | Dublin Core XML |
 | `refxml` | `/export/refxml` | REF-XML |
 | `refabsxml` | `/export/refabsxml` | REFABS-XML |
 | `rss` | `/export/rss` | RSS feed XML |
-
-**Custom format** requires a `format` field: `{"bibcode": [...], "format": "%m %Y %T"}`
 
 ---
 
