@@ -1,1 +1,1 @@
-@./skills/nasa-ads/SKILL.md
+@./plugins/nasa-ads/skills/nasa-ads/SKILL.md

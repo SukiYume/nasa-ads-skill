@@ -1,0 +1,20 @@
+{
+  "name": "nasa-ads-local",
+  "interface": {
+    "displayName": "NASA ADS Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "nasa-ads",
+      "source": {
+        "source": "local",
+        "path": "./plugins/nasa-ads"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Research"
+    }
+  ]
+}

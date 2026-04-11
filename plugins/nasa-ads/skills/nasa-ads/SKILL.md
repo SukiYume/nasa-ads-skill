@@ -1,7 +1,7 @@
 ---
 name: nasa-ads
 description: Use when the user asks to search for academic papers, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query the NASA ADS (Astrophysics Data System) API. Triggers on keywords like "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "library", "h-index", "references".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # NASA ADS API Reference
@@ -297,7 +297,7 @@ ADS abstract page: `https://ui.adsabs.harvard.edu/abs/<bibcode>`
 import os, requests, json
 from urllib.parse import urlencode
 
-token = os.environ.get("ADS_API_TOKEN", "<user_token>")
+token = os.environ.get("ADS_API_TOKEN") or os.environ.get("ADS_DEV_KEY") or "<user_token>"
 headers = {"Authorization": f"Bearer {token}"}
 BASE = "https://api.adsabs.harvard.edu/v1"
 
@@ -351,7 +351,7 @@ suggestions = r.json()
 ## Implementation Pattern (curl)
 
 ```bash
-TOKEN="$ADS_API_TOKEN"
+TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
 
 # Search
 curl -s -H "Authorization: Bearer $TOKEN" \

@@ -1,7 +1,10 @@
 ---
-description: Export BibTeX (or other citation formats) for one or more ADS bibcodes
-argument-hint: <bibcode1> [bibcode2] ... [--format bibtex|aastex|mnras|ris|endnote]
-allowed-tools: [Bash, Read, Write]
+description: "Export BibTeX (or other citation formats) for one or more ADS bibcodes"
+argument-hint: "<bibcode1> [bibcode2] ... [--format bibtex|aastex|mnras|ris|endnote]"
+allowed-tools:
+  - Bash
+  - Read
+  - Write
 ---
 
 # NASA ADS Citation Export
@@ -20,13 +23,15 @@ The bibcode(s) and optional format: $ARGUMENTS
 
 3. If single bibcode, use GET:
 ```bash
-curl -s -H "Authorization: Bearer $ADS_API_TOKEN" \
+TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
+curl -s -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/export/<format>/<bibcode>"
 ```
 
 4. If multiple bibcodes, use POST:
 ```bash
-curl -s -H "Authorization: Bearer $ADS_API_TOKEN" \
+TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
+curl -s -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -X POST "https://api.adsabs.harvard.edu/v1/export/<format>" \
   -d '{"bibcode":["bibcode1","bibcode2"]}'

@@ -1,0 +1,20 @@
+{
+  "name": "nasa-ads-community",
+  "owner": {
+    "name": "Echo"
+  },
+  "metadata": {
+    "description": "Community-maintained Claude Code plugins for NASA ADS research workflows.",
+    "version": "1.2.0"
+  },
+  "plugins": [
+    {
+      "name": "nasa-ads",
+      "source": "./plugins/nasa-ads",
+      "description": "Search NASA ADS, export citations, inspect libraries, and retrieve citation metrics.",
+      "author": {
+        "name": "Echo"
+      }
+    }
+  ]
+}

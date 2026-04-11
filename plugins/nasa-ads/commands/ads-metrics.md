@@ -1,7 +1,10 @@
 ---
-description: Get citation metrics (h-index, citations, reads) for one or more ADS bibcodes
-argument-hint: <bibcode1> [bibcode2] ...
-allowed-tools: [Bash, Read, Write]
+description: "Get citation metrics (h-index, citations, reads) for one or more ADS bibcodes"
+argument-hint: "<bibcode1> [bibcode2] ..."
+allowed-tools:
+  - Bash
+  - Read
+  - Write
 ---
 
 # NASA ADS Metrics
@@ -20,7 +23,8 @@ The bibcode(s): $ARGUMENTS
 
 3. Fetch metrics:
 ```bash
-curl -s -H "Authorization: Bearer $ADS_API_TOKEN" \
+TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
+curl -s -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -X POST "https://api.adsabs.harvard.edu/v1/metrics" \
   -d '{"bibcodes":["bibcode1","bibcode2"],"types":["basic","citations","indicators"]}'

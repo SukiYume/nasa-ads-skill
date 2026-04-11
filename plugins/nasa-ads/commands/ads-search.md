@@ -1,7 +1,10 @@
 ---
-description: Search NASA ADS for papers by keyword, author, title, bibcode, or arxiv ID and display results with metadata
-argument-hint: <search query, e.g. "author:Einstein gravitational waves">
-allowed-tools: [Bash, Read, Write]
+description: "Search NASA ADS for papers by keyword, author, title, bibcode, or arxiv ID and display results with metadata"
+argument-hint: '<search query, e.g. "author:Einstein gravitational waves">'
+allowed-tools:
+  - Bash
+  - Read
+  - Write
 ---
 
 # NASA ADS Search
@@ -26,7 +29,8 @@ The user's search query: $ARGUMENTS
 
 3. Execute the search using curl:
 ```bash
-curl -s -H "Authorization: Bearer $ADS_API_TOKEN" \
+TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
+curl -s -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/search/query?q=<encoded_query>&fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count&rows=10&sort=citation_count+desc"
 ```
 

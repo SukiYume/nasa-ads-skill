@@ -1,17 +1,16 @@
-# NASA ADS Skill
+# NASA ADS Skill Repository
 
-This plugin provides skills and commands for interacting with the NASA Astrophysics Data System (ADS) API.
+This repository is a marketplace repo. The installable Claude plugin lives in `plugins/nasa-ads/`.
 
-## Available Commands
+## Claude Plugin
 
-- `/ads-search <query>` - Search for papers (natural language, author, title, bibcode, arxiv ID)
-- `/ads-bibtex <bibcodes>` - Export BibTeX or other citation formats
-- `/ads-library [subcommand]` - List, view, create, and manage ADS libraries
-- `/ads-metrics <bibcodes>` - Get citation metrics (h-index, citation count, etc.)
-- `/ads-cite [subcommand]` - Suggest missing citations, find similar papers, get full text links
+- Plugin root: `plugins/nasa-ads/`
+- Manifest: `plugins/nasa-ads/.claude-plugin/plugin.json`
+- Marketplace: `.claude-plugin/marketplace.json`
+- Commands are namespaced by plugin id: `/nasa-ads:ads-search`, `/nasa-ads:ads-bibtex`, `/nasa-ads:ads-library`, `/nasa-ads:ads-metrics`, `/nasa-ads:ads-cite`
 
 ## API Token
 
-The ADS API requires a personal token. Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, prompt the user.
+The ADS API requires a personal token. Check `ADS_API_TOKEN` first, then `ADS_DEV_KEY`. If neither is set, prompt the user.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
