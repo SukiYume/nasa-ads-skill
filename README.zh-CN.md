@@ -1,39 +1,39 @@
 # NASA ADS Skill
 
-[中文说明](./README.zh-CN.md)
+[English README](./README.md)
 
-A packaged NASA ADS skill/plugin bundle for Claude Code and Codex.
+一个面向 Claude Code、Codex 等工具的 NASA ADS skill/plugin 打包仓库。
 
-This repository is intentionally documentation-first: it does not ship a standalone API client or background service. Instead, it packages prompt/skill assets that instruct the host assistant to call the [NASA Astrophysics Data System (ADS)](https://ui.adsabs.harvard.edu/) REST API from the local shell using your token.
+本仓库以文档和技能封装为主，不提供独立的 API client 或后台服务；它提供了一组 prompt/skill 资产，用来指导宿主代理通过本地 shell 和你的 token 调用 [NASA Astrophysics Data System (ADS)](https://ui.adsabs.harvard.edu/) REST API。
 
-Conceptually, this repo is a skill/plugin wrapper around the public [adsabs-dev-api](https://github.com/adsabs/adsabs-dev-api): it repackages the ADS API surface from that project into assistant-friendly skills, slash commands, and plugin manifests for Claude Code, Codex, Gemini, and similar tools.
+从定位上说，这个仓库是对公开项目 [adsabs-dev-api](https://github.com/adsabs/adsabs-dev-api) 的技能化封装：把 ADS API 的能力重新包装成适用于 Claude Code、Codex、Gemini 等代理工具的 skills、slash commands 和 plugin manifests。
 
-## What It Covers
+## 功能覆盖
 
-| Feature | Description |
-|---------|-------------|
-| Paper Search | Search by author, title, abstract, bibcode, DOI, arXiv ID, object, ORCID, or full text |
-| Metadata | Return title, authors, abstract, year, journal, DOI, citation count, and identifiers |
-| Citation Export | Export BibTeX, AASTeX, MNRAS, RIS, EndNote, IEEE, and more |
-| Libraries | List, view, create, update, share, combine, and delete ADS libraries |
-| Metrics | h-index, g-index, i10-index, citation stats, read stats, and indicators |
-| Citation Helper | Suggest related or missing citations |
-| Resolver | Return ADS, publisher, arXiv, and data-archive links |
+| 功能 | 说明 |
+|------|------|
+| 文献检索 | 支持按作者、标题、摘要、bibcode、DOI、arXiv ID、天体对象、ORCID 或全文检索 |
+| 元数据 | 返回标题、作者、摘要、年份、期刊、DOI、被引数和标识符 |
+| 引文导出 | 导出 BibTeX、AASTeX、MNRAS、RIS、EndNote、IEEE 等格式 |
+| 文库管理 | 列出、查看、创建、更新、分享、组合和删除 ADS libraries |
+| 指标统计 | 获取 h-index、g-index、i10-index、引文统计、阅读统计和其他指标 |
+| 引文辅助 | 推荐相关文献或可能遗漏的引用 |
+| Resolver | 返回 ADS、出版社、arXiv 和数据归档链接 |
 
-## Requirements
+## 依赖要求
 
-You need all of the following:
+你需要具备以下条件：
 
-1. An ADS API token from [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token)
-2. Outbound HTTPS access to `https://api.adsabs.harvard.edu`
-3. A host environment that allows the assistant to run shell commands (`curl` or equivalent)
+1. 一个 ADS API token，可从 [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token) 获取
+2. 可以访问 `https://api.adsabs.harvard.edu` 的外网 HTTPS 连接
+3. 宿主环境允许代理运行 shell 命令，例如 `curl`
 
-Supported environment variables:
+支持的环境变量：
 
 - `ADS_API_TOKEN`
 - `ADS_DEV_KEY`
 
-Examples:
+示例：
 
 ```bash
 export ADS_API_TOKEN="your-token-here"
@@ -43,23 +43,19 @@ export ADS_API_TOKEN="your-token-here"
 [System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "your-token-here", "User")
 ```
 
-## Installation for Humans
+## 一句话交给代理安装
 
-Step-by-step instructions for researchers and developers who want to install this skill manually.
-
-## One-Line Agent Prompts
-
-If your host assistant can edit files and run shell commands, you can often install this repo by pasting one short request instead of following the manual steps.
+如果你的宿主代理可以修改文件并执行 shell 命令，很多时候可以直接复制一句话给代理，而不用自己手工按步骤操作。
 
 ### Codex
 
-Copy this into Codex:
+把下面这句话直接发给 Codex：
 
 ```text
 Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads` and `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json`, then confirm the plugin is available.
 ```
 
-For skill-only install:
+如果只想安装 skill：
 
 ```text
 Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `./.agents/skills/nasa-ads/SKILL.md`.
@@ -67,7 +63,7 @@ Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill 
 
 ### Claude Code
 
-Copy this into Claude Code:
+把下面这句话直接发给 Claude Code：
 
 ```text
 Add `SukiYume/nasa-ads-skill` as a Claude plugin marketplace and install `nasa-ads@nasa-ads-community`, then confirm the NASA ADS slash commands are available.
@@ -75,23 +71,27 @@ Add `SukiYume/nasa-ads-skill` as a Claude plugin marketplace and install `nasa-a
 
 ### Gemini CLI
 
-Copy this into Gemini:
+把下面这句话直接发给 Gemini：
 
 ```text
 Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by placing `plugins/nasa-ads/skills/nasa-ads/SKILL.md` in this project and adding `@./plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `GEMINI.md`.
 ```
 
-### Generic AI Assistant
+### 通用 AI Assistant
 
-Copy this into any agent that supports Markdown skills or prompt files:
+对于任何支持 Markdown skill 或 prompt 文件的代理，可以直接发：
 
 ```text
 Download `https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md` and load it as a reusable Markdown skill for NASA ADS search, metadata, BibTeX, libraries, metrics, and resolver workflows.
 ```
 
+## 人工安装
+
+下面是面向研究者和开发者的手工安装说明。
+
 ### Claude Code (CLI / Desktop / VS Code / JetBrains)
 
-Add this repository as a plugin marketplace, then install the plugin:
+先把这个仓库加到插件市场，再安装插件：
 
 ```bash
 # Step 1: Add the marketplace
@@ -101,14 +101,14 @@ claude plugin marketplace add SukiYume/nasa-ads-skill
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
-Or from inside a Claude Code session:
+也可以在 Claude Code 会话里执行：
 
 ```text
 /plugin marketplace add SukiYume/nasa-ads-skill
 /plugin install nasa-ads@nasa-ads-community
 ```
 
-After installation, you get five slash commands:
+安装后会得到五个 slash commands：
 
 ```text
 /nasa-ads:ads-search author:Einstein gravitational waves
@@ -118,16 +118,16 @@ After installation, you get five slash commands:
 /nasa-ads:ads-cite similar 2016PhRvL.116f1102A
 ```
 
-`/nasa-ads:ads-library` supports list/view/create/add/remove plus metadata updates, query-based edits, sharing, set operations, and library deletion.
+`/nasa-ads:ads-library` 额外支持元数据更新、按查询增删、权限分享、集合运算和删除 library。
 
-The skill also activates automatically from plain-language requests about papers, citations, ADS, BibTeX, arXiv, libraries, or metrics.
+这个 skill 也会在自然语言请求中自动触发，例如 papers、citations、ADS、BibTeX、arXiv、libraries、metrics 等相关问题。
 
 ### Codex
 
-**Option A: Repo-local plugin install**
+**方案 A：在当前仓库中安装插件**
 
-1. Copy the `plugins/nasa-ads` directory into your project
-2. Copy `.agents/plugins/marketplace.json` into your project
+1. 把 `plugins/nasa-ads` 目录复制到你的项目
+2. 把 `.agents/plugins/marketplace.json` 复制到你的项目
 
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
@@ -136,15 +136,15 @@ mkdir -p .agents/plugins
 cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
 ```
 
-**Option B: Personal install (available in all repos)**
+**方案 B：个人安装，供所有仓库复用**
 
 ```bash
 cp -r plugins/nasa-ads ~/plugins/nasa-ads
 mkdir -p ~/.agents/plugins
-# Add the plugin entry to ~/.agents/plugins/marketplace.json (see repo for format)
+# 把插件条目加入 ~/.agents/plugins/marketplace.json
 ```
 
-**Option C: Skill-only (no plugin metadata)**
+**方案 C：只安装 skill，不安装 plugin metadata**
 
 ```bash
 mkdir -p .agents/skills/nasa-ads
@@ -153,36 +153,36 @@ cp plugins/nasa-ads/skills/nasa-ads/SKILL.md .agents/skills/nasa-ads/SKILL.md
 
 ### Gemini CLI
 
-Add this line to your project's `GEMINI.md`:
+在项目的 `GEMINI.md` 中加入这一行：
 
 ```text
 @./plugins/nasa-ads/skills/nasa-ads/SKILL.md
 ```
 
-Or copy the skill file into your Gemini skill directory.
+或者把 skill 文件复制到 Gemini 的 skill 目录中。
 
-### Other AI Assistants
+### 其他 AI Assistant
 
-The core file is `plugins/nasa-ads/skills/nasa-ads/SKILL.md` — a self-contained ADS API reference in Markdown. Copy it into any assistant's skill/prompt directory.
+核心文件是 `plugins/nasa-ads/skills/nasa-ads/SKILL.md`。这是一个自包含的 ADS API Markdown skill，可以复制到任何支持 skill/prompt 文件的代理目录中。
 
 ---
 
-## Installation for AI Agents
+## 给 AI Agent 的安装说明
 
-Instructions for AI agents (Claude, Codex, etc.) that need to install this skill programmatically on behalf of a user.
+这一节面向会替用户自动执行安装动作的代理。
 
 ### Claude Code Agent
 
-Run these two shell commands:
+执行下面两个命令：
 
 ```bash
 claude plugin marketplace add SukiYume/nasa-ads-skill
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
-No further configuration is needed. The skill and commands will be available immediately.
+安装后无需其他配置，skill 和 commands 会立即可用。
 
-For local development or testing:
+如果是本地开发或测试：
 
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
@@ -193,7 +193,7 @@ claude plugin install nasa-ads@nasa-ads-community
 
 ### Codex Agent
 
-Clone the repo and wire up the marketplace:
+克隆仓库并接入 marketplace：
 
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
@@ -202,7 +202,7 @@ mkdir -p .agents/plugins
 cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
 ```
 
-Or for skill-only (no plugin scaffold):
+如果只需要 skill：
 
 ```bash
 mkdir -p .agents/skills/nasa-ads
@@ -212,13 +212,13 @@ curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugin
 
 ### Gemini Agent
 
-Append the skill reference to `GEMINI.md`:
+把 skill 引用追加到 `GEMINI.md`：
 
 ```bash
 echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
 ```
 
-Or fetch the skill file directly:
+或者直接拉取 skill 文件：
 
 ```bash
 mkdir -p plugins/nasa-ads/skills/nasa-ads
@@ -227,28 +227,28 @@ curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugin
 echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
 ```
 
-### Generic Agent
+### 通用 Agent
 
-For any agent that supports Markdown-based skills, fetch the single reference file:
+对于任何支持 Markdown skill 的代理，只需要获取这一个文件：
 
 ```bash
 curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
   -o nasa-ads-skill.md
 ```
 
-Then load `nasa-ads-skill.md` into the agent's system prompt or skill directory. The file is self-contained — no other files are required for basic functionality.
+然后把 `nasa-ads-skill.md` 加载到系统提示词或 skill 目录即可。基础功能不依赖其他文件。
 
-## Usage
+## 使用示例
 
-Plain-language prompts:
+自然语言请求：
 
-- "Search ADS for recent papers on exoplanet atmospheres"
-- "Get the BibTeX for this paper: 2016PhRvL.116f1102A"
-- "Show me my ADS libraries"
-- "What are the citation metrics for these bibcodes?"
-- "Find papers similar to 2016PhRvL.116f1102A"
+- “搜索关于系外行星大气的最新 ADS 文献”
+- “给我这篇论文的 BibTeX：2016PhRvL.116f1102A”
+- “列出我的 ADS libraries”
+- “这些 bibcodes 的 citation metrics 是什么？”
+- “找和 2016PhRvL.116f1102A 相似的论文”
 
-Claude command examples:
+Claude command 示例：
 
 ```text
 /nasa-ads:ads-search dark matter year:2020-2024
@@ -257,7 +257,7 @@ Claude command examples:
 /nasa-ads:ads-cite links 2016PhRvL.116f1102A
 ```
 
-## Repository Layout
+## 仓库结构
 
 ```text
 nasa-ads-skill/
@@ -288,9 +288,9 @@ nasa-ads-skill/
 └── README.md
 ```
 
-The detailed ADS API reference lives in `plugins/nasa-ads/skills/nasa-ads/SKILL.md`, and the Claude command files are task-specific wrappers that should stay aligned with it.
+详细的 ADS API 参考位于 `plugins/nasa-ads/skills/nasa-ads/SKILL.md`；Claude command 文件是面向具体任务的包装层，应与该 skill 保持一致。
 
-## API Endpoints Covered
+## 已覆盖的 API 端点
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -307,12 +307,12 @@ The detailed ADS API reference lives in `plugins/nasa-ads/skills/nasa-ads/SKILL.
 | `/citation_helper` | POST | Suggested citations |
 | `/resolver/<bibcode>` | GET | Full-text and data links |
 
-## Notes
+## 说明
 
-- The packaged commands assume the assistant can run shell commands.
-- The bundled examples now fall back from `ADS_API_TOKEN` to `ADS_DEV_KEY`.
-- No token is stored in this repository.
-- If you add or change ADS workflows, update `SKILL.md` first and then any Claude command files that expose the same workflow.
+- 这些打包后的 commands 默认假设宿主代理可以运行 shell 命令。
+- 示例里的 token 读取顺序会优先使用 `ADS_API_TOKEN`，其次回退到 `ADS_DEV_KEY`。
+- 本仓库不会存储任何 token。
+- 如果你新增或修改 ADS workflow，请先更新 `SKILL.md`，再同步更新暴露同一能力的 Claude command 文件。
 
 ## License
 

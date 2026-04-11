@@ -19,7 +19,7 @@ The bibcode(s) and optional format: $ARGUMENTS
 
 1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, ask the user.
 
-2. Parse bibcode(s) and optional `--format` flag from `$ARGUMENTS`. Default format is `bibtex`. Supported: `bibtex`, `bibtexabs`, `ads`, `aastex`, `mnras`, `icarus`, `soph`, `endnote`, `ris`, `refworks`, `medlars`, `procite`, `ieee`, `custom`, `votable`, `dcxml`, `refxml`, `refabsxml`, `rss`.
+2. Parse bibcode(s) and optional `--format` flag from `$ARGUMENTS`. Default format is `bibtex`. Supported: `bibtex`, `bibtexabs`, `ads`, `aastex`, `mnras`, `icarus`, `soph`, `endnote`, `ris`, `refworks`, `medlars`, `procite`, `ieee`, `votable`, `dcxml`, `refxml`, `refabsxml`, `rss`.
 
 3. If single bibcode, use GET:
 ```bash
