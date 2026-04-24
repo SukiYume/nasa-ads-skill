@@ -3,8 +3,6 @@ description: "Get citation metrics (h-index, citations, reads) for one or more A
 argument-hint: "<bibcode1> [bibcode2] ..."
 allowed-tools:
   - Bash
-  - Read
-  - Write
 ---
 
 # NASA ADS Metrics

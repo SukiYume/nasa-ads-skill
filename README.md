@@ -56,13 +56,13 @@ If your host assistant can edit files and run shell commands, you can often inst
 Copy this into Codex:
 
 ```text
-Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads` and `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json`, then confirm the plugin is available.
+Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads`, then merge the `nasa-ads` entry from `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json` without overwriting existing plugins.
 ```
 
 For skill-only install:
 
 ```text
-Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `./.agents/skills/nasa-ads/SKILL.md`.
+Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `$CODEX_HOME/skills/nasa-ads/SKILL.md` (default `~/.codex/skills/nasa-ads/SKILL.md`).
 ```
 
 ### Claude Code
@@ -127,13 +127,34 @@ The skill also activates automatically from plain-language requests about papers
 **Option A: Repo-local plugin install**
 
 1. Copy the `plugins/nasa-ads` directory into your project
-2. Copy `.agents/plugins/marketplace.json` into your project
+2. Merge the `nasa-ads` plugin entry into `.agents/plugins/marketplace.json`
 
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
 cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-mkdir -p .agents/plugins
-cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".agents/plugins/marketplace.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+entry = {
+    "name": "nasa-ads",
+    "source": {"source": "local", "path": "./plugins/nasa-ads"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Research",
+}
+
+if path.exists():
+    data = json.loads(path.read_text())
+else:
+    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
+
+data.setdefault("name", "local")
+data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
+data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
 ```
 
 **Option B: Personal install (available in all repos)**
@@ -141,14 +162,14 @@ cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketpl
 ```bash
 cp -r plugins/nasa-ads ~/plugins/nasa-ads
 mkdir -p ~/.agents/plugins
-# Add the plugin entry to ~/.agents/plugins/marketplace.json (see repo for format)
+# Merge the nasa-ads entry into ~/.agents/plugins/marketplace.json; do not overwrite existing plugins.
 ```
 
 **Option C: Skill-only (no plugin metadata)**
 
 ```bash
-mkdir -p .agents/skills/nasa-ads
-cp plugins/nasa-ads/skills/nasa-ads/SKILL.md .agents/skills/nasa-ads/SKILL.md
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
+cp plugins/nasa-ads/skills/nasa-ads/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
 ### Gemini CLI
@@ -198,16 +219,37 @@ Clone the repo and wire up the marketplace:
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
 cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-mkdir -p .agents/plugins
-cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".agents/plugins/marketplace.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+entry = {
+    "name": "nasa-ads",
+    "source": {"source": "local", "path": "./plugins/nasa-ads"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Research",
+}
+
+if path.exists():
+    data = json.loads(path.read_text())
+else:
+    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
+
+data.setdefault("name", "local")
+data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
+data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
 ```
 
 Or for skill-only (no plugin scaffold):
 
 ```bash
-mkdir -p .agents/skills/nasa-ads
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
 curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
-  -o .agents/skills/nasa-ads/SKILL.md
+  -o "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
 ### Gemini Agent

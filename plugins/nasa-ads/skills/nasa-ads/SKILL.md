@@ -4,9 +4,9 @@ description: Use when the user asks to search for academic papers, retrieve pape
 version: 1.2.0
 ---
 
-# NASA ADS API Reference
+# NASA ADS API Skill Reference
 
-Complete reference for the NASA Astrophysics Data System REST API. Covers search, export, libraries, metrics, citations, and resolver.
+Focused reference for common NASA Astrophysics Data System REST API workflows. Covers search, export, libraries, metrics, citation helper, and resolver endpoints used by this skill.
 
 ## Prerequisites
 
@@ -91,6 +91,8 @@ q=trending(exoplanets)                        # trending papers
 q=useful(bibcode:2016PhRvL.116f1102A)         # useful/related papers
 q=similar(bibcode:2016PhRvL.116f1102A)        # similar papers
 ```
+
+These are raw ADS query values. When calling `/search/query`, URL-encode them with `urlencode()` or `curl -G --data-urlencode`; bibcodes such as `2012A&A...542A..16R` contain `&` and will fail if interpolated directly into a URL.
 
 Operators: `+` (AND), `OR`, `-` (NOT), `""` (exact phrase), `*` (wildcard).
 
@@ -351,8 +353,11 @@ suggestions = r.json()
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
 
 # Search
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/search/query?q=author%3A%22Einstein%22&fl=bibcode,title,author&rows=5"
+curl -sG "https://api.adsabs.harvard.edu/v1/search/query" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'q=author:"Einstein"' \
+  --data-urlencode 'fl=bibcode,title,author' \
+  --data-urlencode 'rows=5'
 
 # Export BibTeX (single, GET)
 curl -s -H "Authorization: Bearer $TOKEN" \
