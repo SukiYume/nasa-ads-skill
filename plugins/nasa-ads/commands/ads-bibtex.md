@@ -3,8 +3,6 @@ description: "Export BibTeX (or other citation formats) for one or more ADS bibc
 argument-hint: "<bibcode1> [bibcode2] ... [--format bibtex|aastex|mnras|ris|endnote]"
 allowed-tools:
   - Bash
-  - Read
-  - Write
 ---
 
 # NASA ADS Citation Export

@@ -52,13 +52,13 @@ export ADS_API_TOKEN="your-token-here"
 把下面这句话直接发给 Codex：
 
 ```text
-Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads` and `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json`, then confirm the plugin is available.
+Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads`, then merge the `nasa-ads` entry from `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json` without overwriting existing plugins.
 ```
 
 如果只想安装 skill：
 
 ```text
-Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `./.agents/skills/nasa-ads/SKILL.md`.
+Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `$CODEX_HOME/skills/nasa-ads/SKILL.md` (default `~/.codex/skills/nasa-ads/SKILL.md`).
 ```
 
 ### Claude Code
@@ -127,13 +127,34 @@ claude plugin install nasa-ads@nasa-ads-community
 **方案 A：在当前仓库中安装插件**
 
 1. 把 `plugins/nasa-ads` 目录复制到你的项目
-2. 把 `.agents/plugins/marketplace.json` 复制到你的项目
+2. 把 `nasa-ads` 插件条目合并到 `.agents/plugins/marketplace.json`
 
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
 cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-mkdir -p .agents/plugins
-cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".agents/plugins/marketplace.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+entry = {
+    "name": "nasa-ads",
+    "source": {"source": "local", "path": "./plugins/nasa-ads"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Research",
+}
+
+if path.exists():
+    data = json.loads(path.read_text())
+else:
+    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
+
+data.setdefault("name", "local")
+data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
+data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
 ```
 
 **方案 B：个人安装，供所有仓库复用**
@@ -141,14 +162,14 @@ cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketpl
 ```bash
 cp -r plugins/nasa-ads ~/plugins/nasa-ads
 mkdir -p ~/.agents/plugins
-# 把插件条目加入 ~/.agents/plugins/marketplace.json
+# 把 nasa-ads 条目合并到 ~/.agents/plugins/marketplace.json；不要覆盖已有插件。
 ```
 
 **方案 C：只安装 skill，不安装 plugin metadata**
 
 ```bash
-mkdir -p .agents/skills/nasa-ads
-cp plugins/nasa-ads/skills/nasa-ads/SKILL.md .agents/skills/nasa-ads/SKILL.md
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
+cp plugins/nasa-ads/skills/nasa-ads/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
 ### Gemini CLI
@@ -198,16 +219,37 @@ claude plugin install nasa-ads@nasa-ads-community
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
 cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-mkdir -p .agents/plugins
-cp /tmp/nasa-ads-skill/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".agents/plugins/marketplace.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+entry = {
+    "name": "nasa-ads",
+    "source": {"source": "local", "path": "./plugins/nasa-ads"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Research",
+}
+
+if path.exists():
+    data = json.loads(path.read_text())
+else:
+    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
+
+data.setdefault("name", "local")
+data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
+data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
 ```
 
 如果只需要 skill：
 
 ```bash
-mkdir -p .agents/skills/nasa-ads
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
 curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
-  -o .agents/skills/nasa-ads/SKILL.md
+  -o "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
 ### Gemini Agent

@@ -3,8 +3,6 @@ description: "List, view, create, update, share, combine, or delete NASA ADS lib
 argument-hint: "[list | view <library_id> | create <name> | add <library_id> <bibcodes...> | remove <library_id> <bibcodes...> | update <library_id> [--name <name>] [--desc <description>] [--public true|false] | delete <library_id> | query-add <library_id> <query> | query-remove <library_id> <query> | permissions <library_id> | grant <library_id> <email> | operate <library_id> <action> [secondary_ids...]]"
 allowed-tools:
   - Bash
-  - Read
-  - Write
 ---
 
 # NASA ADS Library Manager

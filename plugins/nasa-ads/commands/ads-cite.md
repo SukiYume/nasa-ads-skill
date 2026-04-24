@@ -3,8 +3,6 @@ description: "Find suggested citations, related papers, or links to full text an
 argument-hint: "[suggest <bibcodes...> | links <bibcode> | similar <bibcode>]"
 allowed-tools:
   - Bash
-  - Read
-  - Write
 ---
 
 # NASA ADS Citation Helper & Resolver
@@ -45,8 +43,11 @@ Display available link types (PDF, HTML, data sources, etc.).
 Find similar papers via the search API:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/search/query?q=similar(bibcode:<bibcode>)&fl=bibcode,title,author,year,citation_count&rows=10"
+curl -sG "https://api.adsabs.harvard.edu/v1/search/query" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'q=similar(bibcode:<bibcode>)' \
+  --data-urlencode 'fl=bibcode,title,author,year,citation_count' \
+  --data-urlencode 'rows=10'
 ```
 
 3. Present results clearly in markdown format.

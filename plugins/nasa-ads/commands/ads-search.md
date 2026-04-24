@@ -3,8 +3,6 @@ description: "Search NASA ADS for papers by keyword, author, title, bibcode, or 
 argument-hint: '<search query, e.g. "author:Einstein gravitational waves">'
 allowed-tools:
   - Bash
-  - Read
-  - Write
 ---
 
 # NASA ADS Search
@@ -27,11 +25,15 @@ The user's search query: $ARGUMENTS
    - "refereed papers about dark matter" -> `q=dark+matter&fq=property:refereed`
    - "papers citing 2016PhRvL.116f1102A" -> `q=citations(bibcode:2016PhRvL.116f1102A)`
 
-3. Execute the search using curl:
+3. Execute the search using curl. Always pass `q`, `fq`, `sort`, and other query parameters with `--data-urlencode`; ADS bibcodes and queries can contain characters such as `&` that break raw URLs.
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/search/query?q=<encoded_query>&fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count&rows=10&sort=citation_count+desc"
+curl -sG "https://api.adsabs.harvard.edu/v1/search/query" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'q=<ads_query>' \
+  --data-urlencode 'fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count' \
+  --data-urlencode 'rows=10' \
+  --data-urlencode 'sort=citation_count desc'
 ```
 
 4. For each result, display in a clean format:
