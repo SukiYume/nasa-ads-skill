@@ -25,6 +25,7 @@ TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
 curl -s -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/export/<format>/<bibcode>"
 ```
+Single-bibcode GET returns raw citation text in the requested format.
 
 4. If multiple bibcodes, use POST:
 ```bash
@@ -34,5 +35,6 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   -X POST "https://api.adsabs.harvard.edu/v1/export/<format>" \
   -d '{"bibcode":["bibcode1","bibcode2"]}'
 ```
+Multi-bibcode POST returns JSON with an `export` field.
 
 5. Display the output in a code block. Offer to save to a file (`.bib`, `.ris`, etc.) if the user wants.
