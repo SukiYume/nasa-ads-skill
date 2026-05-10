@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Community-maintained Claude Code plugins for NASA ADS research workflows.",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "plugins": [
     {

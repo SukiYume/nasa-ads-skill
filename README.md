@@ -20,6 +20,10 @@ Conceptually, this repo is a skill/plugin wrapper around the public [adsabs-dev-
 | Citation Helper | Suggest related or missing citations |
 | Resolver | Return ADS, publisher, arXiv, and data-archive links |
 
+## Scope
+
+This package is intentionally scoped to practical literature research and citation workflows. It does not try to wrap every ADS API endpoint; if you need uncommon endpoints such as journal metadata, object lookup, visualizations, or reference parsing, use the official ADS API documentation directly.
+
 ## Requirements
 
 You need all of the following:
@@ -252,6 +256,8 @@ curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugin
   -o "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
+For the best Codex UI metadata in a skill-only install, also copy `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml` to the same relative `agents/openai.yaml` path.
+
 ### Gemini Agent
 
 Append the skill reference to `GEMINI.md`:
@@ -322,6 +328,8 @@ nasa-ads-skill/
 │       │   └── ads-cite.md
 │       └── skills/
 │           └── nasa-ads/
+│               ├── agents/
+│               │   └── openai.yaml
 │               └── SKILL.md
 ├── AGENTS.md
 ├── CLAUDE.md

@@ -20,6 +20,10 @@
 | 引文辅助 | 推荐相关文献或可能遗漏的引用 |
 | Resolver | 返回 ADS、出版社、arXiv 和数据归档链接 |
 
+## 范围
+
+本包刻意聚焦在实际文献调研和引用导出工作流，不尝试封装 ADS API 的所有端点。如果需要期刊元数据、天体对象查询、可视化或参考文献解析等较少用的能力，请直接查阅官方 ADS API 文档。
+
 ## 依赖要求
 
 你需要具备以下条件：
@@ -252,6 +256,8 @@ curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugin
   -o "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
+如果希望 Codex 的 skill-only 安装也有更好的 UI 元数据，也把 `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml` 复制到同样相对位置的 `agents/openai.yaml`。
+
 ### Gemini Agent
 
 把 skill 引用追加到 `GEMINI.md`：
@@ -322,6 +328,8 @@ nasa-ads-skill/
 │       │   └── ads-cite.md
 │       └── skills/
 │           └── nasa-ads/
+│               ├── agents/
+│               │   └── openai.yaml
 │               └── SKILL.md
 ├── AGENTS.md
 ├── CLAUDE.md

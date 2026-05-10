@@ -1,12 +1,22 @@
 ---
 name: nasa-ads
-description: Use when the user asks to search for academic papers, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query the NASA ADS (Astrophysics Data System) API. Triggers on keywords like "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "library", "h-index", "references".
-version: 1.2.0
+description: Use when the user asks to search for academic papers, run literature research, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX or other citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query NASA ADS (Astrophysics Data System). Triggers on "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "library", "h-index", and "references".
 ---
 
 # NASA ADS API Skill Reference
 
-Focused reference for common NASA Astrophysics Data System REST API workflows. Covers search, export, libraries, metrics, citation helper, and resolver endpoints used by this skill.
+Focused reference for practical NASA Astrophysics Data System literature research workflows. Use it to find papers, inspect metadata, build reading lists, export citations, check metrics, and retrieve related-paper or full-text/data links.
+
+This is not a complete ADS API manual. If the user asks for an ADS capability not covered here, first solve it with the documented search/export/library/metrics/resolver workflows when possible, then consult the official ADS API documentation only if needed.
+
+## Operating Workflow
+
+1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`; if neither exists, ask the user for a token.
+2. Translate the user request into the narrowest ADS query or endpoint call.
+3. URL-encode search parameters with `urlencode()` or `curl -G --data-urlencode`.
+4. Present research results with title, authors, year, venue, citation count, ADS URL, DOI, and arXiv URL when available.
+5. For literature research, summarize the result set by themes, recency, venue, and highly cited papers instead of dumping raw JSON.
+6. Confirm before destructive library operations such as delete, empty, or bulk remove.
 
 ## Prerequisites
 
@@ -118,6 +128,8 @@ bibcode
 **Single bibcode:** `GET /export/<format>/<bibcode>`
 
 **Multiple bibcodes:** `POST /export/<format>`
+
+Single-bibcode GET exports return raw text in the requested format. Multi-bibcode POST exports return JSON with an `export` field.
 
 ```json
 {"bibcode": ["<bibcode1>", "<bibcode2>"], "sort": "first_author asc"}
