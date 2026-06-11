@@ -11,7 +11,7 @@ This is not a complete ADS API manual. If the user asks for an ADS capability no
 
 ## Operating Workflow
 
-1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`; if neither exists, ask the user for a token.
+1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`; if neither exists, tell the user how to create and set an ADS API token before asking them to retry or provide a token for the current session.
 2. Translate the user request into the narrowest ADS query or endpoint call.
 3. URL-encode search parameters with `urlencode()` or `curl -G --data-urlencode`.
 4. Present research results with title, authors, year, venue, citation count, ADS URL, DOI, and arXiv URL when available.
@@ -24,7 +24,16 @@ This is not a complete ADS API manual. If the user asks for an ADS capability no
 - Header: `Authorization: Bearer <token>`
 - Base URL: `https://api.adsabs.harvard.edu/v1`
 
-**Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first.** If not found, ask the user for their token. Never hardcode or log it.
+**Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first.** If not found, use the setup steps below before asking the user to retry or provide a token for the current session. Never hardcode or log it.
+
+When a token is missing, give the user these setup steps:
+
+1. Open https://ui.adsabs.harvard.edu/#user/settings/token.
+2. Register or sign in to ADS.
+3. If the direct link does not open the token page, go to account settings and choose **API Token**.
+4. Click **Generate a new key**.
+5. Copy the token and keep it private.
+6. Save it as `ADS_API_TOKEN` or `ADS_DEV_KEY`, then restart the terminal or assistant session.
 
 ---
 

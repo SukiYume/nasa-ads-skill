@@ -47,6 +47,27 @@ export ADS_API_TOKEN="your-token-here"
 [System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "your-token-here", "User")
 ```
 
+## Post-Install: Create and Set Your ADS API Token
+
+After installing the skill or plugin, create a personal ADS API token before your first ADS request. The token is required for search, export, library, metrics, citation-helper, and resolver calls.
+
+1. Open [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token).
+2. Register for an ADS account or sign in with your existing account.
+3. If ADS does not open the token page directly, go to your account settings and choose **API Token**.
+4. Click **Generate a new key**.
+5. Copy the token once and keep it private. Do not commit it to this repository or paste it into shared logs.
+6. Save it as an environment variable named `ADS_API_TOKEN`:
+
+```bash
+export ADS_API_TOKEN="paste-your-token-here"
+```
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "paste-your-token-here", "User")
+```
+
+7. Restart your terminal or host assistant session so it can read the new environment variable.
+
 ## Installation for Humans
 
 Step-by-step instructions for researchers and developers who want to install this skill manually.
@@ -126,6 +147,8 @@ After installation, you get five slash commands:
 
 The skill also activates automatically from plain-language requests about papers, citations, ADS, BibTeX, arXiv, libraries, or metrics.
 
+Before running the first command, complete [Post-Install: Create and Set Your ADS API Token](#post-install-create-and-set-your-ads-api-token). The commands will fail with `401 Unauthorized` or ask for a token if `ADS_API_TOKEN` or `ADS_DEV_KEY` is missing.
+
 ### Codex
 
 **Option A: Repo-local plugin install**
@@ -196,6 +219,15 @@ The core file is `plugins/nasa-ads/skills/nasa-ads/SKILL.md` — a self-containe
 
 Instructions for AI agents (Claude, Codex, etc.) that need to install this skill programmatically on behalf of a user.
 
+After any install path below, explicitly remind the user to create an ADS API token:
+
+1. Open https://ui.adsabs.harvard.edu/#user/settings/token.
+2. Register or sign in to ADS.
+3. Go to account settings, then **API Token**, if the direct link does not land there.
+4. Click **Generate a new key** and copy the token.
+5. Store it as `ADS_API_TOKEN` or `ADS_DEV_KEY` in the user's shell environment.
+6. Restart the terminal or assistant session before making ADS API calls.
+
 ### Claude Code Agent
 
 Run these two shell commands:
@@ -205,7 +237,7 @@ claude plugin marketplace add SukiYume/nasa-ads-skill
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
-No further configuration is needed. The skill and commands will be available immediately.
+No additional plugin setup is needed. The skill and commands will be available immediately, but ADS API calls still require the user to create an ADS API token and expose it as `ADS_API_TOKEN` or `ADS_DEV_KEY`.
 
 For local development or testing:
 
