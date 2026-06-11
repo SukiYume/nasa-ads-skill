@@ -15,7 +15,7 @@ The bibcode(s): $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, ask the user.
+1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, tell the user to create one at https://ui.adsabs.harvard.edu/#user/settings/token by signing in or registering, opening account settings > **API Token**, clicking **Generate a new key**, and saving it as `ADS_API_TOKEN` or `ADS_DEV_KEY`; then ask them to retry or provide a token for the current session.
 
 2. Parse bibcode(s) from `$ARGUMENTS`.
 

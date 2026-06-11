@@ -47,6 +47,27 @@ export ADS_API_TOKEN="your-token-here"
 [System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "your-token-here", "User")
 ```
 
+## 安装后：创建并设置 ADS API token
+
+安装 skill 或 plugin 后，首次调用 ADS 前需要先创建个人 ADS API token。检索、导出引用、管理 library、统计 metrics、citation helper 和 resolver 都需要这个 token。
+
+1. 打开 [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token)。
+2. 注册 ADS 账号，或登录已有账号。
+3. 如果直达链接没有打开 token 页面，就进入账户设置并选择 **API Token**。
+4. 点击 **Generate a new key**。
+5. 复制生成的 token，并妥善保管。不要把 token 提交到本仓库，也不要贴到共享日志里。
+6. 把 token 保存为名为 `ADS_API_TOKEN` 的环境变量：
+
+```bash
+export ADS_API_TOKEN="paste-your-token-here"
+```
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("ADS_API_TOKEN", "paste-your-token-here", "User")
+```
+
+7. 重启终端或宿主助手会话，让它能读取新的环境变量。
+
 ## 一句话交给代理安装
 
 如果你的宿主代理可以修改文件并执行 shell 命令，很多时候可以直接复制一句话给代理，而不用自己手工按步骤操作。
@@ -126,6 +147,8 @@ claude plugin install nasa-ads@nasa-ads-community
 
 这个 skill 也会在自然语言请求中自动触发，例如 papers、citations、ADS、BibTeX、arXiv、libraries、metrics 等相关问题。
 
+首次运行命令前，请先完成[安装后：创建并设置 ADS API token](#安装后创建并设置-ads-api-token)。如果缺少 `ADS_API_TOKEN` 或 `ADS_DEV_KEY`，命令会返回 `401 Unauthorized` 或要求你提供 token。
+
 ### Codex
 
 **方案 A：在当前仓库中安装插件**
@@ -196,6 +219,15 @@ cp plugins/nasa-ads/skills/nasa-ads/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills
 
 这一节面向会替用户自动执行安装动作的代理。
 
+无论使用下面哪种安装方式，安装完成后都要明确提醒用户创建 ADS API token：
+
+1. 打开 https://ui.adsabs.harvard.edu/#user/settings/token。
+2. 注册或登录 ADS。
+3. 如果直达链接没有进入 token 页面，就进入账户设置，再选择 **API Token**。
+4. 点击 **Generate a new key** 并复制 token。
+5. 把 token 保存到用户 shell 环境中的 `ADS_API_TOKEN` 或 `ADS_DEV_KEY`。
+6. 重启终端或助手会话后再调用 ADS API。
+
 ### Claude Code Agent
 
 执行下面两个命令：
@@ -205,7 +237,7 @@ claude plugin marketplace add SukiYume/nasa-ads-skill
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
-安装后无需其他配置，skill 和 commands 会立即可用。
+安装后无需额外的插件配置，skill 和 commands 会立即可用；但 ADS API 调用仍然要求用户创建 ADS API token，并把它暴露为 `ADS_API_TOKEN` 或 `ADS_DEV_KEY`。
 
 如果是本地开发或测试：
 
