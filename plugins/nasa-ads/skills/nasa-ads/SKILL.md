@@ -1,6 +1,6 @@
 ---
 name: nasa-ads
-description: Use when the user asks to search for academic papers, run literature research, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX or other citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query NASA ADS (Astrophysics Data System). Triggers on English terms such as "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "library", "h-index", and "references"; also use for Chinese requests such as "文献调研", "论文调研", "论文检索", "查论文", "查文献", "引用导出", "获取 BibTeX", "ADS 文献", "arXiv 论文", "天文论文", and "天体物理论文".
+description: Use when the user asks to search NASA ADS or astronomy/astrophysics literature, check whether something has been published or mentioned in the literature, verify published claims, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX or other citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query NASA ADS (Astrophysics Data System). Triggers on English terms and intents such as "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "published", "mentioned in the literature", "related work", "library", "h-index", and "references"; also use for Chinese requests such as "文献", "论文", "查一下文献", "有没有人发表", "有没有文献提到", "是否有相关论文", "已有研究", "文献调研", "论文调研", "论文检索", "查论文", "查文献", "引用导出", "获取 BibTeX", "ADS 文献", "arXiv 论文", "天文文献", "天文论文", and "天体物理论文".
 ---
 
 # NASA ADS API Skill Reference
