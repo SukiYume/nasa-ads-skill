@@ -7,7 +7,7 @@ description: Use when the user asks to search NASA ADS or astronomy/astrophysics
 
 Focused reference for practical NASA Astrophysics Data System literature research workflows. Use it to find papers, inspect metadata, build reading lists, export citations, check metrics, and retrieve related-paper or full-text/data links.
 
-This is not a complete ADS API manual. If the user asks for an ADS capability not covered here, first solve it with the documented search/export/library/metrics/resolver workflows when possible, then consult the official ADS API documentation only if needed.
+This is not a complete ADS API manual. If the user asks for an ADS capability not covered here, first solve it with the documented search/export/library/metrics/resolver workflows when possible, then consult the official ADS API documentation.
 
 ## Operating Workflow
 
@@ -15,7 +15,7 @@ This is not a complete ADS API manual. If the user asks for an ADS capability no
 2. Translate the user request into the narrowest ADS query or endpoint call.
 3. URL-encode search parameters with `urlencode()` or `curl -G --data-urlencode`.
 4. Present research results with title, authors, year, venue, citation count, ADS URL, DOI, and arXiv URL when available.
-5. For literature research, summarize the result set by themes, recency, venue, and highly cited papers instead of dumping raw JSON.
+5. For literature research, summarize the result set by themes, recency, venue, and highly cited papers. Avoid raw JSON dumps.
 6. Confirm before destructive library operations such as delete, empty, or bulk remove.
 
 ## Prerequisites

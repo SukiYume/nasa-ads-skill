@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "1.3.0",
-  "description": "Search NASA ADS, export citations, inspect libraries, get citation metrics, and find related papers from Codex.",
+  "version": "1.3.1",
+  "description": "Search NASA ADS literature, check published claims, export citations, inspect libraries, get citation metrics, and find related papers from Codex.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -22,8 +22,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "NASA ADS",
-    "shortDescription": "NASA ADS search and citation workflows",
-    "longDescription": "Reusable Codex skill bundle for NASA ADS paper search, citation export, library management, metrics, and related-paper lookups.",
+    "shortDescription": "NASA ADS literature and citation workflows",
+    "longDescription": "Reusable Codex skill bundle for NASA ADS literature search, published-claim checks, citation export, library management, metrics, and related-paper lookups.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
@@ -33,6 +33,7 @@
     "websiteURL": "https://github.com/SukiYume/nasa-ads-skill",
     "defaultPrompt": [
       "Search NASA ADS for recent papers on exoplanet atmospheres.",
+      "Check whether a claim or topic has been mentioned in the literature.",
       "Export BibTeX for 2016PhRvL.116f1102A.",
       "Show citation metrics for these ADS bibcodes."
     ],

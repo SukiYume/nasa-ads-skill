@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, tell the user to create one at https://ui.adsabs.harvard.edu/#user/settings/token by signing in or registering, opening account settings > **API Token**, clicking **Generate a new key**, and saving it as `ADS_API_TOKEN` or `ADS_DEV_KEY`; then ask them to retry or provide a token for the current session.
+1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 
@@ -79,7 +79,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 Only include the fields the user wants to change.
 
 ### `delete <library_id>`
-Delete the library itself, not just its contents. Confirm with the user before executing:
+Delete the library record and its contents. Confirm with the user before executing:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
 curl -s -H "Authorization: Bearer $TOKEN" \

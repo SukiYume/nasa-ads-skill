@@ -2,9 +2,9 @@
 
 [中文说明](./README.zh-CN.md)
 
-A packaged NASA ADS skill/plugin bundle for Claude Code and Codex.
+A packaged NASA ADS skill/plugin bundle for Claude Code, Codex, Gemini, and other Markdown-skill hosts.
 
-This repository is intentionally documentation-first: it does not ship a standalone API client or background service. Instead, it packages prompt/skill assets that instruct the host assistant to call the [NASA Astrophysics Data System (ADS)](https://ui.adsabs.harvard.edu/) REST API from the local shell using your token.
+This documentation-first repository packages skill and command assets that instruct the host assistant to call the [NASA Astrophysics Data System (ADS)](https://ui.adsabs.harvard.edu/) REST API from the local shell using your token.
 
 Conceptually, this repo is a skill/plugin wrapper around the public [adsabs-dev-api](https://github.com/adsabs/adsabs-dev-api): it repackages the ADS API surface from that project into assistant-friendly skills, slash commands, and plugin manifests for Claude Code, Codex, Gemini, and similar tools.
 
@@ -22,7 +22,7 @@ Conceptually, this repo is a skill/plugin wrapper around the public [adsabs-dev-
 
 ## Scope
 
-This package is intentionally scoped to practical literature research and citation workflows. It does not try to wrap every ADS API endpoint; if you need uncommon endpoints such as journal metadata, object lookup, visualizations, or reference parsing, use the official ADS API documentation directly.
+This package is intentionally scoped to practical literature research and citation workflows. It covers standard citation export through `/export/<format>` for formats such as BibTeX, AASTeX, MNRAS, RIS, EndNote, and IEEE. It does not try to wrap every ADS API endpoint; if you need less common endpoints such as metrics detail, library notes/transfer, journal metadata, object lookup, visualizations, or reference parsing, use the official ADS API documentation directly.
 
 ## Requirements
 
@@ -68,17 +68,11 @@ export ADS_API_TOKEN="paste-your-token-here"
 
 7. Restart your terminal or host assistant session so it can read the new environment variable.
 
-## Installation for Humans
+## Agent Prompts
 
-Step-by-step instructions for researchers and developers who want to install this skill manually.
+If your host assistant can edit files and run shell commands, use one of these prompts for a faster install path.
 
-## One-Line Agent Prompts
-
-If your host assistant can edit files and run shell commands, you can often install this repo by pasting one short request instead of following the manual steps.
-
-### Codex
-
-Copy this into Codex:
+### Codex Agent Prompt
 
 ```text
 Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill into this repository by copying `plugins/nasa-ads` into `./plugins/nasa-ads`, then merge the `nasa-ads` entry from `.agents/plugins/marketplace.json` into `./.agents/plugins/marketplace.json` without overwriting existing plugins.
@@ -90,33 +84,31 @@ For skill-only install:
 Install only the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by copying `plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `$CODEX_HOME/skills/nasa-ads/SKILL.md` (default `~/.codex/skills/nasa-ads/SKILL.md`).
 ```
 
-### Claude Code
-
-Copy this into Claude Code:
+### Claude Code Agent Prompt
 
 ```text
 Add `SukiYume/nasa-ads-skill` as a Claude plugin marketplace and install `nasa-ads@nasa-ads-community`, then confirm the NASA ADS slash commands are available.
 ```
 
-### Gemini CLI
-
-Copy this into Gemini:
+### Gemini CLI Agent Prompt
 
 ```text
 Install the NASA ADS skill from https://github.com/SukiYume/nasa-ads-skill by placing `plugins/nasa-ads/skills/nasa-ads/SKILL.md` in this project and adding `@./plugins/nasa-ads/skills/nasa-ads/SKILL.md` to `GEMINI.md`.
 ```
 
-### Generic AI Assistant
-
-Copy this into any agent that supports Markdown skills or prompt files:
+### Generic Assistant Agent Prompt
 
 ```text
 Download `https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md` and load it as a reusable Markdown skill for NASA ADS search, metadata, BibTeX, libraries, metrics, and resolver workflows.
 ```
 
-### Claude Code (CLI / Desktop / VS Code / JetBrains)
+After installation, remind the user to complete [Post-Install: Create and Set Your ADS API Token](#post-install-create-and-set-your-ads-api-token). Do not store tokens in this repository or shared logs.
 
-Add this repository as a plugin marketplace, then install the plugin:
+## Manual Installation
+
+### Claude Code Manual Install
+
+Add this repository as a plugin marketplace, then install the plugin. This applies to Claude Code CLI, Desktop, VS Code, and JetBrains.
 
 ```bash
 # Step 1: Add the marketplace
@@ -145,11 +137,11 @@ After installation, you get five slash commands:
 
 `/nasa-ads:ads-library` supports list/view/create/add/remove plus metadata updates, query-based edits, sharing, set operations, and library deletion.
 
-The skill also activates automatically from plain-language requests about papers, citations, ADS, BibTeX, arXiv, libraries, or metrics.
+The skill also activates automatically from plain-language requests about literature searches, published-claim checks, papers, citations, ADS, BibTeX, arXiv, libraries, or metrics.
 
 Before running the first command, complete [Post-Install: Create and Set Your ADS API Token](#post-install-create-and-set-your-ads-api-token). The commands will fail with `401 Unauthorized` or ask for a token if `ADS_API_TOKEN` or `ADS_DEV_KEY` is missing.
 
-### Codex
+### Codex Manual Install
 
 **Option A: Repo-local plugin install**
 
@@ -159,30 +151,9 @@ Before running the first command, complete [Post-Install: Create and Set Your AD
 ```bash
 git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
 cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-python - <<'PY'
-import json
-from pathlib import Path
-
-path = Path(".agents/plugins/marketplace.json")
-path.parent.mkdir(parents=True, exist_ok=True)
-entry = {
-    "name": "nasa-ads",
-    "source": {"source": "local", "path": "./plugins/nasa-ads"},
-    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
-    "category": "Research",
-}
-
-if path.exists():
-    data = json.loads(path.read_text())
-else:
-    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
-
-data.setdefault("name", "local")
-data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
-data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
-path.write_text(json.dumps(data, indent=2) + "\n")
-PY
 ```
+
+Use the entry in the cloned repository's `.agents/plugins/marketplace.json` as the source of truth when merging. Do not overwrite existing plugins.
 
 **Option B: Personal install (available in all repos)**
 
@@ -199,7 +170,9 @@ mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
 cp plugins/nasa-ads/skills/nasa-ads/SKILL.md "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
 ```
 
-### Gemini CLI
+For the best Codex UI metadata in a skill-only install, also copy `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml` to the same relative `agents/openai.yaml` path.
+
+### Gemini CLI Manual Install
 
 Add this line to your project's `GEMINI.md`:
 
@@ -209,120 +182,16 @@ Add this line to your project's `GEMINI.md`:
 
 Or copy the skill file into your Gemini skill directory.
 
-### Other AI Assistants
+### Generic Assistant Manual Install
 
 The core file is `plugins/nasa-ads/skills/nasa-ads/SKILL.md` — a self-contained ADS API reference in Markdown. Copy it into any assistant's skill/prompt directory.
-
----
-
-## Installation for AI Agents
-
-Instructions for AI agents (Claude, Codex, etc.) that need to install this skill programmatically on behalf of a user.
-
-After any install path below, explicitly remind the user to create an ADS API token:
-
-1. Open https://ui.adsabs.harvard.edu/#user/settings/token.
-2. Register or sign in to ADS.
-3. Go to account settings, then **API Token**, if the direct link does not land there.
-4. Click **Generate a new key** and copy the token.
-5. Store it as `ADS_API_TOKEN` or `ADS_DEV_KEY` in the user's shell environment.
-6. Restart the terminal or assistant session before making ADS API calls.
-
-### Claude Code Agent
-
-Run these two shell commands:
-
-```bash
-claude plugin marketplace add SukiYume/nasa-ads-skill
-claude plugin install nasa-ads@nasa-ads-community
-```
-
-No additional plugin setup is needed. The skill and commands will be available immediately, but ADS API calls still require the user to create an ADS API token and expose it as `ADS_API_TOKEN` or `ADS_DEV_KEY`.
-
-For local development or testing:
-
-```bash
-git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
-cd /tmp/nasa-ads-skill
-claude plugin marketplace add .
-claude plugin install nasa-ads@nasa-ads-community
-```
-
-### Codex Agent
-
-Clone the repo and wire up the marketplace:
-
-```bash
-git clone https://github.com/SukiYume/nasa-ads-skill.git /tmp/nasa-ads-skill
-cp -r /tmp/nasa-ads-skill/plugins/nasa-ads ./plugins/nasa-ads
-python - <<'PY'
-import json
-from pathlib import Path
-
-path = Path(".agents/plugins/marketplace.json")
-path.parent.mkdir(parents=True, exist_ok=True)
-entry = {
-    "name": "nasa-ads",
-    "source": {"source": "local", "path": "./plugins/nasa-ads"},
-    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
-    "category": "Research",
-}
-
-if path.exists():
-    data = json.loads(path.read_text())
-else:
-    data = {"name": "local", "interface": {"displayName": "Local Plugins"}, "plugins": []}
-
-data.setdefault("name", "local")
-data.setdefault("interface", {}).setdefault("displayName", "Local Plugins")
-data["plugins"] = [p for p in data.get("plugins", []) if p.get("name") != "nasa-ads"] + [entry]
-path.write_text(json.dumps(data, indent=2) + "\n")
-PY
-```
-
-Or for skill-only (no plugin scaffold):
-
-```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads"
-curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
-  -o "${CODEX_HOME:-$HOME/.codex}/skills/nasa-ads/SKILL.md"
-```
-
-For the best Codex UI metadata in a skill-only install, also copy `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml` to the same relative `agents/openai.yaml` path.
-
-### Gemini Agent
-
-Append the skill reference to `GEMINI.md`:
-
-```bash
-echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
-```
-
-Or fetch the skill file directly:
-
-```bash
-mkdir -p plugins/nasa-ads/skills/nasa-ads
-curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
-  -o plugins/nasa-ads/skills/nasa-ads/SKILL.md
-echo '@./plugins/nasa-ads/skills/nasa-ads/SKILL.md' >> GEMINI.md
-```
-
-### Generic Agent
-
-For any agent that supports Markdown-based skills, fetch the single reference file:
-
-```bash
-curl -sL https://raw.githubusercontent.com/SukiYume/nasa-ads-skill/master/plugins/nasa-ads/skills/nasa-ads/SKILL.md \
-  -o nasa-ads-skill.md
-```
-
-Then load `nasa-ads-skill.md` into the agent's system prompt or skill directory. The file is self-contained — no other files are required for basic functionality.
 
 ## Usage
 
 Plain-language prompts:
 
 - "Search ADS for recent papers on exoplanet atmospheres"
+- "Check whether this claim has been mentioned in the astronomy literature"
 - "Get the BibTeX for this paper: 2016PhRvL.116f1102A"
 - "Show me my ADS libraries"
 - "What are the citation metrics for these bibcodes?"
@@ -372,13 +241,13 @@ nasa-ads-skill/
 
 The detailed ADS API reference lives in `plugins/nasa-ads/skills/nasa-ads/SKILL.md`, and the Claude command files are task-specific wrappers that should stay aligned with it.
 
-## API Endpoints Covered
+## Primary API Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/search/query` | GET | Search for papers |
 | `/search/bigquery` | POST | Batch bibcode lookup |
-| `/export/<format>` | GET/POST | Export citations |
+| `/export/<format>` | GET/POST | Standard citation exports |
 | `/biblib/libraries` | GET/POST | List or create libraries |
 | `/biblib/libraries/<id>` | GET | View library contents |
 | `/biblib/documents/<id>` | POST/PUT/DELETE | POST adds/removes documents, PUT updates library metadata, DELETE removes the library |
@@ -388,6 +257,8 @@ The detailed ADS API reference lives in `plugins/nasa-ads/skills/nasa-ads/SKILL.
 | `/metrics` | POST | Citation metrics and indicators |
 | `/citation_helper` | POST | Suggested citations |
 | `/resolver/<bibcode>` | GET | Full-text and data links |
+
+ADS OpenAPI also exposes endpoints outside this skill's normal workflow, including `/metrics/<bibcode>`, `/metrics/detail`, `/biblib/notes/<id>/<bibcode>`, `/biblib/transfer/<id>`, journals, objects, reference parsing, and visualizations. Use the official ADS API documentation for those less common workflows.
 
 ## Notes
 
