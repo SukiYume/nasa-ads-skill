@@ -1,6 +1,6 @@
 # NASA ADS Skill Repository
 
-Repository for a packaged NASA ADS skill/plugin that targets Claude Code and Codex.
+Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex, and Gemini-compatible Markdown skill loading.
 
 ## Packaging Layout
 
@@ -10,6 +10,7 @@ Repository for a packaged NASA ADS skill/plugin that targets Claude Code and Cod
 - Codex manifest: `plugins/nasa-ads/.codex-plugin/plugin.json`
 - Claude manifest: `plugins/nasa-ads/.claude-plugin/plugin.json`
 - Skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
+- Gemini include file: `GEMINI.md`
 
 ## Claude Commands
 
@@ -23,6 +24,6 @@ Claude plugin commands are namespaced by plugin id:
 
 ## API Token
 
-Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, prompt the user.
+Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, point the user to the token page, tell them to set one of those environment variables, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
