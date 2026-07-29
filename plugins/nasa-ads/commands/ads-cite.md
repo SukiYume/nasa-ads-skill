@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
+1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 
@@ -23,18 +23,18 @@ The subcommand and arguments: $ARGUMENTS
 Suggest missing citations via "friends of friends" analysis:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -X POST "https://api.adsabs.harvard.edu/v1/citation_helper" \
   -d '{"bibcodes":["bibcode1","bibcode2"]}'
 ```
-Display each suggestion: title, author, bibcode, score.
+Display each suggestion: title, author, bibcode, score. Label it as an algorithmic suggestion and inspect topical relevance before recommending it.
 
 ### `links <bibcode>`
 Get links to full text, data archives, and other external resources:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/resolver/<bibcode>"
 ```
 Display available link types (PDF, HTML, data sources, etc.).
@@ -43,11 +43,11 @@ Display available link types (PDF, HTML, data sources, etc.).
 Find similar papers via the search API:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -sG "https://api.adsabs.harvard.edu/v1/search/query" \
+curl -fsSG "https://api.adsabs.harvard.edu/v1/search/query" \
   -H "Authorization: Bearer $TOKEN" \
   --data-urlencode 'q=similar(bibcode:<bibcode>)' \
   --data-urlencode 'fl=bibcode,title,author,year,citation_count' \
   --data-urlencode 'rows=10'
 ```
 
-3. Present results clearly in markdown format.
+3. Check the HTTP status before parsing. Present results clearly in markdown format with ADS links.

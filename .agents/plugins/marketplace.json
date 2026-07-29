@@ -1,7 +1,7 @@
 {
-  "name": "nasa-ads-local",
+  "name": "nasa-ads-community",
   "interface": {
-    "displayName": "NASA ADS Local Plugins"
+    "displayName": "NASA ADS Community"
   },
   "plugins": [
     {

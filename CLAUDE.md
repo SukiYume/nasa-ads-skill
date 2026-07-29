@@ -15,3 +15,11 @@ This repository packages the NASA ADS skill for Claude Code, Codex, and Gemini-c
 The ADS API requires a personal token. Check `ADS_API_TOKEN` first, then `ADS_DEV_KEY`. If neither is set, point the user to the token page, tell them to set one of those environment variables, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
+
+## Documentation and Release Checks
+
+- Keep the English and Chinese READMEs aligned and usable from a fresh computer.
+- Keep the marketplace metadata, Claude/Codex manifests, shared skill, OpenAI skill metadata, and affected commands in sync.
+- Keep the release version identical in `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json`, and `.codex-plugin/plugin.json`.
+- Preserve direct prose and avoid contrastive turn-away phrasing.
+- Run `claude plugin validate . --strict`, the Codex skill validator, JSON parsing, README link checks, disposable install tests, read-only ADS smoke tests, and `git diff --check` before committing.

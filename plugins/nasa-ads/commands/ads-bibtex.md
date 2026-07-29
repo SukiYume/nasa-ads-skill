@@ -15,14 +15,14 @@ The bibcode(s) and optional format: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
+1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
 
 2. Parse bibcode(s) and optional `--format` flag from `$ARGUMENTS`. Default format is `bibtex`. Supported: `bibtex`, `bibtexabs`, `ads`, `aastex`, `mnras`, `icarus`, `soph`, `endnote`, `ris`, `refworks`, `medlars`, `procite`, `ieee`, `votable`, `dcxml`, `refxml`, `refabsxml`, `rss`.
 
 3. If single bibcode, use GET:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   "https://api.adsabs.harvard.edu/v1/export/<format>/<bibcode>"
 ```
 Single-bibcode GET returns raw citation text in the requested format.
@@ -30,11 +30,11 @@ Single-bibcode GET returns raw citation text in the requested format.
 4. If multiple bibcodes, use POST:
 ```bash
 TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -X POST "https://api.adsabs.harvard.edu/v1/export/<format>" \
   -d '{"bibcode":["bibcode1","bibcode2"]}'
 ```
 Multi-bibcode POST returns JSON with an `export` field.
 
-5. Display the output in a code block. Offer to save to a file (`.bib`, `.ris`, etc.) if the user wants.
+5. Check the HTTP status before formatting the result. Display the output in a code block. Offer to save to a file (`.bib`, `.ris`, etc.) if the user wants.
