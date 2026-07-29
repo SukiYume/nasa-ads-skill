@@ -35,9 +35,10 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 4. Request only the fields and row count needed.
 5. Inspect response shape, `numFound`, returned rows, pagination, and rate limits when relevant.
 6. Deduplicate by bibcode, reconcile alternate records, and read abstracts before judging relevance.
-7. Compare recent results with influential or foundational results.
-8. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
-9. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
+7. Track `doctype` and `property`; label preprints, abstracts, circulars, and other non-refereed records separately from refereed papers.
+8. Compare recent results with influential or foundational results.
+9. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
+10. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
 
 ## Coverage Standard
 
@@ -45,6 +46,7 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 - For a focused literature review, use at least two independent query families and inspect the abstracts of material records.
 - For a broad, comprehensive, or claim-level review, cover terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent and citation-ranked results, and all manageable result pages. If the result set is too large, state the sampling rule and uncovered scope.
 - Use `bigquery` to re-fetch complete metadata for the deduplicated evidence set.
+- Refine or discard query families dominated by false positives; do not treat `numFound` as a relevant-paper count.
 - Judge sufficiency by conceptual and evidentiary coverage, not by raw result count.
 
 ## Credentials
