@@ -9,6 +9,7 @@ This repository packages the NASA ADS skill for Claude Code, Codex, and Gemini-c
 - Marketplace: `.claude-plugin/marketplace.json`
 - Shared skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
+- Conditional references: `plugins/nasa-ads/skills/nasa-ads/references/`
 - Commands are namespaced by plugin id: `/nasa-ads:ads-search`, `/nasa-ads:ads-bibtex`, `/nasa-ads:ads-library`, `/nasa-ads:ads-metrics`, `/nasa-ads:ads-cite`
 
 ## API Token

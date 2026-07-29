@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Use the bundled Python CLI at `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. It checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`. If it reports that both are absent, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set one of those variables, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Use `python3`; if that command is unavailable, try `python`, then `py -3`.
+1. Use `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. Try `python3`, then `python`, then `py -3`. Do not recreate a supported call with curl, PowerShell, or temporary code. If the CLI reports a missing token, direct the user to https://ui.adsabs.harvard.edu/#user/settings/token and ask them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 
@@ -45,4 +45,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
   --rows 10
 ```
 
-3. Use the direct HTTP fallback in the shared `SKILL.md` only when Python 3 is unavailable. Check the CLI exit status before parsing. Present results clearly in markdown format with ADS links.
+3. If all Python 3 commands are unavailable, read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/http-fallback.md`. The CLI checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`; never print or log the token. Check the exit status before parsing and present results with ADS links.

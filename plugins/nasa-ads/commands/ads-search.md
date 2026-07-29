@@ -15,7 +15,7 @@ The user's search query: $ARGUMENTS
 
 ## Instructions
 
-1. Use the bundled Python CLI at `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. It checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`. If it reports that both are absent, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set one of those variables, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token.
+1. Use `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. Try `python3`, then `python`, then `py -3`. Do not recreate a supported search with curl, PowerShell, or temporary code. If the CLI reports a missing token, direct the user to https://ui.adsabs.harvard.edu/#user/settings/token and ask them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`.
 
 2. Parse the user's query from `$ARGUMENTS`. Interpret natural language:
    - "papers by Einstein on relativity" -> `q=author:"Einstein" title:"relativity"`
@@ -25,7 +25,7 @@ The user's search query: $ARGUMENTS
    - "refereed papers about dark matter" -> `q=dark matter` plus `fq=property:refereed`
    - "papers citing 2016PhRvL.116f1102A" -> `q=citations(bibcode:2016PhRvL.116f1102A)`
 
-3. Execute the search with the bundled CLI. Use `python3`; if that command is unavailable, try `python`, then `py -3`. The CLI preserves native ADS query syntax and URL-encodes every parameter.
+3. Execute the search with the bundled CLI. It checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`, preserves native ADS query syntax, and URL-encodes every parameter.
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
   --query '<ads_query>' \
@@ -33,7 +33,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
   --rows 10 \
   --sort 'citation_count desc'
 ```
-Add `--fq '<filter>'` for each filter. Use the direct HTTP fallback in the shared `SKILL.md` only when Python 3 is unavailable.
+Add `--fq '<filter>'` for each filter. If all Python 3 commands are unavailable, read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/http-fallback.md`. Never print or log the token.
 
 4. For each result, display in a clean format:
    - **Title**
