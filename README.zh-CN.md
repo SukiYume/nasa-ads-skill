@@ -10,7 +10,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.4.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.5.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -31,6 +31,8 @@
 NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) 封装成可复用的代理工作流。安装后的宿主可以检索天文和天体物理文献、读取论文元数据、导出引用、管理 ADS libraries、汇总文献计量指标，以及寻找相关论文和全文/数据链接。
 
 宿主会从你的电脑直接访问 `https://api.adsabs.harvard.edu`。本仓库不保存 ADS token，也不运行中转服务。
+
+共享 Markdown skill 负责检索式设计、证据判断、安全确认和结果总结。仓库自带一个仅使用 Python 标准库的 CLI，负责文献检索、批量查询、引用导出、文献计量、引用建议和资源解析等稳定的只读 API 调用。
 
 | 宿主 | 集成方式 | 安装后可用内容 |
 |---|---|---|
@@ -58,10 +60,13 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 flowchart LR
     A["你的请求"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    T["ADS_API_TOKEN<br/>或 ADS_DEV_KEY"] --> B
-    B --> C["ADS Developer API"]
-    C --> D["检索 · 导出 · 文库<br/>指标 · 相关论文 · Resolver"]
-    D --> E["带链接、便于阅读的结果"]
+    B --> M["Markdown 研究判断"]
+    M --> P["自带 Python CLI<br/>稳定只读调用"]
+    T["ADS_API_TOKEN<br/>或 ADS_DEV_KEY"] --> P
+    P --> C["ADS Developer API"]
+    C --> D["JSON 或引用文本"]
+    M --> E["带链接、便于阅读的结果"]
+    D --> E
 ```
 
 ## 安装前准备
@@ -74,13 +79,16 @@ flowchart LR
    - [Codex CLI 安装文档](https://developers.openai.com/codex/cli/)
    - [Gemini CLI 安装文档](https://geminicli.com/docs/get-started/installation/)
 3. **ADS 账号和 API token**：稍后按[配置 ADS token](#配置-ads-token)完成。
-4. **HTTP 客户端**：macOS/Linux/WSL 使用 `curl`，Windows PowerShell 使用 `Invoke-RestMethod`。如果 `curl --version` 不可用，请通过操作系统的软件包管理器安装 `curl`。
-5. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`。
+4. **Python 3.10 或更新版本（推荐）**：从 [python.org/downloads](https://www.python.org/downloads/) 安装。自带 CLI 只使用 Python 标准库。没有 Python 时，skill 可以改用直接 HTTP 回退方案。
+5. **HTTP 回退客户端**：macOS/Linux/WSL 使用 `curl`，Windows PowerShell 使用 `Invoke-RestMethod`。如果 `curl --version` 不可用，请通过操作系统的软件包管理器安装 `curl`。
+6. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`。
 
 检查程序是否已经安装：
 
 ```bash
 git --version
+python3 --version   # macOS、Linux 或 WSL
+python --version    # Windows；也可以使用 "py -3 --version"
 claude --version   # 使用 Claude Code 时检查
 codex --version    # 使用 Codex 时检查
 gemini --version   # 使用 Gemini CLI 时检查
@@ -189,6 +197,7 @@ cp -R \
 
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
   && echo "NASA ADS skill installed"
 ```
 
@@ -211,7 +220,10 @@ Copy-Item -Recurse -Force `
 检查必需文件：
 
 ```powershell
-Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md"
+$nasaAdsSkillReady = `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py")
+$nasaAdsSkillReady
 ```
 
 成功时会返回 `True`。
@@ -271,7 +283,7 @@ git clone --depth 1 https://github.com/SukiYume/nasa-ads-skill.git
 
 2. 把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主文档指定的 skill 或 prompt 目录。
 3. 配置宿主加载其中的 `SKILL.md`。
-4. 确认宿主可以通过 `curl`、PowerShell 或 Python 发起 HTTPS 请求。
+4. 确认宿主可以用 Python 3 运行自带 CLI，或能通过 `curl`/PowerShell 使用直接 HTTP 回退。
 5. 按下一节设置 ADS token。
 6. 运行[验证 API](#验证-api)中的公开论文测试。
 
@@ -343,7 +355,31 @@ if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) {
 
 下面使用一篇公开论文验证网络、身份认证和 ADS 响应格式。
 
-### curl
+### 自带 Python CLI
+
+在 macOS、Linux 或 WSL 的仓库根目录运行：
+
+```bash
+python3 plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py search \
+  --query 'bibcode:2016PhRvL.116f1102A' \
+  --fields bibcode,title,year \
+  --rows 1
+```
+
+在 Windows PowerShell 的仓库根目录运行：
+
+```powershell
+python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
+  --query 'bibcode:2016PhRvL.116f1102A' `
+  --fields 'bibcode,title,year' `
+  --rows 1
+```
+
+如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。
+
+### 直接 HTTP 回退
+
+macOS、Linux 或 WSL：
 
 ```bash
 NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
@@ -356,7 +392,7 @@ curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
 
 JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。
 
-### Windows PowerShell
+Windows PowerShell：
 
 ```powershell
 $nasaAdsToken = if ($env:ADS_API_TOKEN) {
@@ -404,10 +440,12 @@ Skill 会要求代理返回带链接、便于阅读的结果，扩展检索表�
 
 ## API 覆盖
 
+自带 CLI 覆盖 `/search/query`、`/search/bigquery`、`/export/<format>`、`/metrics`、`/citation_helper` 和 `/resolver/<bibcode>`。文库操作继续由 Markdown 工作流编排，让代理在执行破坏性操作或共享状态变更之前立即确认。
+
 | Endpoint | Method | 用途 |
 |---|---|---|
 | `/search/query` | GET | 检索论文并返回元数据 |
-| `/search/bigquery` | POST | 批量查询最多 2000 个 bibcodes |
+| `/search/bigquery` | POST | 批量查询 bibcodes，并对结果分页 |
 | `/export/<format>` | GET / POST | 单篇或多篇引用导出 |
 | `/biblib/libraries` | GET / POST | 列出或创建 libraries |
 | `/biblib/libraries/<id>` | GET | 查看 library |
@@ -438,7 +476,9 @@ nasa-ads-skill/
 │   │   └── ads-cite.md
 │   └── skills/nasa-ads/
 │       ├── agents/openai.yaml              # Codex skill UI 元数据
-│       └── SKILL.md                        # 共享工作流
+│       ├── scripts/ads_api.py               # 标准库 API CLI
+│       └── SKILL.md                         # 共享研究工作流
+├── tests/test_ads_api.py                    # CLI 离线单元测试
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── GEMINI.md
@@ -455,11 +495,12 @@ nasa-ads-skill/
 | Codex marketplace 或 plugin 不见了 | 运行 `codex plugin marketplace upgrade nasa-ads-community`，再运行 `codex plugin add nasa-ads@nasa-ads-community`，然后新建会话 |
 | `/skills` 中没有 Codex 独立 skill | 确认 `~/.agents/skills/nasa-ads/SKILL.md` 存在，然后新建会话 |
 | Gemini 没有加载指令 | 检查 `~/.gemini/GEMINI.md` 中的相对路径，再运行 `/memory reload` 和 `/memory show` |
+| Python CLI 无法启动 | 安装 Python 3.10 或更新版本，依次尝试 `python3`、`python` 或 `py -3`，并确认完整 skill 目录中包含 `scripts/ads_api.py` |
 | `401 Unauthorized` | 设置有效 token，打开新终端，并通过公开论文测试检查 `Bearer` header 路径 |
 | `403 Forbidden` | 检查 ADS 账号权限和 library 权限 |
 | `429 Too Many Requests` | 查看 `X-RateLimit-Remaining` 和 `X-RateLimit-Reset` 响应 header |
 | 检索不到论文 | 删除非必要过滤，尝试同义词和拼写变体，并记录检索范围 |
-| 查询在 `&` 或空格处失效 | 对 `q`、`fq` 和 `sort` 做 URL 编码；打包工作流使用 `--data-urlencode` |
+| 查询在 `&` 或空格处失效 | 使用会自动进行 URL 编码的自带 CLI；直接 HTTP 回退时需要编码 `q`、`fq` 和 `sort` |
 
 ## 更新已有安装
 

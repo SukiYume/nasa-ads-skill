@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
+1. This version keeps library operations in the Markdown workflow because they can change private or shared state. Check for an ADS API token in `ADS_API_TOKEN` or `ADS_DEV_KEY`. If neither is set, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set one of those variables, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 

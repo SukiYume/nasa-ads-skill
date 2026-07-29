@@ -15,18 +15,20 @@ The bibcode(s): $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
+1. Use the bundled Python CLI at `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. It checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`. If it reports that both are absent, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set one of those variables, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token.
 
 2. Parse bibcode(s) from `$ARGUMENTS`.
 
-3. Fetch metrics:
+3. Fetch metrics with the bundled CLI. Use `python3`; if that command is unavailable, try `python`, then `py -3`.
 ```bash
-TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -X POST "https://api.adsabs.harvard.edu/v1/metrics" \
-  -d '{"bibcodes":["bibcode1","bibcode2"],"types":["basic","citations","indicators"]}'
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" metrics \
+  2016PhRvL.116f1102A \
+  2017ApJ...848L..12A \
+  --type basic \
+  --type citations \
+  --type indicators
 ```
+Use the direct HTTP fallback in the shared `SKILL.md` only when Python 3 is unavailable.
 
 4. Read the actual response keys before formatting. ADS uses keys containing spaces, including `basic stats`, `basic stats refereed`, `citation stats`, `citation stats refereed`, `indicators`, and `indicators refereed`.
 
