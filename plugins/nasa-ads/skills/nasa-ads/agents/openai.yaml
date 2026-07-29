@@ -1,6 +1,6 @@
 interface:
   display_name: "NASA ADS"
-  short_description: "Research ADS literature and citations"
+  short_description: "Research ADS through direct HTTPS"
   brand_color: "#0B3D91"
   default_prompt: "Use $nasa-ads to research astronomy literature, check a published claim with clear search scope, or export citations."
 
