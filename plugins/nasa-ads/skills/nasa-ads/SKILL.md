@@ -3,54 +3,53 @@ name: nasa-ads
 description: Search and investigate NASA ADS astronomy and astrophysics literature. Use when a user asks to find papers, check whether a claim or topic appears in published literature, retrieve titles/authors/abstracts/DOIs/arXiv IDs, export BibTeX or other citations, manage ADS libraries, inspect citation metrics, find related papers, or resolve full-text and data links. Trigger on terms such as paper, literature, citation, bibliography, BibTeX, arXiv, ADS, published, related work, references, library, h-index, astronomy, and astrophysics, plus Chinese requests including 文献, 论文, 查文献, 查论文, 文献调研, 论文调研, 论文检索, 有没有人发表, 有没有文献提到, 是否有相关论文, 已有研究, 引用导出, 获取 BibTeX, ADS 文献, arXiv 论文, 天文文献, 天文论文, and 天体物理论文.
 ---
 
-# NASA ADS
+# NASA ADS Agent Workflow
 
-Use the NASA Astrophysics Data System Developer API for literature search, metadata retrieval, citation export, library management, bibliometrics, related-paper discovery, and resource-link resolution.
+Use the NASA Astrophysics Data System Developer API for literature research, citation export, libraries, bibliometrics, related-paper discovery, and resource-link resolution. Follow this file as runtime instructions for an agent; use the repository README only for human installation and onboarding.
 
 ## Core Rules
 
-1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every workflow.
-2. Stop and give the token setup steps below when both variables are absent.
-3. Treat the token as a secret. Never print it, log it, commit it, store it in a source file, or place it in a URL.
-4. Use `https://api.adsabs.harvard.edu/v1` as the API base and send `Authorization: Bearer <token>` in the request header.
-5. URL-encode every search parameter. ADS queries and bibcodes can contain `&`, spaces, quotes, parentheses, and other reserved characters.
-6. Check the HTTP status before parsing a response. Surface a concise error and corrective action when a request fails.
-7. Keep research calls read-only by default. Confirm immediately before library deletion, library emptying, bulk removal, permission changes, or another destructive/shared-library operation.
-8. Describe an empty search as “no matching records found for these queries.” A single query cannot establish that no relevant literature exists.
-9. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for endpoints outside the workflows covered here.
+1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every API workflow.
+2. Never print, log, commit, or place the token in a URL or source file.
+3. Use `https://api.adsabs.harvard.edu/v1` as the API base and send `Authorization: Bearer <token>` in the request header.
+4. URL-encode every search parameter and check the HTTP status before parsing a response.
+5. Keep research calls read-only by default.
+6. Confirm immediately before deleting or emptying a library, bulk removal, or permission changes.
+7. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
+8. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
+9. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
 
-## Operating Workflow
+## Transport Selection
 
-1. Translate the request into one or more focused ADS queries or endpoint calls.
-2. Run the credential preflight without displaying the credential.
-3. Use an HTTP client already available on the system: `curl`, PowerShell `Invoke-RestMethod`, or Python’s standard library.
-4. Request only the fields and row count needed for the task.
-5. Inspect response status, response shape, pagination, and rate-limit headers when relevant.
-6. For literature research, refine weak queries, deduplicate by bibcode, inspect abstracts, and distinguish direct evidence from adjacent work.
-7. Return a reader-facing synthesis with links and a short search-method note. Avoid raw JSON dumps unless the user requests them.
+1. Run the credential preflight without displaying the credential.
+2. Use an HTTP client already available on the system: prefer `curl` on POSIX systems, PowerShell `Invoke-RestMethod` on Windows, or Python’s standard library when neither is suitable.
+3. Do not assume a repository-local CLI or third-party Python package exists in this pure-Markdown edition.
+4. Request only the fields and row count needed, and use the documented endpoint-specific method and body.
+5. Surface a concise error and corrective action when a request fails; do not silently switch semantics or endpoints.
 
-## Token Setup
+## Research Workflow
 
-When neither supported variable is set, tell the user to:
+1. Define the question, operational categories, date range, and what evidence would support or weaken the claim.
+2. Build independent query families from exact terms, synonyms, competing interpretations, known objects or authors, and seed-paper citation chains.
+3. Run the required calls through the selected transport.
+4. Request only the fields and row count needed.
+5. Inspect response shape, `numFound`, returned rows, pagination, and rate limits when relevant.
+6. Deduplicate by bibcode, reconcile alternate records, and read abstracts before judging relevance.
+7. Compare recent results with influential or foundational results.
+8. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
+9. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
 
-1. Open [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token).
-2. Register for ADS or sign in.
-3. Open account settings and choose **API Token** if the direct link lands elsewhere.
-4. Select **Generate a new key**.
-5. Copy the token and keep it private.
-6. Set it for the current terminal session:
+## Coverage Standard
 
-```bash
-export ADS_API_TOKEN='paste-your-token-here'
-```
+- For an identifier lookup or citation export, one precise query may be sufficient.
+- For a focused literature review, use at least two independent query families and inspect the abstracts of material records.
+- For a broad, comprehensive, or claim-level review, cover terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent and citation-ranked results, and all manageable result pages. If the result set is too large, state the sampling rule and uncovered scope.
+- Use `/search/bigquery` to re-fetch complete metadata for the deduplicated evidence set.
+- Judge sufficiency by conceptual and evidentiary coverage, not by raw result count.
 
-```powershell
-$env:ADS_API_TOKEN = 'paste-your-token-here'
-```
+## Credentials
 
-7. Retry the request in that terminal, or restart the host assistant after setting a persistent user environment variable.
-
-If the user provides a token for the current session, keep it in process memory only and avoid commands that echo command lines or headers.
+Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`. If both are absent, stop; direct the user to [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token), ask them to set either variable in the terminal that launches the host, and retry. If the user supplies a token for the current session, keep it in process memory and avoid commands that echo headers or command lines.
 
 ### Safe Credential Preflight
 
@@ -144,7 +143,6 @@ bibcode:2016PhRvL.116f1102A                  bibcode
 arxiv:1602.03837                             arXiv ID
 doi:10.1103/PhysRevLett.116.061102           DOI
 year:2020-2024                               year range
-object:M31                                   astronomical object
 bibstem:ApJ                                  journal abbreviation
 orcid:0000-0002-1825-0097                    ORCID
 citations(bibcode:2016PhRvL.116f1102A)       citing papers
@@ -156,18 +154,7 @@ similar(bibcode:2016PhRvL.116f1102A)         similar papers
 
 Pass `fq` separately from `q`. Apply it only when the user requests that restriction or it clearly improves the research task.
 
-### Literature-Research Query Ladder
-
-For a topic review or published-claim check:
-
-1. Search the key phrase in `title:` and `abs:`.
-2. Search synonyms, abbreviations, spelling variants, author names, and relevant astronomical objects.
-3. Add year, refereed-status, collection, or document-type filters when useful.
-4. Review both recent results (`date desc`) and influential results (`citation_count desc`).
-5. Page beyond the first ten results when the result set or user request requires it.
-6. Deduplicate on `bibcode`; treat alternate bibcodes as versions of the same work when appropriate.
-7. Read abstracts before describing a paper as evidence for the claim.
-8. State the exact query families and material limits when reporting a negative search result.
+For a topic review or claim check, apply the Research Workflow and Coverage Standard above. Record the exact query families and material limits for sparse or negative results.
 
 ### Batch Bibcode Lookup
 
@@ -317,6 +304,7 @@ Extract an arXiv link by finding an `identifier` entry beginning with `arXiv:` a
 | `429 Too Many Requests` | Read `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; wait until reset |
 | Only `id` is returned | Add the required fields to `fl` |
 | Empty citation/reference arrays | Request `citation` or `reference` explicitly in `fl` |
+| Undefined query field | Replace unsupported fields with documented fields such as `title`, `abs`, or `full` |
 | Query breaks at `&` | Pass the query through `--data-urlencode` or an equivalent encoder |
 | Empty result set | Check syntax, remove unnecessary filters, try synonyms, and report the searched forms |
 
