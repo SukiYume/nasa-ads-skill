@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**CLI edition: Markdown research judgment with a bundled Python API client**
+**Markdown research judgment with a bundled Python API client**
 
 Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or another Markdown-skill host.
 
@@ -10,13 +10,12 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Edition](https://img.shields.io/badge/edition-CLI%20hybrid-0B3D91)](#choose-an-edition)
-[![Version](https://img.shields.io/badge/version-1.5.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.6.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [Overview](#overview) ·
-[Editions](#choose-an-edition) ·
+[Hosts](#supported-hosts) ·
 [Install](#install) ·
 [Configure the token](#configure-the-ads-token) ·
 [Verify](#verify-the-api) ·
@@ -34,18 +33,11 @@ NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API]
 
 The host sends requests directly from your computer to `https://api.adsabs.harvard.edu`. This repository stores no ADS token and runs no proxy service.
 
-This README is the reader guide: choose an edition, install it on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
+This README is the reader guide: install the project on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
 
-In this edition, Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution.
+Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution.
 
-## Choose an Edition
-
-| Branch | Transport | Choose it when |
-|---|---|---|
-| [`master`](https://github.com/SukiYume/nasa-ads-skill/tree/master) | Pure Markdown; the agent builds direct HTTPS requests with an available system client | You want the widest compatibility and no bundled executable |
-| [`codex/python-api-cli`](https://github.com/SukiYume/nasa-ads-skill/tree/codex/python-api-cli) — **this branch** | Markdown research workflow plus a dependency-free Python CLI | You want repeatable encoding, request bodies, error handling, and UTF-8 output |
-
-Both editions support the same research tasks. Install one edition at a time in a given host so the runtime instructions are unambiguous.
+## Supported Hosts
 
 | Host | Integration | What becomes available |
 |---|---|---|
@@ -110,25 +102,16 @@ If a selected host command is missing, install or update that host from its offi
 
 ## Install
 
-Choose one host below. Because this is not the repository’s default branch, first clone the CLI edition explicitly:
-
-```bash
-git clone --branch codex/python-api-cli --single-branch \
-  https://github.com/SukiYume/nasa-ads-skill.git \
-  nasa-ads-skill-cli
-cd nasa-ads-skill-cli
-```
-
-Run the remaining commands from that directory. Adding the GitHub repository without this checkout would install the default pure-Markdown edition.
+Choose one host below. Claude Code and Codex can add the public GitHub repository directly as a marketplace. Standalone and Gemini installations keep a local source clone so they can be updated later.
 
 ### Claude Code Plugin
 
 These commands work in macOS, Linux, Windows PowerShell, and Windows Command Prompt after Claude Code is installed.
 
-1. Add the checked-out CLI edition as a Claude Code marketplace:
+1. Add the GitHub repository as a Claude Code marketplace:
 
 ```bash
-claude plugin marketplace add .
+claude plugin marketplace add SukiYume/nasa-ads-skill
 ```
 
 2. Install the `nasa-ads` plugin from that marketplace:
@@ -161,16 +144,16 @@ Run `/reload-plugins` if the installation happened during an existing session. T
 /nasa-ads:ads-cite [subcommand]
 ```
 
-Continue with [Configure the ADS token](#configure-the-ads-token), then run the first search in [Use it](#use-it).
+Continue with [Configure the ADS token](#configure-the-ads-token), then run the public-paper test in [Verify the API](#verify-the-api).
 
 ### Codex Plugin
 
 Codex plugins are available in Codex CLI and Codex in the desktop app. Use the standalone-skill path below for the IDE extension.
 
-1. Add the checked-out CLI edition as a Codex marketplace:
+1. Add the GitHub repository as a Codex marketplace:
 
 ```bash
-codex plugin marketplace add .
+codex plugin marketplace add SukiYume/nasa-ads-skill
 ```
 
 2. Install the plugin:
@@ -193,7 +176,7 @@ codex
 
 Invoke it explicitly with `$nasa-ads`, open `/skills`, or describe an astronomy-literature task in plain language.
 
-Continue with [Configure the ADS token](#configure-the-ads-token).
+Continue with [Configure the ADS token](#configure-the-ads-token), then run the public-paper test in [Verify the API](#verify-the-api).
 
 ### Codex Standalone Skill
 
@@ -206,13 +189,11 @@ Keep a source clone at a stable user-level path, then copy the skill contents in
 ```bash
 mkdir -p "$HOME/.local/share"
 git clone --depth 1 \
-  --branch codex/python-api-cli \
-  --single-branch \
   https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.local/share/nasa-ads-skill-cli"
+  "$HOME/.local/share/nasa-ads-skill"
 mkdir -p "$HOME/.agents/skills/nasa-ads"
 cp -R \
-  "$HOME/.local/share/nasa-ads-skill-cli/plugins/nasa-ads/skills/nasa-ads/." \
+  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
   "$HOME/.agents/skills/nasa-ads/"
 ```
 
@@ -231,11 +212,9 @@ test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
 Keep a source clone at a stable user-level path, then copy the skill contents into Codex’s discovery directory:
 
 ```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-cli-source'
+$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
 $nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
 git clone --depth 1 `
-  --branch codex/python-api-cli `
-  --single-branch `
   https://github.com/SukiYume/nasa-ads-skill.git `
   $nasaAdsSource
 New-Item -ItemType Directory -Force $nasaAdsSkill | Out-Null
@@ -270,11 +249,9 @@ Gemini CLI loads instruction files through `GEMINI.md`. The following user-level
 ```bash
 mkdir -p "$HOME/.gemini"
 git clone --depth 1 \
-  --branch codex/python-api-cli \
-  --single-branch \
   https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.gemini/nasa-ads-skill-cli"
-printf '\n@./nasa-ads-skill-cli/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
+  "$HOME/.gemini/nasa-ads-skill"
+printf '\n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
   >> "$HOME/.gemini/GEMINI.md"
 ```
 
@@ -283,12 +260,10 @@ printf '\n@./nasa-ads-skill-cli/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.gemini" | Out-Null
 git clone --depth 1 `
-  --branch codex/python-api-cli `
-  --single-branch `
   https://github.com/SukiYume/nasa-ads-skill.git `
-  "$HOME\.gemini\nasa-ads-skill-cli"
+  "$HOME\.gemini\nasa-ads-skill"
 Add-Content -Path "$HOME\.gemini\GEMINI.md" -Value `
-  "`n@./nasa-ads-skill-cli/plugins/nasa-ads/skills/nasa-ads/SKILL.md"
+  "`n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md"
 ```
 
 Start Gemini CLI:
@@ -311,8 +286,7 @@ Confirm that the loaded memory contains the `NASA ADS` heading. The repository�
 1. Clone the repository:
 
 ```bash
-git clone --branch codex/python-api-cli --single-branch \
-  https://github.com/SukiYume/nasa-ads-skill.git
+git clone https://github.com/SukiYume/nasa-ads-skill.git
 ```
 
 2. Copy the complete `plugins/nasa-ads/skills/nasa-ads/` folder into the host’s documented skill or prompt directory.
@@ -389,9 +363,35 @@ Keep the token out of repositories, screenshots, shared logs, shell transcripts,
 
 Use a known public paper to verify network access, authentication, and the ADS response shape.
 
+### Installed host
+
+Restart the host after setting a persistent token. In Claude Code, run:
+
+```text
+/nasa-ads:ads-search bibcode:2016PhRvL.116f1102A
+```
+
+In Codex, Gemini CLI, or another host, send:
+
+```text
+Search NASA ADS for bibcode 2016PhRvL.116f1102A and return its title, year, and bibcode.
+```
+
+The result should identify *Observation of Gravitational Waves from a Binary Black Hole Merger* and include `2016PhRvL.116f1102A`. A missing-token message means the environment variable was not inherited by the host; an HTTP error should be handled with [Troubleshooting](#troubleshooting).
+
 ### Bundled Python CLI
 
-From the repository root on macOS, Linux, or WSL:
+Standalone Codex and Gemini installations created a source checkout at a path shown below. Move into the matching directory before running the CLI.
+
+On macOS, Linux, or WSL:
+
+```bash
+cd "$HOME/.local/share/nasa-ads-skill"  # standalone Codex
+# For Gemini CLI instead:
+# cd "$HOME/.gemini/nasa-ads-skill"
+```
+
+Then run:
 
 ```bash
 python3 plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py search \
@@ -400,7 +400,15 @@ python3 plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py search \
   --rows 1
 ```
 
-From the repository root on Windows PowerShell:
+On Windows PowerShell:
+
+```powershell
+Set-Location "$HOME\nasa-ads-skill-source"  # standalone Codex
+# For Gemini CLI instead:
+# Set-Location "$HOME\.gemini\nasa-ads-skill"
+```
+
+Then run:
 
 ```powershell
 python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
@@ -409,7 +417,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
   --rows 1
 ```
 
-Use `py -3` in place of `python` when that is how Python is registered. The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
+Use `py -3` in place of `python` when that is how Python is registered. If you cloned the repository to another location, enter that checkout instead. The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
 
 ### Direct HTTP fallback
 
@@ -458,13 +466,7 @@ The skill instructs the agent to return linked, readable results; refine weak li
 
 ## Updating an Existing Install
 
-Update the branch checkout first:
-
-```bash
-git pull --ff-only
-```
-
-For a Claude Code or Codex plugin, refresh the local marketplace and installed plugin:
+For a Claude Code or Codex plugin, refresh the marketplace and installed plugin:
 
 ```bash
 claude plugin marketplace update nasa-ads-community
@@ -476,21 +478,21 @@ codex plugin marketplace upgrade nasa-ads-community
 codex plugin add nasa-ads@nasa-ads-community
 ```
 
-If an old installation still uses the retired `nasa-ads-local` marketplace, remove that plugin and marketplace, then repeat the local-checkout installation above with `nasa-ads-community`.
+For a standalone skill or Gemini CLI import, update the source path chosen during installation. The commands below use the paths shown in this README.
 
 For a standalone Codex skill on macOS, Linux, or WSL:
 
 ```bash
-git -C "$HOME/.local/share/nasa-ads-skill-cli" pull --ff-only
+git -C "$HOME/.local/share/nasa-ads-skill" pull --ff-only
 cp -R \
-  "$HOME/.local/share/nasa-ads-skill-cli/plugins/nasa-ads/skills/nasa-ads/." \
+  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
   "$HOME/.agents/skills/nasa-ads/"
 ```
 
 For a standalone Codex skill on Windows PowerShell:
 
 ```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-cli-source'
+$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
 $nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
 git -C $nasaAdsSource pull --ff-only
 Copy-Item -Recurse -Force `
@@ -501,13 +503,13 @@ Copy-Item -Recurse -Force `
 For Gemini CLI on macOS, Linux, or WSL:
 
 ```bash
-git -C "$HOME/.gemini/nasa-ads-skill-cli" pull --ff-only
+git -C "$HOME/.gemini/nasa-ads-skill" pull --ff-only
 ```
 
 For Gemini CLI on Windows PowerShell:
 
 ```powershell
-git -C "$HOME\.gemini\nasa-ads-skill-cli" pull --ff-only
+git -C "$HOME\.gemini\nasa-ads-skill" pull --ff-only
 ```
 
 Run `/memory reload` in Gemini CLI after updating. Start a new Codex or Claude Code session after updating those hosts.
@@ -537,6 +539,6 @@ Run `/memory reload` in Gemini CLI after updating. Start a new Codex or Claude C
 
 <div align="center">
 
-NASA ADS Skill · CLI edition · From a fresh machine to a verified literature search
+NASA ADS Skill · From a fresh machine to a verified literature search
 
 </div>
