@@ -15,6 +15,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [Overview](#overview) ·
+[Agent install](#install-with-one-agent-prompt) ·
 [Hosts](#supported-hosts) ·
 [Install](#install) ·
 [Configure the token](#configure-the-ads-token) ·
@@ -36,6 +37,14 @@ The host sends requests directly from your computer to `https://api.adsabs.harva
 This README is the reader guide: install the project on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
 
 Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution. The CLI rejects redirects and treats ADS error payloads as failed operations.
+
+## Install with One Agent Prompt
+
+If an agent with terminal and internet access is already running on the computer, copy the single sentence below into it. This is a natural-language prompt, not a shell command.
+
+```text
+Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the repository README and SKILL.md completely, identify the agent host you are running in, install any missing documented prerequisites and the complete skill through that host's README instructions, replace only an existing nasa-ads installation if necessary, check ADS_API_TOKEN and then ADS_DEV_KEY without displaying either value and direct me to the documented token setup if both are absent, verify that SKILL.md and scripts/ads_api.py are installed, run ads_api.py --version, run the documented public-paper API smoke test when credentials are available, and report the installation path, version, and validation result.
+```
 
 ## Supported Hosts
 
