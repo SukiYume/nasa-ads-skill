@@ -23,7 +23,7 @@ Use the NASA Astrophysics Data System Developer API for literature search, metad
 
 1. Translate the request into one or more focused ADS queries or endpoint calls.
 2. Run the credential preflight without displaying the credential.
-3. Use an HTTP client already available on the system: `curl`, PowerShell `Invoke-RestMethod`, or Python’s standard library.
+3. Resolve the bundled `scripts/ads_api.py` relative to this `SKILL.md` and use it for supported read-only calls.
 4. Request only the fields and row count needed for the task.
 5. Inspect response status, response shape, pagination, and rate-limit headers when relevant.
 6. For literature research, refine weak queries, deduplicate by bibcode, inspect abstracts, and distinguish direct evidence from adjacent work.
@@ -52,7 +52,7 @@ $env:ADS_API_TOKEN = 'paste-your-token-here'
 
 If the user provides a token for the current session, keep it in process memory only and avoid commands that echo command lines or headers.
 
-### Safe Credential Preflight
+### Fallback Credential Preflight
 
 POSIX shell:
 
@@ -78,9 +78,40 @@ if (-not $nasaAdsToken) {
 }
 ```
 
-## HTTP Request Patterns
+## Bundled API CLI
 
-Prefer `curl -fsS` on POSIX shells. Use `-G` with `--data-urlencode` for search parameters. Avoid `curl -v` because verbose output can reveal the authorization header.
+Use `<skill-dir>/scripts/ads_api.py`, where `<skill-dir>` is the directory containing this `SKILL.md`. The script uses only the Python standard library, reads the supported token variables itself, URL-encodes parameters, builds request bodies, checks HTTP failures, and never accepts a token on the command line.
+
+Run it with the first available Python 3 command:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" --help
+python "<skill-dir>/scripts/ads_api.py" --help
+py -3 "<skill-dir>/scripts/ads_api.py" --help
+```
+
+Do not rewrite the bundled script into a temporary file. Use these subcommands:
+
+| Subcommand | Stable API workflow |
+|---|---|
+| `search` | Search and related-paper queries |
+| `bigquery` | Batch bibcode lookup |
+| `export` | Single- or multi-record citation export |
+| `metrics` | Aggregate bibliometrics |
+| `suggest` | Citation-helper suggestions |
+| `resolve` | Full-text, data, citation, and reference links |
+
+Place global options before the subcommand. Use `--show-rate-limit` when the remaining quota matters and `--timeout <seconds>` for a bounded custom timeout. JSON endpoints print UTF-8 JSON; `export` prints citation text directly. Treat the output as source data for the research reasoning and presentation steps below.
+
+Claude Code command files can locate the same script at:
+
+```text
+${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py
+```
+
+## Direct HTTP Fallback
+
+Use direct `curl` or PowerShell requests when Python 3 is unavailable, when working with ADS libraries, or when the requested endpoint is outside the bundled CLI. Prefer `curl -fsS` on POSIX shells. Use `-G` with `--data-urlencode` for search parameters. Avoid `curl -v` because verbose output can reveal the authorization header.
 
 ```bash
 curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
@@ -104,8 +135,6 @@ Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
   Authorization = "Bearer $nasaAdsToken"
 }
 ```
-
-Use `urllib.request` when Python is the only available client. Keep the implementation within the standard library so a fresh system does not require `requests`.
 
 ## 1. Search
 
@@ -131,6 +160,18 @@ Use this practical field set:
 ```text
 bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype
 ```
+
+Preferred call:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" search \
+  --query 'title:"gravitational waves"' \
+  --fields 'bibcode,title,author,year,pub,doi,identifier,citation_count' \
+  --rows 10 \
+  --sort 'citation_count desc'
+```
+
+Use `--fq` repeatedly for multiple filters. Keep `q` as native ADS query syntax; perform natural-language interpretation in the Markdown workflow.
 
 Useful query forms:
 
@@ -171,7 +212,7 @@ For a topic review or published-claim check:
 
 ### Batch Bibcode Lookup
 
-Use big query for up to 2000 bibcodes:
+Use big query for batch bibcode lookup:
 
 ```text
 POST /search/bigquery?q=*:*&fl=bibcode,title&rows=2000&fq={!bitset}
@@ -185,6 +226,18 @@ bibcode
 1907AN....174...59.
 1908PA.....16..445.
 ```
+
+Preferred call:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" bigquery \
+  1907AN....174...59. \
+  1908PA.....16..445. \
+  --fields bibcode,title \
+  --rows 2000
+```
+
+For a long list, pass `--bibcodes-file <path>` with one bibcode per line. Use `--start` to page through more than 2000 returned records.
 
 ## 2. Citation Export
 
@@ -201,6 +254,18 @@ Single-record `GET` responses contain raw citation text. Multi-record `POST` res
 {"bibcode":["2016PhRvL.116f1102A","2017ApJ...848L..12A"],"sort":"first_author asc"}
 ```
 
+Preferred call:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" export \
+  2016PhRvL.116f1102A \
+  2017ApJ...848L..12A \
+  --format bibtex \
+  --sort 'first_author asc'
+```
+
+The CLI normalizes both API response forms to citation text.
+
 Supported standard formats:
 
 | Group | Formats |
@@ -213,6 +278,8 @@ Supported standard formats:
 Return citation exports in a fenced code block. Offer an appropriate extension such as `.bib` or `.ris` when the user wants a file.
 
 ## 3. Libraries
+
+The bundled CLI does not expose library operations in this version. Construct these requests from the table and preserve the confirmation boundary for every destructive or shared-state action.
 
 Use the library ID returned by ADS; a library name is not an endpoint identifier.
 
@@ -251,6 +318,18 @@ POST /metrics
 }
 ```
 
+Preferred call:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" metrics \
+  2016PhRvL.116f1102A \
+  --type basic \
+  --type citations \
+  --type indicators
+```
+
+For histogram output, include `--type histograms` and repeat `--histogram` for the required categories.
+
 Available type values are `basic`, `citations`, `indicators`, `histograms`, and `timeseries`.
 
 The response uses keys containing spaces, including:
@@ -273,6 +352,13 @@ POST /citation_helper
 {"bibcodes":["2016PhRvL.116f1102A"]}
 ```
 
+Preferred call:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" suggest \
+  2016PhRvL.116f1102A
+```
+
 The response is an array of suggestions. Present title, author, bibcode, and score when available. Describe the result as an algorithmic suggestion, then assess topical relevance from metadata or abstract before recommending it.
 
 Find related records through search:
@@ -287,6 +373,17 @@ q=useful(bibcode:2016PhRvL.116f1102A)
 ```text
 GET /resolver/<bibcode>
 GET /resolver/<bibcode>/<link_type>
+```
+
+Preferred calls:
+
+```bash
+python3 "<skill-dir>/scripts/ads_api.py" resolve \
+  2016PhRvL.116f1102A
+
+python3 "<skill-dir>/scripts/ads_api.py" resolve \
+  2016PhRvL.116f1102A \
+  --link-type esource
 ```
 
 Common link types include `esource`, `data`, `citations`, `references`, and `associated`. Resolver results can include publisher pages, arXiv, ADS scans, and archives such as SIMBAD, NED, VizieR, MAST, HEASARC, Zenodo, and GitHub.

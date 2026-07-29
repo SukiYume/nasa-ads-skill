@@ -1,6 +1,6 @@
 {
   "name": "nasa-ads",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Research NASA ADS literature, check published claims with calibrated search scope, export citations, manage libraries, inspect metrics, and find related papers from Codex.",
   "author": {
     "name": "Echo",

@@ -15,7 +15,7 @@ The user's search query: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
+1. Use the bundled Python CLI at `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. It checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`. If it reports that both are absent, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set one of those variables, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token.
 
 2. Parse the user's query from `$ARGUMENTS`. Interpret natural language:
    - "papers by Einstein on relativity" -> `q=author:"Einstein" title:"relativity"`
@@ -25,16 +25,15 @@ The user's search query: $ARGUMENTS
    - "refereed papers about dark matter" -> `q=dark matter` plus `fq=property:refereed`
    - "papers citing 2016PhRvL.116f1102A" -> `q=citations(bibcode:2016PhRvL.116f1102A)`
 
-3. Execute the search using curl. Always pass `q`, `fq`, `sort`, and other query parameters with `--data-urlencode`; ADS bibcodes and queries can contain characters such as `&` that break raw URLs.
+3. Execute the search with the bundled CLI. Use `python3`; if that command is unavailable, try `python`, then `py -3`. The CLI preserves native ADS query syntax and URL-encodes every parameter.
 ```bash
-TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
-curl -fsSG "https://api.adsabs.harvard.edu/v1/search/query" \
-  -H "Authorization: Bearer $TOKEN" \
-  --data-urlencode 'q=<ads_query>' \
-  --data-urlencode 'fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count' \
-  --data-urlencode 'rows=10' \
-  --data-urlencode 'sort=citation_count desc'
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
+  --query '<ads_query>' \
+  --fields 'bibcode,title,author,abstract,year,pub,doi,identifier,citation_count' \
+  --rows 10 \
+  --sort 'citation_count desc'
 ```
+Add `--fq '<filter>'` for each filter. Use the direct HTTP fallback in the shared `SKILL.md` only when Python 3 is unavailable.
 
 4. For each result, display in a clean format:
    - **Title**
@@ -44,7 +43,7 @@ curl -fsSG "https://api.adsabs.harvard.edu/v1/search/query" \
    - **arXiv**: extract from identifier array if available
    - **DOI**: if available
 
-5. If the user asks for BibTeX, fetch it via `/export/bibtex`.
+5. If the user asks for BibTeX, run the bundled CLI’s `export` subcommand for the selected bibcodes.
 
 6. For literature research or claim checks, try useful synonyms and query variants, inspect abstracts before calling a paper direct evidence, and deduplicate by bibcode.
 

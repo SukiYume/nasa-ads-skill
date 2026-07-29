@@ -10,6 +10,7 @@ Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex,
 - Codex manifest: `plugins/nasa-ads/.codex-plugin/plugin.json`
 - Claude manifest: `plugins/nasa-ads/.claude-plugin/plugin.json`
 - Skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
+- Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
 - Gemini include file: `GEMINI.md`
 
 ## Claude Commands
@@ -28,12 +29,15 @@ Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither i
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
 
+Use the bundled standard-library Python CLI for search, big query, citation export, metrics, citation-helper, and resolver calls. Keep query design, evidence assessment, result synthesis, and all library mutation confirmations in Markdown.
+
 ## Documentation Contract
 
 - Write README installation paths for a reader starting on a new computer with no repository-specific knowledge.
 - Keep `README.md` and `README.zh-CN.md` structurally aligned.
 - Use the current Codex standalone-skill location, `~/.agents/skills/<skill-name>`.
 - Give Windows PowerShell and macOS/Linux/WSL commands where filesystem syntax differs.
+- Explain that Python 3.10 or newer is recommended for the bundled CLI and document the direct HTTP fallback.
 - Include an installation check, token-presence check, public API smoke test, and troubleshooting path.
 - Keep prose direct and avoid contrastive turn-away constructions.
 
@@ -46,6 +50,7 @@ When behavior or installation changes, update these surfaces together:
 - `plugins/nasa-ads/.claude-plugin/plugin.json`
 - `plugins/nasa-ads/.codex-plugin/plugin.json`
 - `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
+- `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
 - `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml`
 - affected files under `plugins/nasa-ads/commands/`
 - both README files
@@ -59,7 +64,8 @@ Before committing:
 1. Run `claude plugin validate . --strict`.
 2. Parse every JSON manifest.
 3. Run the Codex skill validator from `skill-creator` with UTF-8 mode on Windows.
-4. Check README relative links and Markdown anchors.
-5. Test the documented Codex and Claude marketplace installs with disposable entries; record the pre-test state and remove only the exact test entries afterward.
-6. Run read-only ADS smoke tests for search, export, metrics, citation helper, and resolver when a token is available.
-7. Run `git diff --check` and inspect the complete diff.
+4. Run `python -m unittest discover -s tests -v` and compile the bundled CLI.
+5. Check README relative links and Markdown anchors.
+6. Test the documented Codex and Claude marketplace installs with disposable entries; record the pre-test state and remove only the exact test entries afterward.
+7. Run read-only ADS smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.
+8. Run `git diff --check` and inspect the complete diff.

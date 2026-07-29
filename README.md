@@ -10,7 +10,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.4.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.5.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -31,6 +31,8 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) as a reusable agent workflow. The installed host can search astronomy and astrophysics literature, inspect publication metadata, export citations, work with ADS libraries, calculate bibliometric summaries, and discover related papers or full-text/data links.
 
 The host sends requests directly from your computer to `https://api.adsabs.harvard.edu`. This repository stores no ADS token and runs no proxy service.
+
+The shared Markdown skill handles query design, evidence assessment, safety confirmations, and result synthesis. A bundled, standard-library Python CLI handles stable read-only API transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution.
 
 | Host | Integration | What becomes available |
 |---|---|---|
@@ -58,10 +60,13 @@ The host sends requests directly from your computer to `https://api.adsabs.harva
 flowchart LR
     A["Your request"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    T["ADS_API_TOKEN<br/>or ADS_DEV_KEY"] --> B
-    B --> C["ADS Developer API"]
-    C --> D["Search · Export · Libraries<br/>Metrics · Related papers · Resolver"]
-    D --> E["Linked, reader-facing result"]
+    B --> M["Markdown research judgment"]
+    M --> P["Bundled Python CLI<br/>stable read-only calls"]
+    T["ADS_API_TOKEN<br/>or ADS_DEV_KEY"] --> P
+    P --> C["ADS Developer API"]
+    C --> D["JSON or citation text"]
+    M --> E["Linked, reader-facing result"]
+    D --> E
 ```
 
 ## Before You Install
@@ -74,13 +79,16 @@ Prepare these items on the new computer:
    - [Codex CLI setup](https://developers.openai.com/codex/cli/)
    - [Gemini CLI installation](https://geminicli.com/docs/get-started/installation/)
 3. **An ADS account and API token**, created later in [Configure the ADS token](#configure-the-ads-token).
-4. **An HTTP client**: `curl` on macOS/Linux/WSL, or Windows PowerShell with `Invoke-RestMethod`. Install `curl` from your operating system’s package manager if `curl --version` is unavailable.
-5. **Outbound HTTPS access** to `api.adsabs.harvard.edu`.
+4. **Python 3.10 or newer (recommended)**, available from [python.org/downloads](https://www.python.org/downloads/). The bundled CLI uses only the Python standard library. Without Python, the skill can use the direct HTTP fallback.
+5. **An HTTP fallback**: `curl` on macOS/Linux/WSL, or Windows PowerShell with `Invoke-RestMethod`. Install `curl` from your operating system’s package manager if `curl --version` is unavailable.
+6. **Outbound HTTPS access** to `api.adsabs.harvard.edu`.
 
 Check the installed commands:
 
 ```bash
 git --version
+python3 --version   # macOS, Linux, or WSL
+python --version    # Windows; "py -3 --version" is also supported
 claude --version   # when using Claude Code
 codex --version    # when using Codex
 gemini --version   # when using Gemini CLI
@@ -189,6 +197,7 @@ Verify the required file:
 
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
   && echo "NASA ADS skill installed"
 ```
 
@@ -211,7 +220,10 @@ Copy-Item -Recurse -Force `
 Verify the required file:
 
 ```powershell
-Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md"
+$nasaAdsSkillReady = `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py")
+$nasaAdsSkillReady
 ```
 
 A successful check returns `True`.
@@ -271,7 +283,7 @@ git clone --depth 1 https://github.com/SukiYume/nasa-ads-skill.git
 
 2. Copy the complete `plugins/nasa-ads/skills/nasa-ads/` folder into the host’s documented skill or prompt directory.
 3. Configure the host to load `SKILL.md`.
-4. Confirm that the host can execute HTTPS requests with `curl`, PowerShell, or Python.
+4. Confirm that the host can run the bundled CLI with Python 3, or can use `curl`/PowerShell for direct HTTP fallback.
 5. Set the ADS token as described below.
 6. Run the public-paper smoke test in [Verify the API](#verify-the-api).
 
@@ -343,7 +355,31 @@ Keep the token out of repositories, screenshots, shared logs, shell transcripts,
 
 Use a known public paper to verify network access, authentication, and the ADS response shape.
 
-### curl
+### Bundled Python CLI
+
+From the repository root on macOS, Linux, or WSL:
+
+```bash
+python3 plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py search \
+  --query 'bibcode:2016PhRvL.116f1102A' \
+  --fields bibcode,title,year \
+  --rows 1
+```
+
+From the repository root on Windows PowerShell:
+
+```powershell
+python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
+  --query 'bibcode:2016PhRvL.116f1102A' `
+  --fields 'bibcode,title,year' `
+  --rows 1
+```
+
+Use `py -3` in place of `python` when that is how Python is registered. The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
+
+### Direct HTTP fallback
+
+macOS, Linux, or WSL:
 
 ```bash
 NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
@@ -356,7 +392,7 @@ curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
 
 The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
 
-### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 $nasaAdsToken = if ($env:ADS_API_TOKEN) {
@@ -404,10 +440,12 @@ The skill instructs the agent to return linked, readable results; refine weak li
 
 ## API Coverage
 
+The bundled CLI covers `/search/query`, `/search/bigquery`, `/export/<format>`, `/metrics`, `/citation_helper`, and `/resolver/<bibcode>`. Library operations remain in the Markdown workflow so the agent can confirm destructive or shared-state changes immediately before execution.
+
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/search/query` | GET | Search papers and retrieve metadata |
-| `/search/bigquery` | POST | Batch lookup for up to 2000 bibcodes |
+| `/search/bigquery` | POST | Batch bibcode lookup with paginated results |
 | `/export/<format>` | GET / POST | Single-record or multi-record citation export |
 | `/biblib/libraries` | GET / POST | List or create libraries |
 | `/biblib/libraries/<id>` | GET | View a library |
@@ -438,7 +476,9 @@ nasa-ads-skill/
 │   │   └── ads-cite.md
 │   └── skills/nasa-ads/
 │       ├── agents/openai.yaml              # Codex skill UI metadata
-│       └── SKILL.md                        # Shared workflow
+│       ├── scripts/ads_api.py               # Standard-library API CLI
+│       └── SKILL.md                         # Shared research workflow
+├── tests/test_ads_api.py                    # Offline CLI unit tests
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── GEMINI.md
@@ -455,11 +495,12 @@ nasa-ads-skill/
 | Codex marketplace or plugin is missing | Run `codex plugin marketplace upgrade nasa-ads-community`, run `codex plugin add nasa-ads@nasa-ads-community`, and start a new session |
 | Codex standalone skill is absent from `/skills` | Confirm `~/.agents/skills/nasa-ads/SKILL.md` exists and start a new session |
 | Gemini does not load the instructions | Check the relative path in `~/.gemini/GEMINI.md`, then run `/memory reload` and `/memory show` |
+| Python CLI cannot start | Install Python 3.10 or newer, try `python3`, `python`, or `py -3`, and confirm the complete skill folder includes `scripts/ads_api.py` |
 | `401 Unauthorized` | Set a current token, open a new terminal, and verify the `Bearer` header path through the smoke test |
 | `403 Forbidden` | Check ADS account access and library permissions |
 | `429 Too Many Requests` | Read the `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers |
 | Search returns no papers | Remove unnecessary filters, try synonyms and spelling variants, and record the query scope |
-| Query breaks around `&` or spaces | Pass `q`, `fq`, and `sort` through URL encoding; the bundled workflow uses `--data-urlencode` |
+| Query breaks around `&` or spaces | Use the bundled CLI, which URL-encodes parameters; direct HTTP fallbacks must encode `q`, `fq`, and `sort` |
 
 ## Updating an Existing Install
 
