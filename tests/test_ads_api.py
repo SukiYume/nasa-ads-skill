@@ -4,12 +4,15 @@ import importlib.util
 import io
 import json
 import sys
+import threading
 import unittest
 from contextlib import redirect_stderr
 from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -294,6 +297,82 @@ class RequestTests(unittest.TestCase):
 
 
 class ErrorTests(unittest.TestCase):
+    def test_application_error_returns_nonzero(self):
+        response = FakeResponse(
+            b'{"Error":"Unable to get results!",'
+            b'"Error Info":"No data available to generate metrics"}'
+        )
+        code, stdout, stderr, _ = run_cli(
+            ["metrics", "2016PhRvL.116f1102A", "--type", "timeseries"],
+            response,
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("application error", stderr)
+        self.assertIn("No data available to generate metrics", stderr)
+
+    def test_redirect_is_rejected_before_token_reaches_target(self):
+        forwarded_authorization = []
+
+        class TargetHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                forwarded_authorization.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, _format, *_args):
+                return None
+
+        target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+        target_thread = threading.Thread(
+            target=target_server.serve_forever,
+            daemon=True,
+        )
+        target_thread.start()
+        target_url = (
+            f"http://127.0.0.1:{target_server.server_port}/unexpected-destination"
+        )
+
+        class RedirectHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", target_url)
+                self.end_headers()
+
+            def log_message(self, _format, *_args):
+                return None
+
+        redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+        redirect_thread = threading.Thread(
+            target=redirect_server.serve_forever,
+            daemon=True,
+        )
+        redirect_thread.start()
+
+        try:
+            with patch.object(
+                ads_api,
+                "API_BASE_URL",
+                f"http://127.0.0.1:{redirect_server.server_port}",
+            ):
+                with self.assertRaises(ads_api.CliError) as context:
+                    ads_api.request_api(
+                        "GET",
+                        "/start",
+                        "test-secret",
+                        timeout=5,
+                    )
+            self.assertIn("redirect was not followed", str(context.exception))
+            self.assertEqual(forwarded_authorization, [])
+        finally:
+            redirect_server.shutdown()
+            target_server.shutdown()
+            redirect_server.server_close()
+            target_server.server_close()
+            redirect_thread.join(timeout=5)
+            target_thread.join(timeout=5)
+
     def test_http_error_is_concise_and_redacts_token(self):
         headers = Message()
         headers["X-RateLimit-Remaining"] = "0"

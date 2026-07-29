@@ -4,8 +4,10 @@ Use direct HTTP for library operations:
 
 - Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`; stop with the token-settings link from `SKILL.md` if both are absent.
 - Send the token only as `Authorization: Bearer <token>` to `https://api.adsabs.harvard.edu/v1`.
+- Reject redirects for authenticated requests.
 - Use an available system client, URL-encode query parameters, send documented JSON bodies, and check the HTTP response before interpreting it.
 - Never print the token, use verbose HTTP tracing, or change semantics after an API failure.
+- Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 
 ## Safety Boundaries
 
@@ -13,7 +15,9 @@ Keep read-only calls as the default. Confirm immediately before:
 
 - deleting or emptying a library;
 - bulk removal or query-based removal;
-- granting, revoking, or changing another user’s permissions.
+- granting, revoking, or changing another user’s permissions;
+- replacing or deleting a document note;
+- transferring library ownership.
 
 A command argument identifies the requested action and does not replace this confirmation.
 
@@ -23,8 +27,8 @@ Use the library ID returned by ADS. A library name is not an endpoint identifier
 
 | Task | Method and path | Body or notes |
 |---|---|---|
-| List libraries | `GET /biblib/libraries` | Optional `start`, `rows`, `sort`, `order` |
-| View a library | `GET /biblib/libraries/<id>` | Add `raw=true` for exact stored bibcodes |
+| List libraries | `GET /biblib/libraries` | Optional `start`, `rows`, `sort`, `order`, `access_type` |
+| View a library | `GET /biblib/libraries/<id>` | Optional `start`, `rows`, `sort`, `fl`, `raw`, `notes` |
 | Create a library | `POST /biblib/libraries` | `name`, `description`, `public`, `bibcode` |
 | Add or remove papers | `POST /biblib/documents/<id>` | `bibcode` plus `action` |
 | Update metadata | `PUT /biblib/documents/<id>` | Include only changed fields |
@@ -33,6 +37,12 @@ Use the library ID returned by ADS. A library name is not an endpoint identifier
 | Set operations | `POST /biblib/libraries/operations/<id>` | See the rules below |
 | View permissions | `GET /biblib/permissions/<id>` | Read-only |
 | Change permissions | `POST /biblib/permissions/<id>` | `email` plus changed permission flags |
+| Read a note | `GET /biblib/notes/<id>/<bibcode>` | Read-only |
+| Add or replace a note | `POST` or `PUT /biblib/notes/<id>/<bibcode>` | `content`; confirm before replacing |
+| Delete a note | `DELETE /biblib/notes/<id>/<bibcode>` | Confirm immediately before the call |
+| Transfer ownership | `POST /biblib/transfer/<id>` | `email`; confirm immediately before the call |
+
+For `access_type`, use only the documented values `all`, `owner`, or `collaborator`.
 
 Create:
 
@@ -83,6 +93,22 @@ Change permissions:
 ```
 
 Include only permission flags the user requested.
+
+Add or replace a document note:
+
+```json
+{
+  "content": "Why this paper belongs in the library"
+}
+```
+
+Transfer ownership:
+
+```json
+{
+  "email": "new-owner@example.com"
+}
+```
 
 Set operations:
 

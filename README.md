@@ -10,7 +10,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.6.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.6.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -35,7 +35,7 @@ The host sends requests directly from your computer to `https://api.adsabs.harva
 
 This README is the reader guide: install the project on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
 
-Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution.
+Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution. The CLI rejects redirects and treats ADS error payloads as failed operations.
 
 ## Supported Hosts
 
@@ -421,7 +421,7 @@ Use `py -3` in place of `python` when that is how Python is registered. If you c
 
 ### Direct HTTP fallback
 
-Use this only when Python 3 cannot run the bundled CLI or an endpoint is not exposed by it. Follow the credential preflight and platform-specific example in [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md).
+Use this only when Python 3 cannot run the bundled CLI or an endpoint is not exposed by it. Follow the credential preflight, redirect rule, response checks, and platform-specific example in [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md).
 
 ## Use It
 
@@ -461,6 +461,8 @@ The skill instructs the agent to return linked, readable results; refine weak li
 | `401 Unauthorized` | Set a current token, open a new terminal, and verify the `Bearer` header path through the smoke test |
 | `403 Forbidden` | Check ADS account access and library permissions |
 | `429 Too Many Requests` | Read the `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers |
+| Unexpected API redirect | Stop and update the installed skill or endpoint; never follow an authenticated redirect |
+| ADS application error with HTTP `200` | Treat the operation as failed and report the returned error detail |
 | Search returns no papers | Remove unnecessary filters, try synonyms and spelling variants, and record the query scope |
 | Query breaks around `&` or spaces | Use the bundled CLI, which URL-encodes parameters; direct HTTP fallbacks must encode `q`, `fq`, and `sort` |
 
@@ -518,7 +520,8 @@ Run `/memory reload` in Gemini CLI after updating. Start a new Codex or Claude C
 
 - Review this public repository before installation.
 - Keep `ADS_API_TOKEN` and `ADS_DEV_KEY` outside tracked files.
-- Confirm destructive ADS library actions and permission changes.
+- Never follow redirects for authenticated ADS API requests.
+- Confirm destructive ADS library actions, note replacement or deletion, permission changes, and ownership transfer.
 - Treat publisher and data-archive links as external destinations.
 - ADS rate limits are endpoint-specific; response headers are the live authority.
 

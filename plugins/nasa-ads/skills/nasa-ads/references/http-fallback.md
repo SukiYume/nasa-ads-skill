@@ -6,9 +6,11 @@ Read this file only when Python 3 cannot run the bundled CLI or a requested non-
 
 - Read `ADS_API_TOKEN`, then `ADS_DEV_KEY`.
 - Send the token only in `Authorization: Bearer <token>` to `https://api.adsabs.harvard.edu/v1`.
+- Reject redirects for authenticated requests.
 - Never print the token or place it in a URL, source file, or verbose HTTP trace.
 - Use the current ADS documentation for an unsupported endpoint’s method and body.
 - Treat `401`, `403`, `404`, `429`, and server failures as API results. Changing HTTP clients does not correct them.
+- Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 
 ## Credential Preflight
 
@@ -38,7 +40,7 @@ if (-not $nasaAdsToken) {
 
 ## curl
 
-Use `curl -fsS`. Add `-G` and `--data-urlencode` for every query parameter. Avoid `-v`.
+Use `curl -fsS`. Add `-G` and `--data-urlencode` for every query parameter. Avoid `-v`, `-L`, and `--location`.
 
 ```bash
 curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
@@ -71,9 +73,11 @@ $nasaAdsFields = [uri]::EscapeDataString(
 $nasaAdsSort = [uri]::EscapeDataString('citation_count desc')
 $nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query?q=$nasaAdsQuery&fl=$nasaAdsFields&rows=10&sort=$nasaAdsSort"
 
-Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
-  Authorization = "Bearer $nasaAdsToken"
-}
+Invoke-RestMethod `
+  -Method Get `
+  -Uri $nasaAdsUri `
+  -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
+  -MaximumRedirection 0
 ```
 
 For a JSON request, construct an object and convert it with sufficient depth:
@@ -88,9 +92,10 @@ Invoke-RestMethod `
   -Uri 'https://api.adsabs.harvard.edu/v1/<documented-path>' `
   -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
   -ContentType 'application/json' `
-  -Body $nasaAdsBody
+  -Body $nasaAdsBody `
+  -MaximumRedirection 0
 ```
 
 ## Response Handling
 
-Check the HTTP status before parsing. Preserve the response’s actual shape and inspect rate-limit headers when quota matters. Report the fallback reason in the final method note.
+Check the HTTP status before parsing, then reject a top-level `Error` or `error` field. Preserve the response’s actual shape and inspect rate-limit headers when quota matters. Report the fallback reason in the final method note.
