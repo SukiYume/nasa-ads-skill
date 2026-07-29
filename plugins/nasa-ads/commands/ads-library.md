@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/http-fallback.md` and `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/libraries.md` completely.
+1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/libraries.md` completely.
 2. Parse the requested subcommand, library IDs, bibcodes, query, metadata, and permission flags.
 3. Follow the documented method, path, body, credential, and response rules. If the token is missing, direct the user to https://ui.adsabs.harvard.edu/#user/settings/token and ask them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`.
 4. Confirm immediately before deleting or emptying a library, bulk removal, query-based removal, or a permission change. The command arguments do not replace confirmation.
