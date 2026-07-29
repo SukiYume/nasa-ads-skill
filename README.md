@@ -10,7 +10,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.5.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.5.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -79,9 +79,8 @@ Prepare these items on the new computer:
    - [Codex CLI setup](https://developers.openai.com/codex/cli/)
    - [Gemini CLI installation](https://geminicli.com/docs/get-started/installation/)
 3. **An ADS account and API token**, created later in [Configure the ADS token](#configure-the-ads-token).
-4. **Python 3.10 or newer (recommended)**, available from [python.org/downloads](https://www.python.org/downloads/). The bundled CLI uses only the Python standard library. Without Python, the skill can use the direct HTTP fallback.
-5. **An HTTP fallback**: `curl` on macOS/Linux/WSL, or Windows PowerShell with `Invoke-RestMethod`. Install `curl` from your operating system’s package manager if `curl --version` is unavailable.
-6. **Outbound HTTPS access** to `api.adsabs.harvard.edu`.
+4. **One API transport**: Python 3.10 or newer is the recommended default and is available from [python.org/downloads](https://www.python.org/downloads/). The bundled CLI uses only the Python standard library. If Python is unavailable, use `curl` on macOS/Linux/WSL or PowerShell on Windows for the conditional direct HTTP fallback.
+5. **Outbound HTTPS access** to `api.adsabs.harvard.edu`.
 
 Check the installed commands:
 
@@ -198,6 +197,8 @@ Verify the required file:
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/http-fallback.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/libraries.md" \
   && echo "NASA ADS skill installed"
 ```
 
@@ -222,7 +223,9 @@ Verify the required file:
 ```powershell
 $nasaAdsSkillReady = `
   (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py")
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\http-fallback.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\libraries.md")
 $nasaAdsSkillReady
 ```
 
@@ -379,39 +382,7 @@ Use `py -3` in place of `python` when that is how Python is registered. The JSON
 
 ### Direct HTTP fallback
 
-macOS, Linux, or WSL:
-
-```bash
-NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
-curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
-  -H "Authorization: Bearer $NASA_ADS_TOKEN" \
-  --data-urlencode 'q=bibcode:2016PhRvL.116f1102A' \
-  --data-urlencode 'fl=bibcode,title,year' \
-  --data-urlencode 'rows=1'
-```
-
-The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
-
-Windows PowerShell:
-
-```powershell
-$nasaAdsToken = if ($env:ADS_API_TOKEN) {
-  $env:ADS_API_TOKEN
-} else {
-  $env:ADS_DEV_KEY
-}
-$nasaAdsQuery = [uri]::EscapeDataString(
-  'bibcode:2016PhRvL.116f1102A'
-)
-$nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query" +
-  "?q=$nasaAdsQuery&fl=bibcode,title,year&rows=1"
-
-Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
-  Authorization = "Bearer $nasaAdsToken"
-}
-```
-
-The response’s `response.docs[0].bibcode` should equal `2016PhRvL.116f1102A`.
+Use this only when Python 3 cannot run the bundled CLI or an endpoint is not exposed by it. Follow the credential preflight and platform-specific example in [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md).
 
 ## Use It
 
@@ -476,8 +447,9 @@ nasa-ads-skill/
 │   │   └── ads-cite.md
 │   └── skills/nasa-ads/
 │       ├── agents/openai.yaml              # Codex skill UI metadata
-│       ├── scripts/ads_api.py               # Standard-library API CLI
-│       └── SKILL.md                         # Shared research workflow
+│       ├── references/                       # HTTP fallback and library details
+│       ├── scripts/ads_api.py                # Standard-library API CLI
+│       └── SKILL.md                          # Shared research workflow
 ├── tests/test_ads_api.py                    # Offline CLI unit tests
 ├── AGENTS.md
 ├── CLAUDE.md

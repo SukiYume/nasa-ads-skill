@@ -10,7 +10,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.5.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.5.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -79,9 +79,8 @@ flowchart LR
    - [Codex CLI 安装文档](https://developers.openai.com/codex/cli/)
    - [Gemini CLI 安装文档](https://geminicli.com/docs/get-started/installation/)
 3. **ADS 账号和 API token**：稍后按[配置 ADS token](#配置-ads-token)完成。
-4. **Python 3.10 或更新版本（推荐）**：从 [python.org/downloads](https://www.python.org/downloads/) 安装。自带 CLI 只使用 Python 标准库。没有 Python 时，skill 可以改用直接 HTTP 回退方案。
-5. **HTTP 回退客户端**：macOS/Linux/WSL 使用 `curl`，Windows PowerShell 使用 `Invoke-RestMethod`。如果 `curl --version` 不可用，请通过操作系统的软件包管理器安装 `curl`。
-6. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`。
+4. **一种 API 传输方式**：推荐安装 [Python 3.10 或更新版本](https://www.python.org/downloads/)；自带 CLI 只使用 Python 标准库。如果无法使用 Python，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，进入条件式直接 HTTP 回退。
+5. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`。
 
 检查程序是否已经安装：
 
@@ -198,6 +197,8 @@ cp -R \
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/http-fallback.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/libraries.md" \
   && echo "NASA ADS skill installed"
 ```
 
@@ -222,7 +223,9 @@ Copy-Item -Recurse -Force `
 ```powershell
 $nasaAdsSkillReady = `
   (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py")
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\http-fallback.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\libraries.md")
 $nasaAdsSkillReady
 ```
 
@@ -379,39 +382,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
 
 ### 直接 HTTP 回退
 
-macOS、Linux 或 WSL：
-
-```bash
-NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
-curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
-  -H "Authorization: Bearer $NASA_ADS_TOKEN" \
-  --data-urlencode 'q=bibcode:2016PhRvL.116f1102A' \
-  --data-urlencode 'fl=bibcode,title,year' \
-  --data-urlencode 'rows=1'
-```
-
-JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。
-
-Windows PowerShell：
-
-```powershell
-$nasaAdsToken = if ($env:ADS_API_TOKEN) {
-  $env:ADS_API_TOKEN
-} else {
-  $env:ADS_DEV_KEY
-}
-$nasaAdsQuery = [uri]::EscapeDataString(
-  'bibcode:2016PhRvL.116f1102A'
-)
-$nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query" +
-  "?q=$nasaAdsQuery&fl=bibcode,title,year&rows=1"
-
-Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
-  Authorization = "Bearer $nasaAdsToken"
-}
-```
-
-响应中的 `response.docs[0].bibcode` 应等于 `2016PhRvL.116f1102A`。
+仅在 Python 3 无法运行自带 CLI，或所需端点尚未由 CLI 封装时使用。按 [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) 中的凭据预检和对应平台示例操作。
 
 ## 开始使用
 
@@ -476,8 +447,9 @@ nasa-ads-skill/
 │   │   └── ads-cite.md
 │   └── skills/nasa-ads/
 │       ├── agents/openai.yaml              # Codex skill UI 元数据
-│       ├── scripts/ads_api.py               # 标准库 API CLI
-│       └── SKILL.md                         # 共享研究工作流
+│       ├── references/                       # HTTP 回退和 library 细节
+│       ├── scripts/ads_api.py                # 标准库 API CLI
+│       └── SKILL.md                          # 共享研究工作流
 ├── tests/test_ads_api.py                    # CLI 离线单元测试
 ├── AGENTS.md
 ├── CLAUDE.md
