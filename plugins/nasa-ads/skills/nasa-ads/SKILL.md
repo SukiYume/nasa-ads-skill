@@ -3,9 +3,9 @@ name: nasa-ads
 description: Search and investigate NASA ADS astronomy and astrophysics literature. Use when a user asks to find papers, check whether a claim or topic appears in published literature, retrieve titles/authors/abstracts/DOIs/arXiv IDs, export BibTeX or other citations, manage ADS libraries, inspect citation metrics, find related papers, or resolve full-text and data links. Trigger on terms such as paper, literature, citation, bibliography, BibTeX, arXiv, ADS, published, related work, references, library, h-index, astronomy, and astrophysics, plus Chinese requests including 文献, 论文, 查文献, 查论文, 文献调研, 论文调研, 论文检索, 有没有人发表, 有没有文献提到, 是否有相关论文, 已有研究, 引用导出, 获取 BibTeX, ADS 文献, arXiv 论文, 天文文献, 天文论文, and 天体物理论文.
 ---
 
-# NASA ADS
+# NASA ADS Agent Workflow
 
-Use the NASA Astrophysics Data System Developer API for literature research, citation export, libraries, bibliometrics, related-paper discovery, and resource-link resolution.
+Use the NASA Astrophysics Data System Developer API for literature research, citation export, libraries, bibliometrics, related-paper discovery, and resource-link resolution. Follow this file as runtime instructions for an agent; use the repository README only for human installation and onboarding.
 
 ## Core Rules
 
@@ -14,7 +14,8 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 3. Keep research calls read-only by default.
 4. Confirm immediately before deleting or emptying a library, bulk removal, or permission changes.
 5. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
-6. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
+6. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
+7. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
 
 ## Transport Selection
 
@@ -26,36 +27,29 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 6. Treat ADS HTTP failures returned by the CLI as API failures. Correct or report them without switching transports.
 7. When direct HTTP is required, read [references/http-fallback.md](references/http-fallback.md) and state the reason in the method note.
 
-## Workflow
+## Research Workflow
 
-1. Translate the request into focused ADS queries or endpoint calls.
-2. Run the required calls through the selected transport.
-3. Request only the fields and row count needed.
-4. Inspect response shape, total matches, pagination, and rate limits when relevant.
-5. Refine weak searches, deduplicate by bibcode, and read abstracts before judging relevance.
-6. Distinguish direct evidence, adjacent work, and algorithmic recommendations.
-7. Return a reader-facing synthesis with links and a concise search-method note.
+1. Define the question, operational categories, date range, and what evidence would support or weaken the claim.
+2. Build independent query families from exact terms, synonyms, competing interpretations, known objects or authors, and seed-paper citation chains.
+3. Run the required calls through the selected transport.
+4. Request only the fields and row count needed.
+5. Inspect response shape, `numFound`, returned rows, pagination, and rate limits when relevant.
+6. Deduplicate by bibcode, reconcile alternate records, and read abstracts before judging relevance.
+7. Compare recent results with influential or foundational results.
+8. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
+9. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
 
-## Token Setup
+## Coverage Standard
 
-When neither supported variable is set:
+- For an identifier lookup or citation export, one precise query may be sufficient.
+- For a focused literature review, use at least two independent query families and inspect the abstracts of material records.
+- For a broad, comprehensive, or claim-level review, cover terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent and citation-ranked results, and all manageable result pages. If the result set is too large, state the sampling rule and uncovered scope.
+- Use `bigquery` to re-fetch complete metadata for the deduplicated evidence set.
+- Judge sufficiency by conceptual and evidentiary coverage, not by raw result count.
 
-1. Open [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token).
-2. Register or sign in, open **API Token**, and select **Generate a new key**.
-3. Copy the token and keep it private.
-4. Set it in the terminal that will run the host:
+## Credentials
 
-```bash
-export ADS_API_TOKEN='paste-your-token-here'
-```
-
-```powershell
-$env:ADS_API_TOKEN = 'paste-your-token-here'
-```
-
-5. Retry in that terminal or restart the host after setting a persistent user environment variable.
-
-If the user supplies a token for the current session, keep it in process memory and avoid commands that echo headers or command lines.
+Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`. If both are absent, stop; direct the user to [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token), ask them to set either variable in the terminal that launches the host, and retry. If the user supplies a token for the current session, keep it in process memory and avoid commands that echo headers or command lines.
 
 ## Bundled CLI
 
@@ -123,16 +117,7 @@ useful(bibcode:2016PhRvL.116f1102A)          useful papers
 similar(bibcode:2016PhRvL.116f1102A)         similar papers
 ```
 
-For a topic review or claim check:
-
-1. Search key phrases in `title:` and `abs:`.
-2. Add synonyms, abbreviations, spelling variants, authors, and relevant objects.
-3. Apply year, refereed-status, collection, or document-type filters when useful.
-4. Review recent results with `date desc` and influential results with `citation_count desc`.
-5. Compare `response.numFound` with `start + returned rows`; continue paging when needed.
-6. Deduplicate by bibcode and reconcile alternate records for the same work.
-7. Read abstracts before describing a paper as evidence.
-8. Record query families and material limits for sparse or negative results.
+For a topic review or claim check, apply the Research Workflow and Coverage Standard above. Record the exact query families and material limits for sparse or negative results.
 
 Use `bigquery` to retrieve metadata for a deduplicated bibcode set:
 
@@ -219,7 +204,7 @@ Build an arXiv link from an `identifier` value beginning with `arXiv:`.
 
 ## Failures
 
-- Missing token: give the setup steps above and stop.
+- Missing token: give the token-page link and supported environment-variable names above, then stop.
 - `401`: verify that the token is current.
 - `403`: check account or library permissions.
 - `404`: recheck the bibcode, library ID, or endpoint.

@@ -15,7 +15,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
 TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
 DEFAULT_FIELDS = (
