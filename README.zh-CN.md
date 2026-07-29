@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**为 AI 编程代理提供文献检索、引用导出、文库管理和文献计量能力**
+**纯 Markdown 版：不附带可执行程序、可移植的 NASA ADS 工作流**
 
 在 Claude Code、Codex、Gemini CLI 或其他 Markdown skill 宿主中使用 NASA Astrophysics Data System。
 
@@ -10,11 +10,13 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.4.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Edition](https://img.shields.io/badge/edition-pure%20Markdown-0B3D91)](#选择版本)
+[![Version](https://img.shields.io/badge/version-1.4.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [项目概览](#项目概览) ·
+[选择版本](#选择版本) ·
 [安装](#安装) ·
 [配置 token](#配置-ads-token) ·
 [验证](#验证-api) ·
@@ -28,9 +30,22 @@
 
 ## 项目概览
 
-NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) 封装成可复用的代理工作流。安装后的宿主可以检索天文和天体物理文献、读取论文元数据、导出引用、管理 ADS libraries、汇总文献计量指标，以及寻找相关论文和全文/数据链接。
+NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) 封装成可复用工作流，可用于 Claude Code、Codex、Gemini CLI 和兼容 Markdown skill 的宿主。它可以检索天文和天体物理文献、读取论文元数据、导出引用、管理 ADS libraries、汇总文献计量指标，以及寻找相关论文和全文/数据链接。
 
 宿主会从你的电脑直接访问 `https://api.adsabs.harvard.edu`。本仓库不保存 ADS token，也不运行中转服务。
+
+README 面向读者：说明如何选择版本、在全新电脑上安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不重复面向人的安装说明。
+
+本版本用 Markdown 同时保存研究流程和直接 HTTPS 请求范式。Agent 使用电脑上已有的 HTTP 客户端；仓库不会安装或执行 Python 包。
+
+## 选择版本
+
+| 分支 | 传输方式 | 适用场景 |
+|---|---|---|
+| [`master`](https://github.com/SukiYume/nasa-ads-skill/tree/master) — **当前分支** | 纯 Markdown；agent 使用系统已有客户端构建直接 HTTPS 请求 | 希望兼容性最广，且不附带可执行程序 |
+| [`codex/python-api-cli`](https://github.com/SukiYume/nasa-ads-skill/tree/codex/python-api-cli) | Markdown 研究流程加无第三方依赖的 Python CLI | 希望请求编码、body、错误处理和 UTF-8 输出稳定可复现 |
+
+两个版本支持相同的研究任务。同一个宿主一次只安装一个版本，避免运行指令产生歧义。
 
 | 宿主 | 集成方式 | 安装后可用内容 |
 |---|---|---|
@@ -44,7 +59,7 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 
 | 能力 | 示例 |
 |---|---|
-| 文献检索 | 作者、标题、摘要、全文、bibcode、DOI、arXiv ID、ORCID、年份、期刊或天体对象 |
+| 文献检索 | 作者、标题、摘要、全文、bibcode、DOI、arXiv ID、ORCID、年份、期刊或目标名称 |
 | 论断核查 | 使用多组检索表达式、阅读摘要、交代检索范围 |
 | 元数据 | 标题、作者、摘要、年份、期刊、DOI、标识符、被引数和阅读数 |
 | 引用导出 | BibTeX、带摘要 BibTeX、AASTeX、MNRAS、RIS、EndNote、IEEE、XML 等格式 |
@@ -58,10 +73,13 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 flowchart LR
     A["你的请求"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    T["ADS_API_TOKEN<br/>或 ADS_DEV_KEY"] --> B
-    B --> C["ADS Developer API"]
-    C --> D["检索 · 导出 · 文库<br/>指标 · 相关论文 · Resolver"]
-    D --> E["带链接、便于阅读的结果"]
+    B --> M["Markdown 研究判断<br/>和请求范式"]
+    M --> H["系统 HTTP 客户端<br/>curl · PowerShell · Python"]
+    T["ADS_API_TOKEN<br/>或 ADS_DEV_KEY"] --> H
+    H --> C["ADS Developer API"]
+    C --> D["JSON 或引用文本"]
+    M --> E["带链接、便于阅读的结果"]
+    D --> E
 ```
 
 ## 安装前准备
@@ -402,50 +420,6 @@ Claude Code 命令示例：
 
 Skill 会要求代理返回带链接、便于阅读的结果，扩展检索表达式，并按实际查询范围描述空结果。
 
-## API 覆盖
-
-| Endpoint | Method | 用途 |
-|---|---|---|
-| `/search/query` | GET | 检索论文并返回元数据 |
-| `/search/bigquery` | POST | 批量查询最多 2000 个 bibcodes |
-| `/export/<format>` | GET / POST | 单篇或多篇引用导出 |
-| `/biblib/libraries` | GET / POST | 列出或创建 libraries |
-| `/biblib/libraries/<id>` | GET | 查看 library |
-| `/biblib/documents/<id>` | POST / PUT / DELETE | 修改文献、更新元数据或删除 library |
-| `/biblib/query/<id>` | GET / POST | 按 ADS 查询增删文献 |
-| `/biblib/libraries/operations/<id>` | POST | 并集、交集、差集、复制或清空 |
-| `/biblib/permissions/<id>` | GET / POST | 查看或修改分享权限 |
-| `/metrics` | POST | 文献计量汇总和指标 |
-| `/citation_helper` | POST | 引用建议 |
-| `/resolver/<bibcode>` | GET | 出版社、arXiv、全文和数据链接 |
-
-当前公开 API 还提供 metrics detail、library notes/transfer、journals、objects、reference parsing、visualizations 等专用端点。相关工作流请查阅[官方 ADS API 文档](https://ui.adsabs.harvard.edu/help/api/api-docs.html)。
-
-## 仓库结构
-
-```text
-nasa-ads-skill/
-├── .agents/plugins/marketplace.json       # Codex marketplace
-├── .claude-plugin/marketplace.json        # Claude Code marketplace
-├── plugins/nasa-ads/
-│   ├── .claude-plugin/plugin.json         # Claude Code manifest
-│   ├── .codex-plugin/plugin.json          # Codex manifest
-│   ├── commands/                          # Claude Code slash commands
-│   │   ├── ads-search.md
-│   │   ├── ads-bibtex.md
-│   │   ├── ads-library.md
-│   │   ├── ads-metrics.md
-│   │   └── ads-cite.md
-│   └── skills/nasa-ads/
-│       ├── agents/openai.yaml              # Codex skill UI 元数据
-│       └── SKILL.md                        # 共享工作流
-├── AGENTS.md
-├── CLAUDE.md
-├── GEMINI.md
-├── README.zh-CN.md
-└── README.md
-```
-
 ## 排错
 
 | 现象 | 检查方法 |
@@ -459,7 +433,8 @@ nasa-ads-skill/
 | `403 Forbidden` | 检查 ADS 账号权限和 library 权限 |
 | `429 Too Many Requests` | 查看 `X-RateLimit-Remaining` 和 `X-RateLimit-Reset` 响应 header |
 | 检索不到论文 | 删除非必要过滤，尝试同义词和拼写变体，并记录检索范围 |
-| 查询在 `&` 或空格处失效 | 对 `q`、`fq` 和 `sort` 做 URL 编码；打包工作流使用 `--data-urlencode` |
+| ADS 报告查询字段未定义 | 把 `object:` 等不支持的字段换成文档支持的 `title:`、`abs:` 或 `full:` |
+| 查询在 `&` 或空格处失效 | 对 `q`、`fq` 和 `sort` 做 URL 编码；`curl` 示例使用 `--data-urlencode` |
 
 ## 更新已有安装
 
@@ -550,6 +525,6 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 
 <div align="center">
 
-NASA ADS Skill · 从全新系统到首次验证成功的文献检索
+NASA ADS Skill · 纯 Markdown 版 · 从全新系统到首次验证成功的文献检索
 
 </div>

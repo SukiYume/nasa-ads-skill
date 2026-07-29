@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Literature search, citation export, libraries, and bibliometrics for AI coding agents**
+**Pure-Markdown edition: portable NASA ADS workflows with no bundled executable**
 
 Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or another Markdown-skill host.
 
@@ -10,11 +10,13 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.4.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Edition](https://img.shields.io/badge/edition-pure%20Markdown-0B3D91)](#choose-an-edition)
+[![Version](https://img.shields.io/badge/version-1.4.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [Overview](#overview) ·
+[Editions](#choose-an-edition) ·
 [Install](#install) ·
 [Configure the token](#configure-the-ads-token) ·
 [Verify](#verify-the-api) ·
@@ -28,9 +30,22 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 
 ## Overview
 
-NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) as a reusable agent workflow. The installed host can search astronomy and astrophysics literature, inspect publication metadata, export citations, work with ADS libraries, calculate bibliometric summaries, and discover related papers or full-text/data links.
+NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) as a reusable workflow for Claude Code, Codex, Gemini CLI, and compatible Markdown-skill hosts. It can search astronomy and astrophysics literature, inspect publication metadata, export citations, work with ADS libraries, calculate bibliometric summaries, and discover related papers or full-text/data links.
 
 The host sends requests directly from your computer to `https://api.adsabs.harvard.edu`. This repository stores no ADS token and runs no proxy service.
+
+This README is the reader guide: choose an edition, install it on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
+
+In this edition, Markdown contains both the research workflow and direct HTTPS request patterns. The agent uses an HTTP client already available on the computer; the repository does not install or execute a Python package.
+
+## Choose an Edition
+
+| Branch | Transport | Choose it when |
+|---|---|---|
+| [`master`](https://github.com/SukiYume/nasa-ads-skill/tree/master) — **this branch** | Pure Markdown; the agent builds direct HTTPS requests with an available system client | You want the widest compatibility and no bundled executable |
+| [`codex/python-api-cli`](https://github.com/SukiYume/nasa-ads-skill/tree/codex/python-api-cli) | Markdown research workflow plus a dependency-free Python CLI | You want repeatable encoding, request bodies, error handling, and UTF-8 output |
+
+Both editions support the same research tasks. Install one edition at a time in a given host so the runtime instructions are unambiguous.
 
 | Host | Integration | What becomes available |
 |---|---|---|
@@ -44,7 +59,7 @@ The host sends requests directly from your computer to `https://api.adsabs.harva
 
 | Capability | Examples |
 |---|---|
-| Literature search | Author, title, abstract, full text, bibcode, DOI, arXiv ID, ORCID, year, journal, or astronomical object |
+| Literature search | Author, title, abstract, full text, bibcode, DOI, arXiv ID, ORCID, year, journal, or target name |
 | Claim checking | Search several formulations, inspect abstracts, and report the searched scope |
 | Metadata | Title, authors, abstract, year, venue, DOI, identifiers, citation count, and read count |
 | Citation export | BibTeX, BibTeX with abstracts, AASTeX, MNRAS, RIS, EndNote, IEEE, XML formats, and more |
@@ -58,10 +73,13 @@ The host sends requests directly from your computer to `https://api.adsabs.harva
 flowchart LR
     A["Your request"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    T["ADS_API_TOKEN<br/>or ADS_DEV_KEY"] --> B
-    B --> C["ADS Developer API"]
-    C --> D["Search · Export · Libraries<br/>Metrics · Related papers · Resolver"]
-    D --> E["Linked, reader-facing result"]
+    B --> M["Markdown research judgment<br/>and request patterns"]
+    M --> H["System HTTP client<br/>curl · PowerShell · Python"]
+    T["ADS_API_TOKEN<br/>or ADS_DEV_KEY"] --> H
+    H --> C["ADS Developer API"]
+    C --> D["JSON or citation text"]
+    M --> E["Linked, reader-facing result"]
+    D --> E
 ```
 
 ## Before You Install
@@ -402,50 +420,6 @@ Claude Code command examples:
 
 The skill instructs the agent to return linked, readable results; refine weak literature searches; and label empty searches by their actual query scope.
 
-## API Coverage
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/search/query` | GET | Search papers and retrieve metadata |
-| `/search/bigquery` | POST | Batch lookup for up to 2000 bibcodes |
-| `/export/<format>` | GET / POST | Single-record or multi-record citation export |
-| `/biblib/libraries` | GET / POST | List or create libraries |
-| `/biblib/libraries/<id>` | GET | View a library |
-| `/biblib/documents/<id>` | POST / PUT / DELETE | Change documents, update metadata, or delete a library |
-| `/biblib/query/<id>` | GET / POST | Add or remove papers by ADS query |
-| `/biblib/libraries/operations/<id>` | POST | Union, intersection, difference, copy, or empty |
-| `/biblib/permissions/<id>` | GET / POST | View or change sharing permissions |
-| `/metrics` | POST | Bibliometric summaries and indicators |
-| `/citation_helper` | POST | Suggested citations |
-| `/resolver/<bibcode>` | GET | Publisher, arXiv, full-text, and data links |
-
-The current public API also exposes specialized endpoints for metrics detail, library notes and transfer, journals, objects, reference parsing, visualizations, and other services. Use the [official ADS API documentation](https://ui.adsabs.harvard.edu/help/api/api-docs.html) for those workflows.
-
-## Repository Layout
-
-```text
-nasa-ads-skill/
-├── .agents/plugins/marketplace.json       # Codex marketplace
-├── .claude-plugin/marketplace.json        # Claude Code marketplace
-├── plugins/nasa-ads/
-│   ├── .claude-plugin/plugin.json         # Claude Code manifest
-│   ├── .codex-plugin/plugin.json          # Codex manifest
-│   ├── commands/                          # Claude Code slash commands
-│   │   ├── ads-search.md
-│   │   ├── ads-bibtex.md
-│   │   ├── ads-library.md
-│   │   ├── ads-metrics.md
-│   │   └── ads-cite.md
-│   └── skills/nasa-ads/
-│       ├── agents/openai.yaml              # Codex skill UI metadata
-│       └── SKILL.md                        # Shared workflow
-├── AGENTS.md
-├── CLAUDE.md
-├── GEMINI.md
-├── README.zh-CN.md
-└── README.md
-```
-
 ## Troubleshooting
 
 | Symptom | Check |
@@ -459,7 +433,8 @@ nasa-ads-skill/
 | `403 Forbidden` | Check ADS account access and library permissions |
 | `429 Too Many Requests` | Read the `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers |
 | Search returns no papers | Remove unnecessary filters, try synonyms and spelling variants, and record the query scope |
-| Query breaks around `&` or spaces | Pass `q`, `fq`, and `sort` through URL encoding; the bundled workflow uses `--data-urlencode` |
+| ADS reports an undefined query field | Replace unsupported fields such as `object:` with documented fields such as `title:`, `abs:`, or `full:` |
+| Query breaks around `&` or spaces | URL-encode `q`, `fq`, and `sort`; the `curl` examples use `--data-urlencode` |
 
 ## Updating an Existing Install
 
@@ -550,6 +525,6 @@ Run `/memory reload` in Gemini CLI after updating. Start a new Codex or Claude C
 
 <div align="center">
 
-NASA ADS Skill · From a fresh machine to a verified literature search
+NASA ADS Skill · Pure-Markdown edition · From a fresh machine to a verified literature search
 
 </div>
