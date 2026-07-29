@@ -37,6 +37,7 @@ Use the bundled standard-library Python CLI for search, big query, citation expo
 
 - Write README installation paths for a reader starting on a new computer with no repository-specific knowledge.
 - Keep `README.md` and `README.zh-CN.md` structurally aligned.
+- Keep the copyable one-sentence agent-install prompt directly after the overview; require CLI-file, token-safety, version, and smoke-test checks.
 - Use the current Codex standalone-skill location, `~/.agents/skills/<skill-name>`.
 - Give Windows PowerShell and macOS/Linux/WSL commands where filesystem syntax differs.
 - Explain that Python 3.10 or newer is recommended for the bundled CLI and document the direct HTTP fallback.

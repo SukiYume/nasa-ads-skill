@@ -15,6 +15,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [项目概览](#项目概览) ·
+[Agent 一句话安装](#一句话交给-agent-安装) ·
 [支持的宿主](#支持的宿主) ·
 [安装](#安装) ·
 [配置 token](#配置-ads-token) ·
@@ -36,6 +37,14 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 README 是面向读者的使用指南：帮助你在全新电脑安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不再重复安装说明。
 
 Markdown 负责检索式设计、证据判断、安全确认和结果总结；仅使用 Python 标准库的 CLI 负责文献检索、批量查询、引用导出、文献计量、引用建议和资源解析等稳定只读调用。CLI 会拒绝重定向，并把 ADS 错误响应判定为调用失败。
+
+## 一句话交给 Agent 安装
+
+如果电脑上已经运行着可以使用终端和网络的 agent，把下面这一句话复制给它即可。这是自然语言提示词，不是 shell 命令。
+
+```text
+请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：完整阅读仓库的 README 和 SKILL.md，识别你所在的 agent 宿主，按 README 中该宿主的说明安装缺少的前置条件和完整 skill；如已有 nasa-ads，只替换这一项；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 但不要显示其值，如果两者都不存在就引导我按文档配置 token；确认 SKILL.md 和 scripts/ads_api.py 均已安装，运行 ads_api.py --version，在凭据可用时运行 README 中的公开论文 API smoke test，并报告安装路径、版本与验证结果。
+```
 
 ## 支持的宿主
 
