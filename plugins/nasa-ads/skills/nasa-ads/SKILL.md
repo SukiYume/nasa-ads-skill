@@ -12,20 +12,22 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every API workflow.
 2. Never print, log, commit, or place the token in a URL or source file.
 3. Use `https://api.adsabs.harvard.edu/v1` as the API base and send `Authorization: Bearer <token>` in the request header.
-4. URL-encode every search parameter and check the HTTP status before parsing a response.
-5. Keep research calls read-only by default.
-6. Confirm immediately before deleting or emptying a library, bulk removal, or permission changes.
-7. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
-8. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
-9. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
+4. Never follow an authenticated API redirect or forward the token to another origin.
+5. URL-encode every search parameter, check the HTTP status, and reject a top-level `Error` or `error` field before interpreting a response.
+6. Keep research calls read-only by default.
+7. Confirm immediately before deleting or emptying a library, bulk removal, permission changes, replacing or deleting a note, or transferring ownership.
+8. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
+9. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
+10. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
 
 ## Transport Selection
 
 1. Run the credential preflight without displaying the credential.
 2. Use an HTTP client already available on the system: prefer `curl` on POSIX systems, PowerShell `Invoke-RestMethod` on Windows, or Python’s standard library when neither is suitable.
-3. Do not assume a repository-local CLI or third-party Python package exists in this pure-Markdown edition.
-4. Request only the fields and row count needed, and use the documented endpoint-specific method and body.
-5. Surface a concise error and corrective action when a request fails; do not silently switch semantics or endpoints.
+3. This project bundles no CLI or third-party Python package. Build the documented request directly with the selected system client.
+4. Configure the client to reject redirects before sending an authenticated request.
+5. Request only the fields and row count needed, and use the documented endpoint-specific method and body.
+6. Surface a concise error and corrective action when a request fails; do not silently switch semantics or endpoints.
 
 ## Research Workflow
 
@@ -81,7 +83,7 @@ if (-not $nasaAdsToken) {
 
 ## HTTP Request Patterns
 
-Prefer `curl -fsS` on POSIX shells. Use `-G` with `--data-urlencode` for search parameters. Avoid `curl -v` because verbose output can reveal the authorization header.
+Prefer `curl -fsS` on POSIX shells. Use `-G` with `--data-urlencode` for search parameters. Do not use `-L` or `--location`; avoid `curl -v` because verbose output can reveal the authorization header.
 
 ```bash
 curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
@@ -101,12 +103,14 @@ $nasaAdsFields = [uri]::EscapeDataString(
 )
 $nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query?q=$nasaAdsQuery&fl=$nasaAdsFields&rows=10"
 
-Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
-  Authorization = "Bearer $nasaAdsToken"
-}
+Invoke-RestMethod `
+  -Method Get `
+  -Uri $nasaAdsUri `
+  -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
+  -MaximumRedirection 0
 ```
 
-Use `urllib.request` when Python is the only available client. Keep the implementation within the standard library so a fresh system does not require `requests`.
+Use `urllib.request` when Python is the only available client. Keep the implementation within the standard library so a fresh system does not require `requests`, and use a custom `HTTPRedirectHandler` whose `redirect_request` returns `None`.
 
 ## 1. Search
 
@@ -207,8 +211,8 @@ Use the library ID returned by ADS; a library name is not an endpoint identifier
 
 | Task | Method and path | Body or notes |
 |---|---|---|
-| List libraries | `GET /biblib/libraries` | Supports `start`, `rows`, `sort`, `order` |
-| View library | `GET /biblib/libraries/<id>` | Add `raw=true` for exact stored bibcodes |
+| List libraries | `GET /biblib/libraries` | Supports `start`, `rows`, `sort`, `order`, `access_type` |
+| View library | `GET /biblib/libraries/<id>` | Supports `start`, `rows`, `sort`, `fl`, `raw`, `notes` |
 | Create library | `POST /biblib/libraries` | `name`, `description`, `public`, `bibcode[]` |
 | Add/remove papers | `POST /biblib/documents/<id>` | `{"bibcode":[...],"action":"add"}` or `remove` |
 | Update metadata | `PUT /biblib/documents/<id>` | Include only changed fields |
@@ -217,13 +221,21 @@ Use the library ID returned by ADS; a library name is not an endpoint identifier
 | Set operations | `POST /biblib/libraries/operations/<id>` | `union`, `intersection`, `difference`, `copy`, `empty` |
 | View permissions | `GET /biblib/permissions/<id>` | Read-only |
 | Change permissions | `POST /biblib/permissions/<id>` | `email` plus changed `read`/`write`/`admin` flags |
+| Read a note | `GET /biblib/notes/<id>/<bibcode>` | Read-only |
+| Add or replace a note | `POST` or `PUT /biblib/notes/<id>/<bibcode>` | `{"content":"..."}`; confirm before replacing |
+| Delete a note | `DELETE /biblib/notes/<id>/<bibcode>` | Confirm immediately before the call |
+| Transfer ownership | `POST /biblib/transfer/<id>` | `{"email":"new-owner@example.com"}`; confirm immediately before the call |
+
+For `access_type`, use only `all`, `owner`, or `collaborator`.
 
 Confirm immediately before:
 
 - deleting a library;
 - emptying a library;
 - bulk-removing documents;
-- granting, revoking, or changing another user’s permissions.
+- granting, revoking, or changing another user’s permissions;
+- replacing or deleting a document note;
+- transferring library ownership.
 
 For `union`, `intersection`, and `difference`, provide a result-library name when the user supplied one. For `copy`, identify the secondary destination library. For `empty`, omit `libraries`.
 
@@ -304,6 +316,8 @@ Extract an arXiv link by finding an `identifier` entry beginning with `arXiv:` a
 | `403 Forbidden` | Check account/library permissions and the requested operation |
 | `404 Not Found` | Recheck bibcode, library ID, endpoint, and URL encoding |
 | `429 Too Many Requests` | Read `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; wait until reset |
+| Unexpected redirect | Stop and report it; never switch to a client that follows authenticated redirects |
+| Top-level `Error` or `error` | Treat the operation as failed even when the HTTP status is `200` |
 | Only `id` is returned | Add the required fields to `fl` |
 | Empty citation/reference arrays | Request `citation` or `reference` explicitly in `fl` |
 | Undefined query field | Replace unsupported fields with documented fields such as `title`, `abs`, or `full` |

@@ -4,14 +4,14 @@
     "name": "Echo"
   },
   "metadata": {
-    "description": "Community-maintained Claude Code plugins for NASA ADS research workflows.",
-    "version": "1.4.1"
+    "description": "Community-maintained Markdown-only NASA ADS research workflows.",
+    "version": "1.4.2"
   },
   "plugins": [
     {
       "name": "nasa-ads",
       "source": "./plugins/nasa-ads",
-      "description": "Research NASA ADS literature with scoped searches, export citations, manage libraries, and inspect citation metrics.",
+      "description": "Research NASA ADS literature through direct HTTPS requests, export citations, manage libraries, and inspect metrics.",
       "author": {
         "name": "Echo"
       }

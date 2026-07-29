@@ -15,7 +15,7 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
+1. Check for ADS API token in environment variable `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers, and never use `-L` or `--location`.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 
@@ -50,4 +50,4 @@ curl -fsSG "https://api.adsabs.harvard.edu/v1/search/query" \
   --data-urlencode 'rows=10'
 ```
 
-3. Check the HTTP status before parsing. Present results clearly in markdown format with ADS links.
+3. Check the HTTP status and reject a top-level `Error` or `error` field before parsing. Present results clearly in markdown format with ADS links.

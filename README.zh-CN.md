@@ -1,8 +1,8 @@
-<h1 align="center">NASA ADS Skill</h1>
+<h1 align="center">NASA ADS Skill — 纯 Markdown</h1>
 
 <div align="center">
 
-**纯 Markdown 版：不附带可执行程序、可移植的 NASA ADS 工作流**
+**完全由 Markdown 指令组成的可移植 NASA ADS 工作流**
 
 在 Claude Code、Codex、Gemini CLI 或其他 Markdown skill 宿主中使用 NASA Astrophysics Data System。
 
@@ -10,13 +10,12 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Edition](https://img.shields.io/badge/edition-pure%20Markdown-0B3D91)](#选择版本)
-[![Version](https://img.shields.io/badge/version-1.4.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.4.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [项目概览](#项目概览) ·
-[选择版本](#选择版本) ·
+[支持的宿主](#支持的宿主) ·
 [安装](#安装) ·
 [配置 token](#配置-ads-token) ·
 [验证](#验证-api) ·
@@ -34,18 +33,11 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 
 宿主会从你的电脑直接访问 `https://api.adsabs.harvard.edu`。本仓库不保存 ADS token，也不运行中转服务。
 
-README 面向读者：说明如何选择版本、在全新电脑上安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不重复面向人的安装说明。
+README 面向读者：说明如何在全新电脑上安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不重复面向人的安装说明。
 
-本版本用 Markdown 同时保存研究流程和直接 HTTPS 请求范式。Agent 使用电脑上已有的 HTTP 客户端；仓库不会安装或执行 Python 包。
+Markdown 同时保存研究流程和直接 HTTPS 请求范式。Agent 使用电脑上已有的 HTTP 客户端；本项目不附带可执行程序或 Python 包。
 
-## 选择版本
-
-| 分支 | 传输方式 | 适用场景 |
-|---|---|---|
-| [`master`](https://github.com/SukiYume/nasa-ads-skill/tree/master) — **当前分支** | 纯 Markdown；agent 使用系统已有客户端构建直接 HTTPS 请求 | 希望兼容性最广，且不附带可执行程序 |
-| [`codex/python-api-cli`](https://github.com/SukiYume/nasa-ads-skill/tree/codex/python-api-cli) | Markdown 研究流程加无第三方依赖的 Python CLI | 希望请求编码、body、错误处理和 UTF-8 输出稳定可复现 |
-
-两个版本支持相同的研究任务。同一个宿主一次只安装一个版本，避免运行指令产生歧义。
+## 支持的宿主
 
 | 宿主 | 集成方式 | 安装后可用内容 |
 |---|---|---|
@@ -63,7 +55,7 @@ README 面向读者：说明如何选择版本、在全新电脑上安装、配�
 | 论断核查 | 使用多组检索表达式、阅读摘要、交代检索范围 |
 | 元数据 | 标题、作者、摘要、年份、期刊、DOI、标识符、被引数和阅读数 |
 | 引用导出 | BibTeX、带摘要 BibTeX、AASTeX、MNRAS、RIS、EndNote、IEEE、XML 等格式 |
-| ADS 文库 | 列出、查看、创建、更新、分享、集合运算、清空和删除 libraries |
+| ADS 文库 | 列出、查看、创建、更新、添加备注、分享、转移所有权、集合运算、清空和删除 libraries |
 | 文献计量 | 基础统计、引用、h-index、g-index、i10-index、直方图和时间序列 |
 | 关联发现 | 引用建议、similar/useful 论文、出版社、arXiv 和数据归档链接 |
 
@@ -117,7 +109,7 @@ Claude Code 安装完成后，以下命令可用于 macOS、Linux、Windows Powe
 1. 把本 GitHub 仓库加入 Claude Code marketplace：
 
 ```bash
-claude plugin marketplace add SukiYume/nasa-ads-skill
+claude plugin marketplace add SukiYume/nasa-ads-skill@mdonly
 ```
 
 2. 从该 marketplace 安装 `nasa-ads`：
@@ -159,7 +151,7 @@ Codex plugin 可用于 Codex CLI 和桌面应用中的 Codex。IDE 扩展请使�
 1. 把本仓库加入 Codex marketplace：
 
 ```bash
-codex plugin marketplace add SukiYume/nasa-ads-skill
+codex plugin marketplace add SukiYume/nasa-ads-skill --ref mdonly
 ```
 
 2. 安装 plugin：
@@ -194,12 +186,12 @@ Codex 目前从 `~/.agents/skills` 发现用户级独立 skills。Codex CLI 和 
 
 ```bash
 mkdir -p "$HOME/.local/share"
-git clone --depth 1 \
+git clone --depth 1 --branch mdonly --single-branch \
   https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.local/share/nasa-ads-skill"
+  "$HOME/.local/share/nasa-ads-mdonly"
 mkdir -p "$HOME/.agents/skills/nasa-ads"
 cp -R \
-  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
+  "$HOME/.local/share/nasa-ads-mdonly/plugins/nasa-ads/skills/nasa-ads/." \
   "$HOME/.agents/skills/nasa-ads/"
 ```
 
@@ -215,9 +207,9 @@ test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
 把源码 clone 保存在固定的用户级路径，再把 skill 内容复制到 Codex 的发现目录：
 
 ```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
+$nasaAdsSource = Join-Path $HOME 'nasa-ads-mdonly-source'
 $nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
-git clone --depth 1 `
+git clone --depth 1 --branch mdonly --single-branch `
   https://github.com/SukiYume/nasa-ads-skill.git `
   $nasaAdsSource
 New-Item -ItemType Directory -Force $nasaAdsSkill | Out-Null
@@ -246,10 +238,10 @@ Gemini CLI 通过 `GEMINI.md` 加载指令文件。下面的用户级安装会�
 
 ```bash
 mkdir -p "$HOME/.gemini"
-git clone --depth 1 \
+git clone --depth 1 --branch mdonly --single-branch \
   https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.gemini/nasa-ads-skill"
-printf '\n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
+  "$HOME/.gemini/nasa-ads-mdonly"
+printf '\n@./nasa-ads-mdonly/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
   >> "$HOME/.gemini/GEMINI.md"
 ```
 
@@ -257,11 +249,11 @@ printf '\n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
 
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.gemini" | Out-Null
-git clone --depth 1 `
+git clone --depth 1 --branch mdonly --single-branch `
   https://github.com/SukiYume/nasa-ads-skill.git `
-  "$HOME\.gemini\nasa-ads-skill"
+  "$HOME\.gemini\nasa-ads-mdonly"
 Add-Content -Path "$HOME\.gemini\GEMINI.md" -Value `
-  "`n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md"
+  "`n@./nasa-ads-mdonly/plugins/nasa-ads/skills/nasa-ads/SKILL.md"
 ```
 
 启动 Gemini CLI：
@@ -284,7 +276,7 @@ gemini
 1. 克隆仓库：
 
 ```bash
-git clone --depth 1 https://github.com/SukiYume/nasa-ads-skill.git
+git clone --depth 1 --branch mdonly --single-branch https://github.com/SukiYume/nasa-ads-skill.git
 ```
 
 2. 把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主文档指定的 skill 或 prompt 目录。
@@ -372,7 +364,7 @@ curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
   --data-urlencode 'rows=1'
 ```
 
-JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。
+JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。不要添加 `-L` 或 `--location`；带身份认证信息的 ADS 请求不得跟随重定向。
 
 ### Windows PowerShell
 
@@ -388,9 +380,11 @@ $nasaAdsQuery = [uri]::EscapeDataString(
 $nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query" +
   "?q=$nasaAdsQuery&fl=bibcode,title,year&rows=1"
 
-Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
-  Authorization = "Bearer $nasaAdsToken"
-}
+Invoke-RestMethod `
+  -Method Get `
+  -Uri $nasaAdsUri `
+  -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
+  -MaximumRedirection 0
 ```
 
 响应中的 `response.docs[0].bibcode` 应等于 `2016PhRvL.116f1102A`。
@@ -432,29 +426,31 @@ Skill 会要求代理返回带链接、便于阅读的结果，扩展检索表�
 | `401 Unauthorized` | 设置有效 token，打开新终端，并通过公开论文测试检查 `Bearer` header 路径 |
 | `403 Forbidden` | 检查 ADS 账号权限和 library 权限 |
 | `429 Too Many Requests` | 查看 `X-RateLimit-Remaining` 和 `X-RateLimit-Reset` 响应 header |
+| API 返回意外重定向 | 停止调用并检查配置的 endpoint；不要跟随带身份认证信息的重定向 |
+| HTTP `200` 中包含 ADS 应用错误 | 将操作判定为失败，并报告返回的 `Error` 或 `error` 信息 |
 | 检索不到论文 | 删除非必要过滤，尝试同义词和拼写变体，并记录检索范围 |
 | ADS 报告查询字段未定义 | 把 `object:` 等不支持的字段换成文档支持的 `title:`、`abs:` 或 `full:` |
 | 查询在 `&` 或空格处失效 | 对 `q`、`fq` 和 `sort` 做 URL 编码；`curl` 示例使用 `--data-urlencode` |
 
 ## 更新已有安装
 
-1.4.0 版本把 marketplace 名称从 `nasa-ads-local` 改为 `nasa-ads-community`。安装过旧版本的用户需要按所用宿主执行一次迁移：
+如果添加 marketplace 时没有固定分支，请按下面的命令重新安装一次，确保后续更新始终使用这个纯 Markdown 项目：
 
 ```bash
-claude plugin uninstall nasa-ads@nasa-ads-local
-claude plugin marketplace remove nasa-ads-local
-claude plugin marketplace add SukiYume/nasa-ads-skill
+claude plugin uninstall nasa-ads@nasa-ads-community
+claude plugin marketplace remove nasa-ads-community
+claude plugin marketplace add SukiYume/nasa-ads-skill@mdonly
 claude plugin install nasa-ads@nasa-ads-community
 ```
 
 ```bash
-codex plugin remove nasa-ads@nasa-ads-local
-codex plugin marketplace remove nasa-ads-local
-codex plugin marketplace add SukiYume/nasa-ads-skill
+codex plugin remove nasa-ads@nasa-ads-community
+codex plugin marketplace remove nasa-ads-community
+codex plugin marketplace add SukiYume/nasa-ads-skill --ref mdonly
 codex plugin add nasa-ads@nasa-ads-community
 ```
 
-已有 1.4.0 或更新版本 marketplace 时，更新 marketplace 并刷新已安装的 plugin：
+完成一次分支固定后，正常更新 marketplace 和已安装的 plugin：
 
 ```bash
 claude plugin marketplace update nasa-ads-community
@@ -466,19 +462,21 @@ codex plugin marketplace upgrade nasa-ads-community
 codex plugin add nasa-ads@nasa-ads-community
 ```
 
+如果独立安装来自较早的未固定分支 clone，请先按对应的安装章节重新安装一次。固定分支后的源码目录使用其中所示的 `nasa-ads-mdonly` 名称。
+
 macOS、Linux 或 WSL 上的 Codex 独立 skill：
 
 ```bash
-git -C "$HOME/.local/share/nasa-ads-skill" pull --ff-only
+git -C "$HOME/.local/share/nasa-ads-mdonly" pull --ff-only
 cp -R \
-  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
+  "$HOME/.local/share/nasa-ads-mdonly/plugins/nasa-ads/skills/nasa-ads/." \
   "$HOME/.agents/skills/nasa-ads/"
 ```
 
 Windows PowerShell 上的 Codex 独立 skill：
 
 ```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
+$nasaAdsSource = Join-Path $HOME 'nasa-ads-mdonly-source'
 $nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
 git -C $nasaAdsSource pull --ff-only
 Copy-Item -Recurse -Force `
@@ -489,13 +487,13 @@ Copy-Item -Recurse -Force `
 macOS、Linux 或 WSL 上的 Gemini CLI：
 
 ```bash
-git -C "$HOME/.gemini/nasa-ads-skill" pull --ff-only
+git -C "$HOME/.gemini/nasa-ads-mdonly" pull --ff-only
 ```
 
 Windows PowerShell 上的 Gemini CLI：
 
 ```powershell
-git -C "$HOME\.gemini\nasa-ads-skill" pull --ff-only
+git -C "$HOME\.gemini\nasa-ads-mdonly" pull --ff-only
 ```
 
 Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新建宿主会话。
@@ -504,7 +502,9 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 
 - 安装前检查这个公开仓库。
 - 把 `ADS_API_TOKEN` 和 `ADS_DEV_KEY` 放在版本控制之外。
-- 删除/清空 ADS library 或修改分享权限前进行确认。
+- 带身份认证信息的 ADS API 请求不得跟随重定向。
+- 即使 HTTP 状态是 `200`，顶层含 `Error` 或 `error` 的响应也应判定为失败。
+- 删除/清空 ADS library、替换/删除备注、修改分享权限或转移所有权前进行确认。
 - 把出版社和数据归档链接视为外部站点。
 - ADS 的 rate limit 由各 endpoint 独立控制，响应 headers 是当前依据。
 
@@ -525,6 +525,6 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 
 <div align="center">
 
-NASA ADS Skill · 纯 Markdown 版 · 从全新系统到首次验证成功的文献检索
+NASA ADS Skill · 纯 Markdown 工作流 · 从全新系统到首次验证成功的文献检索
 
 </div>

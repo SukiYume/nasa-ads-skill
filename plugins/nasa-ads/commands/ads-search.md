@@ -15,7 +15,7 @@ The user's search query: $ARGUMENTS
 
 ## Instructions
 
-1. Check for ADS API token in environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers.
+1. Check for ADS API token in environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY`. If not found, point the user to https://ui.adsabs.harvard.edu/#user/settings/token, tell them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`, and ask them to retry or provide a token for the current session. Never hardcode, print, or log the token. Avoid verbose HTTP output that can reveal request headers, and never use `-L` or `--location`.
 
 2. Parse the user's query from `$ARGUMENTS`. Interpret natural language:
    - "papers by Einstein on relativity" -> `q=author:"Einstein" title:"relativity"`
@@ -48,4 +48,4 @@ curl -fsSG "https://api.adsabs.harvard.edu/v1/search/query" \
 
 6. For literature research or claim checks, try useful synonyms and query variants, inspect abstracts before calling a paper direct evidence, and deduplicate by bibcode.
 
-7. Present results clearly in markdown format. If no records match, state the queries and filters used, then describe the outcome as "no matching records found for these queries."
+7. Check the HTTP status and reject a top-level `Error` or `error` field before interpreting the response. Present results clearly in markdown format. If no records match, state the queries and filters used, then describe the outcome as "no matching records found for these queries."
