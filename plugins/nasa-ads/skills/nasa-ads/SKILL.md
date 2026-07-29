@@ -11,11 +11,12 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 
 1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every API workflow.
 2. Never print, log, commit, or place the token in a URL or source file.
-3. Keep research calls read-only by default.
-4. Confirm immediately before deleting or emptying a library, bulk removal, or permission changes.
-5. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
-6. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
-7. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
+3. Never follow an authenticated API redirect or forward the token to another origin.
+4. Keep research calls read-only by default.
+5. Confirm immediately before deleting or emptying a library, bulk removal, permission changes, replacing or deleting a note, or transferring ownership.
+6. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
+7. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
+8. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
 
 ## Task Routing
 
@@ -63,7 +64,7 @@ Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`. If both are absent, stop; direct th
 
 ## Bundled CLI
 
-Use `<skill-dir>/scripts/ads_api.py`, where `<skill-dir>` contains this `SKILL.md`. It uses only the Python standard library, reads the token variables itself, URL-encodes parameters, builds request bodies, checks HTTP failures, and never accepts a token on the command line.
+Use `<skill-dir>/scripts/ads_api.py`, where `<skill-dir>` contains this `SKILL.md`. It uses only the Python standard library, reads the token variables itself, URL-encodes parameters, builds request bodies, rejects redirects, detects HTTP and ADS error responses, and never accepts a token on the command line.
 
 ```bash
 python3 "<skill-dir>/scripts/ads_api.py" --help
@@ -219,6 +220,8 @@ Build an arXiv link from an `identifier` value beginning with `arXiv:`.
 - `403`: check account or library permissions.
 - `404`: recheck the bibcode, library ID, or endpoint.
 - `429`: report the rate-limit headers and wait until reset.
+- Unexpected redirect: stop and report it; do not switch to a client that follows the redirect.
+- ADS error payload: treat the operation as failed even when the HTTP status is `200`.
 - Only `id` returned: request the needed fields with `--fields`.
 - `undefined field object`: search the target name with `title:`, `abs:`, or `full:`; do not switch transports.
 - Empty result: relax unnecessary filters, try variants, and report the searched forms.

@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
 TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
 DEFAULT_FIELDS = (
@@ -64,6 +64,21 @@ class CliError(Exception):
 class ApiResponse:
     body: bytes
     headers: Mapping[str, str]
+
+
+class RejectRedirectHandler(HTTPRedirectHandler):
+    """Keep ADS credentials on the configured API origin."""
+
+    def redirect_request(
+        self,
+        _request: Request,
+        _file_pointer: Any,
+        _code: int,
+        _message: str,
+        _headers: Mapping[str, str],
+        _new_url: str,
+    ) -> None:
+        return None
 
 
 def positive_int(value: str) -> int:
@@ -266,6 +281,23 @@ def concise_response_text(body: bytes, token: str) -> str:
     return detail[:800]
 
 
+def application_error_text(body: bytes, token: str) -> str:
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict) or not ("Error" in payload or "error" in payload):
+        return ""
+
+    parts = [
+        payload.get("Error") or payload.get("error"),
+        payload.get("Error Info") or payload.get("message") or payload.get("detail"),
+    ]
+    detail = ": ".join(str(part) for part in parts if part)
+    detail = " ".join(detail.split()).replace(token, "[redacted]")
+    return detail[:800] or "ADS returned an unspecified application error."
+
+
 def format_rate_limit(headers: Mapping[str, str]) -> str:
     normalized = {name.lower(): value for name, value in headers.items()}
     values = []
@@ -303,15 +335,23 @@ def request_api(
         headers=headers,
         method=method,
     )
-    open_request = opener or urlopen
+    open_request = opener or build_opener(RejectRedirectHandler()).open
     try:
         with open_request(request, timeout=timeout) as response:
+            response_body = response.read()
+            detail = application_error_text(response_body, token)
+            if detail:
+                raise CliError(f"ADS API returned an application error. {detail}")
             return ApiResponse(
-                body=response.read(),
-                headers=dict(response.headers.items()),
+                body=response_body, headers=dict(response.headers.items())
             )
     except HTTPError as exc:
         response_body = exc.read()
+        if 300 <= exc.code < 400:
+            raise CliError(
+                f"ADS API returned HTTP {exc.code} {exc.reason}; "
+                "the redirect was not followed."
+            ) from exc
         detail = concise_response_text(response_body, token)
         rate_limit = format_rate_limit(exc.headers or {})
         message = f"ADS API returned HTTP {exc.code} {exc.reason}."

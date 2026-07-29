@@ -9,6 +9,7 @@ Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex,
 - Installable plugin root: `plugins/nasa-ads/`
 - Codex manifest: `plugins/nasa-ads/.codex-plugin/plugin.json`
 - Claude manifest: `plugins/nasa-ads/.claude-plugin/plugin.json`
+- Packaged license: `plugins/nasa-ads/LICENSE`
 - Skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
 - Conditional references: `plugins/nasa-ads/skills/nasa-ads/references/`
@@ -50,6 +51,7 @@ When behavior or installation changes, update these surfaces together:
 - `.agents/plugins/marketplace.json`
 - `plugins/nasa-ads/.claude-plugin/plugin.json`
 - `plugins/nasa-ads/.codex-plugin/plugin.json`
+- `plugins/nasa-ads/LICENSE`
 - `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
 - affected files under `plugins/nasa-ads/skills/nasa-ads/references/`

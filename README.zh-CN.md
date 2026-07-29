@@ -10,7 +10,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.6.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.6.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -35,7 +35,7 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 
 README 是面向读者的使用指南：帮助你在全新电脑安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不再重复安装说明。
 
-Markdown 负责检索式设计、证据判断、安全确认和结果总结；仅使用 Python 标准库的 CLI 负责文献检索、批量查询、引用导出、文献计量、引用建议和资源解析等稳定只读调用。
+Markdown 负责检索式设计、证据判断、安全确认和结果总结；仅使用 Python 标准库的 CLI 负责文献检索、批量查询、引用导出、文献计量、引用建议和资源解析等稳定只读调用。CLI 会拒绝重定向，并把 ADS 错误响应判定为调用失败。
 
 ## 支持的宿主
 
@@ -421,7 +421,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
 
 ### 直接 HTTP 回退
 
-仅在 Python 3 无法运行自带 CLI，或所需端点尚未由 CLI 封装时使用。按 [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) 中的凭据预检和对应平台示例操作。
+仅在 Python 3 无法运行自带 CLI，或所需端点尚未由 CLI 封装时使用。按 [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) 中的凭据预检、重定向规则、响应检查和对应平台示例操作。
 
 ## 开始使用
 
@@ -461,6 +461,8 @@ Skill 会要求代理返回带链接、便于阅读的结果，扩展检索表�
 | `401 Unauthorized` | 设置有效 token，打开新终端，并通过公开论文测试检查 `Bearer` header 路径 |
 | `403 Forbidden` | 检查 ADS 账号权限和 library 权限 |
 | `429 Too Many Requests` | 查看 `X-RateLimit-Remaining` 和 `X-RateLimit-Reset` 响应 header |
+| API 返回意外重定向 | 停止调用并更新已安装 skill 或 endpoint；不要跟随带认证信息的重定向 |
+| HTTP `200` 中包含 ADS 应用错误 | 将操作判定为失败，并报告返回的错误信息 |
 | 检索不到论文 | 删除非必要过滤，尝试同义词和拼写变体，并记录检索范围 |
 | 查询在 `&` 或空格处失效 | 使用会自动进行 URL 编码的自带 CLI；直接 HTTP 回退时需要编码 `q`、`fq` 和 `sort` |
 
@@ -518,7 +520,8 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 
 - 安装前检查这个公开仓库。
 - 把 `ADS_API_TOKEN` 和 `ADS_DEV_KEY` 放在版本控制之外。
-- 删除/清空 ADS library 或修改分享权限前进行确认。
+- 不要跟随带认证信息的 ADS API 重定向。
+- 删除/清空 ADS library、替换/删除 library 备注、修改分享权限或转移所有权前进行确认。
 - 把出版社和数据归档链接视为外部站点。
 - ADS 的 rate limit 由各 endpoint 独立控制，响应 headers 是当前依据。
 
