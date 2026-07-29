@@ -1,6 +1,11 @@
 # ADS Libraries
 
-Use direct HTTP for library operations. Follow [http-fallback.md](http-fallback.md) for credentials, request construction, and error handling.
+Use direct HTTP for library operations:
+
+- Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`; stop with the token-settings link from `SKILL.md` if both are absent.
+- Send the token only as `Authorization: Bearer <token>` to `https://api.adsabs.harvard.edu/v1`.
+- Use an available system client, URL-encode query parameters, send documented JSON bodies, and check the HTTP response before interpreting it.
+- Never print the token, use verbose HTTP tracing, or change semantics after an API failure.
 
 ## Safety Boundaries
 

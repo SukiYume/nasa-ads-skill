@@ -17,17 +17,26 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 6. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
 7. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
 
+## Task Routing
+
+- Identifier or metadata lookup: run one precise `search`; expand only if ambiguous.
+- Citation export: resolve a missing bibcode with a precise `search`, then use `export`.
+- Bibliometrics: use `metrics` on the explicit paper set; do not enter the literature-research workflow.
+- Suggestions or resource links: use `suggest`, `similar(...)`, `useful(...)`, or `resolve`.
+- Literature question or claim check: use Literature Research and its Coverage Standard.
+- Libraries: load `references/libraries.md`. Other unsupported API work: load `references/http-fallback.md`.
+
 ## Transport Selection
 
 1. Resolve `scripts/ads_api.py` relative to this `SKILL.md`.
 2. Try `python3`, then `python`, then `py -3` until one can run the bundled CLI.
 3. Use the CLI for every supported `search`, `bigquery`, `export`, `metrics`, `suggest`, or `resolve` call.
 4. Do not recreate a supported CLI call with curl, PowerShell, temporary code, or another HTTP client.
-5. Use direct HTTP only when Python 3 is unavailable, the requested endpoint is outside the CLI, or the task uses ADS Libraries.
-6. Treat ADS HTTP failures returned by the CLI as API failures. Correct or report them without switching transports.
-7. When direct HTTP is required, read [references/http-fallback.md](references/http-fallback.md) and state the reason in the method note.
+5. Use direct HTTP only when Python 3 is unavailable, the task uses ADS Libraries, the endpoint is outside the CLI, or current official documentation confirms a requested option or format that the installed CLI does not expose.
+6. Do not use fallback to bypass an ADS API failure. Correct or report the failure.
+7. For ADS Libraries, read [references/libraries.md](references/libraries.md). For any other direct HTTP call, read [references/http-fallback.md](references/http-fallback.md) and state the reason in the method note.
 
-## Research Workflow
+## Literature Research
 
 1. Define the question, operational categories, date range, and what evidence would support or weaken the claim.
 2. Build independent query families from exact terms, synonyms, competing interpretations, known objects or authors, and seed-paper citation chains.
@@ -40,9 +49,8 @@ Use the NASA Astrophysics Data System Developer API for literature research, cit
 9. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
 10. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
 
-## Coverage Standard
+### Coverage Standard
 
-- For an identifier lookup or citation export, one precise query may be sufficient.
 - For a focused literature review, use at least two independent query families and inspect the abstracts of material records.
 - For a broad, comprehensive, or claim-level review, cover terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent and citation-ranked results, and all manageable result pages. If the result set is too large, state the sampling rule and uncovered scope.
 - Use `bigquery` to re-fetch complete metadata for the deduplicated evidence set.
@@ -119,7 +127,7 @@ useful(bibcode:2016PhRvL.116f1102A)          useful papers
 similar(bibcode:2016PhRvL.116f1102A)         similar papers
 ```
 
-For a topic review or claim check, apply the Research Workflow and Coverage Standard above. Record the exact query families and material limits for sparse or negative results.
+For a topic review or claim check, apply Literature Research and its Coverage Standard. Record the exact query families and material limits for sparse or negative results.
 
 Use `bigquery` to retrieve metadata for a deduplicated bibcode set:
 

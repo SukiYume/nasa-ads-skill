@@ -1,6 +1,6 @@
 # Direct HTTP Fallback
 
-Read this file only when Python 3 cannot run the bundled CLI or the requested endpoint is outside the CLI. ADS Libraries also use direct HTTP with the additional rules in [libraries.md](libraries.md).
+Read this file only when Python 3 cannot run the bundled CLI or a requested non-library endpoint, option, or format is outside the CLI.
 
 ## Safety
 
