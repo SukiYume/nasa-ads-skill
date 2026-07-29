@@ -1,429 +1,323 @@
 ---
 name: nasa-ads
-description: Use when the user asks to search NASA ADS or astronomy/astrophysics literature, check whether something has been published or mentioned in the literature, verify published claims, retrieve paper metadata (title, authors, abstract, arxiv ID, DOI), export BibTeX or other citations, manage ADS libraries, get citation metrics, find related/recommended papers, or query NASA ADS (Astrophysics Data System). Triggers on English terms and intents such as "paper", "literature", "citation", "bibtex", "arxiv", "ADS", "bibliography", "astrophysics", "published", "mentioned in the literature", "related work", "library", "h-index", and "references"; also use for Chinese requests such as "文献", "论文", "查一下文献", "有没有人发表", "有没有文献提到", "是否有相关论文", "已有研究", "文献调研", "论文调研", "论文检索", "查论文", "查文献", "引用导出", "获取 BibTeX", "ADS 文献", "arXiv 论文", "天文文献", "天文论文", and "天体物理论文".
+description: Search and investigate NASA ADS astronomy and astrophysics literature. Use when a user asks to find papers, check whether a claim or topic appears in published literature, retrieve titles/authors/abstracts/DOIs/arXiv IDs, export BibTeX or other citations, manage ADS libraries, inspect citation metrics, find related papers, or resolve full-text and data links. Trigger on terms such as paper, literature, citation, bibliography, BibTeX, arXiv, ADS, published, related work, references, library, h-index, astronomy, and astrophysics, plus Chinese requests including 文献, 论文, 查文献, 查论文, 文献调研, 论文调研, 论文检索, 有没有人发表, 有没有文献提到, 是否有相关论文, 已有研究, 引用导出, 获取 BibTeX, ADS 文献, arXiv 论文, 天文文献, 天文论文, and 天体物理论文.
 ---
 
-# NASA ADS API Skill Reference
+# NASA ADS
 
-Focused reference for practical NASA Astrophysics Data System literature research workflows. Use it to find papers, inspect metadata, build reading lists, export citations, check metrics, and retrieve related-paper or full-text/data links.
+Use the NASA Astrophysics Data System Developer API for literature search, metadata retrieval, citation export, library management, bibliometrics, related-paper discovery, and resource-link resolution.
 
-This is not a complete ADS API manual. If the user asks for an ADS capability not covered here, first solve it with the documented search/export/library/metrics/resolver workflows when possible, then consult the official ADS API documentation.
+## Core Rules
+
+1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every workflow.
+2. Stop and give the token setup steps below when both variables are absent.
+3. Treat the token as a secret. Never print it, log it, commit it, store it in a source file, or place it in a URL.
+4. Use `https://api.adsabs.harvard.edu/v1` as the API base and send `Authorization: Bearer <token>` in the request header.
+5. URL-encode every search parameter. ADS queries and bibcodes can contain `&`, spaces, quotes, parentheses, and other reserved characters.
+6. Check the HTTP status before parsing a response. Surface a concise error and corrective action when a request fails.
+7. Keep research calls read-only by default. Confirm immediately before library deletion, library emptying, bulk removal, permission changes, or another destructive/shared-library operation.
+8. Describe an empty search as “no matching records found for these queries.” A single query cannot establish that no relevant literature exists.
+9. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for endpoints outside the workflows covered here.
 
 ## Operating Workflow
 
-1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`; if neither exists, tell the user how to create and set an ADS API token before asking them to retry or provide a token for the current session.
-2. Translate the user request into the narrowest ADS query or endpoint call.
-3. URL-encode search parameters with `urlencode()` or `curl -G --data-urlencode`.
-4. Present research results with title, authors, year, venue, citation count, ADS URL, DOI, and arXiv URL when available.
-5. For literature research, summarize the result set by themes, recency, venue, and highly cited papers. Avoid raw JSON dumps.
-6. Confirm before destructive library operations such as delete, empty, or bulk remove.
+1. Translate the request into one or more focused ADS queries or endpoint calls.
+2. Run the credential preflight without displaying the credential.
+3. Use an HTTP client already available on the system: `curl`, PowerShell `Invoke-RestMethod`, or Python’s standard library.
+4. Request only the fields and row count needed for the task.
+5. Inspect response status, response shape, pagination, and rate-limit headers when relevant.
+6. For literature research, refine weak queries, deduplicate by bibcode, inspect abstracts, and distinguish direct evidence from adjacent work.
+7. Return a reader-facing synthesis with links and a short search-method note. Avoid raw JSON dumps unless the user requests them.
 
-## Prerequisites
+## Token Setup
 
-- ADS API token from https://ui.adsabs.harvard.edu/#user/settings/token
-- Header: `Authorization: Bearer <token>`
-- Base URL: `https://api.adsabs.harvard.edu/v1`
+When neither supported variable is set, tell the user to:
 
-**Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first.** If not found, use the setup steps below before asking the user to retry or provide a token for the current session. Never hardcode or log it.
-
-When a token is missing, give the user these setup steps:
-
-1. Open https://ui.adsabs.harvard.edu/#user/settings/token.
-2. Register or sign in to ADS.
-3. If the direct link does not open the token page, go to account settings and choose **API Token**.
-4. Click **Generate a new key**.
+1. Open [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token).
+2. Register for ADS or sign in.
+3. Open account settings and choose **API Token** if the direct link lands elsewhere.
+4. Select **Generate a new key**.
 5. Copy the token and keep it private.
-6. Save it as `ADS_API_TOKEN` or `ADS_DEV_KEY`, then restart the terminal or assistant session.
+6. Set it for the current terminal session:
 
----
+```bash
+export ADS_API_TOKEN='paste-your-token-here'
+```
 
-## 1. Search API
+```powershell
+$env:ADS_API_TOKEN = 'paste-your-token-here'
+```
+
+7. Retry the request in that terminal, or restart the host assistant after setting a persistent user environment variable.
+
+If the user provides a token for the current session, keep it in process memory only and avoid commands that echo command lines or headers.
+
+### Safe Credential Preflight
+
+POSIX shell:
+
+```bash
+NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
+if [ -z "$NASA_ADS_TOKEN" ]; then
+  echo "Set ADS_API_TOKEN or ADS_DEV_KEY, then retry." >&2
+  exit 2
+fi
+```
+
+PowerShell:
+
+```powershell
+$nasaAdsToken = if ($env:ADS_API_TOKEN) {
+  $env:ADS_API_TOKEN
+} else {
+  $env:ADS_DEV_KEY
+}
+
+if (-not $nasaAdsToken) {
+  throw 'Set ADS_API_TOKEN or ADS_DEV_KEY, then retry.'
+}
+```
+
+## HTTP Request Patterns
+
+Prefer `curl -fsS` on POSIX shells. Use `-G` with `--data-urlencode` for search parameters. Avoid `curl -v` because verbose output can reveal the authorization header.
+
+```bash
+curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
+  -H "Authorization: Bearer $NASA_ADS_TOKEN" \
+  --data-urlencode 'q=title:"gravitational waves"' \
+  --data-urlencode 'fl=bibcode,title,author,year,pub,doi,identifier,citation_count' \
+  --data-urlencode 'rows=10' \
+  --data-urlencode 'sort=citation_count desc'
+```
+
+Use `Invoke-RestMethod` in PowerShell:
+
+```powershell
+$nasaAdsQuery = [uri]::EscapeDataString('title:"gravitational waves"')
+$nasaAdsFields = [uri]::EscapeDataString(
+  'bibcode,title,author,year,pub,doi,identifier,citation_count'
+)
+$nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query?q=$nasaAdsQuery&fl=$nasaAdsFields&rows=10"
+
+Invoke-RestMethod -Method Get -Uri $nasaAdsUri -Headers @{
+  Authorization = "Bearer $nasaAdsToken"
+}
+```
+
+Use `urllib.request` when Python is the only available client. Keep the implementation within the standard library so a fresh system does not require `requests`.
+
+## 1. Search
 
 ### Endpoint
 
-```
-GET /search/query?q=<query>&fl=<fields>&rows=<N>&sort=<field>+<dir>
-```
-
-### Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `q` | Search query (required). Supports: `author:`, `title:`, `abs:`, `bibcode:`, `doi:`, `arxiv:`, `year:`, `object:`, `full:` (full text) |
-| `fl` | Comma-separated return fields (default: `id` only) |
-| `rows` | Number of results (default: 10, max: 2000) |
-| `start` | Offset for pagination |
-| `sort` | Sort field + direction, e.g. `citation_count desc`, `date desc`, `read_count desc` (`+` = space in URL) |
-| `fq` | Filter query, e.g. `database:astronomy`, `property:refereed`, `doctype:article` |
-
-### Available Fields (`fl=`)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `bibcode` | string | Canonical ADS bibcode |
-| `title` | array | Paper title |
-| `author` | array | Author names |
-| `abstract` | string | Abstract text |
-| `year` | string | Publication year |
-| `pub` | string | Journal/publication name |
-| `doi` | array | Digital object identifier |
-| `identifier` | array | All IDs (bibcodes, DOIs, arxiv IDs) |
-| `citation_count` | int | Number of citations |
-| `read_count` | int | Number of reads |
-| `keyword` | array | Keywords |
-| `aff` | array | Author affiliations |
-| `first_author` | string | First author name |
-| `property` | array | Properties: REFEREED, OPENACCESS, etc. |
-| `doctype` | string | Document type: article, eprint, inproceedings, etc. |
-| `alternate_bibcode` | array | Alternate bibcodes (e.g. arXiv version) |
-| `data` | array | Data sources linked to this paper |
-| `citation` | array | Bibcodes of papers that cite this one |
-| `reference` | array | Bibcodes of papers referenced by this one |
-
-### Typical Field Set
-
-```
-fl=bibcode,title,author,abstract,year,pub,doi,identifier,citation_count
+```text
+GET /search/query
 ```
 
-### Query Syntax
+### Main Parameters
 
-```
-q=author:"Einstein, A"                        # exact author
-q=author:"^Einstein, A"                       # first author only
-q=title:"gravitational waves"                 # title search
-q=abs:"dark matter"                           # abstract search
-q=full:"machine learning"                     # full text search
-q=bibcode:2016PhRvL.116f1102A                 # exact bibcode
-q=arxiv:1602.03837                            # by arxiv ID
-q=doi:10.1103/PhysRevLett.116.061102          # by DOI
-q=year:2020                                   # specific year
-q=year:2020-2024                              # year range
-q=object:M31                                  # astronomical object
-q=black+holes&fq=database:astronomy           # with database filter
-q=author:"Spergel, D"&fq=property:refereed    # refereed only
-q=bibstem:"ApJ"                               # by journal abbreviation
-q=orcid:0000-0000-0000-0000                   # by ORCID
-q=citations(bibcode:2016PhRvL.116f1102A)      # papers citing a paper
-q=references(bibcode:2016PhRvL.116f1102A)     # references of a paper
-q=trending(exoplanets)                        # trending papers
-q=useful(bibcode:2016PhRvL.116f1102A)         # useful/related papers
-q=similar(bibcode:2016PhRvL.116f1102A)        # similar papers
+| Parameter | Purpose |
+|---|---|
+| `q` | Required ADS query |
+| `fl` | Comma-separated return fields; ADS otherwise returns only `id` |
+| `rows` | Results per page; default 10, maximum 2000 |
+| `start` | Pagination offset |
+| `sort` | Sort expression such as `date desc` or `citation_count desc` |
+| `fq` | Filter query such as `database:astronomy`, `property:refereed`, or `doctype:article` |
+
+Use this practical field set:
+
+```text
+bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype
 ```
 
-These are raw ADS query values. When calling `/search/query`, URL-encode them with `urlencode()` or `curl -G --data-urlencode`; bibcodes such as `2012A&A...542A..16R` contain `&` and will fail if interpolated directly into a URL.
+Useful query forms:
 
-Operators: `+` (AND), `OR`, `-` (NOT), `""` (exact phrase), `*` (wildcard).
-
-### Big Query (Batch Lookup)
-
-Look up up to 2000 bibcodes at once:
-
+```text
+author:"Einstein, A"                         exact author
+author:"^Einstein, A"                        first author
+title:"gravitational waves"                  title phrase
+abs:"dark matter"                            abstract
+full:"machine learning"                      full text
+bibcode:2016PhRvL.116f1102A                  bibcode
+arxiv:1602.03837                             arXiv ID
+doi:10.1103/PhysRevLett.116.061102           DOI
+year:2020-2024                               year range
+object:M31                                   astronomical object
+bibstem:ApJ                                  journal abbreviation
+orcid:0000-0002-1825-0097                    ORCID
+citations(bibcode:2016PhRvL.116f1102A)       citing papers
+references(bibcode:2016PhRvL.116f1102A)      cited references
+trending(exoplanets)                         trending papers
+useful(bibcode:2016PhRvL.116f1102A)          useful papers
+similar(bibcode:2016PhRvL.116f1102A)         similar papers
 ```
+
+Pass `fq` separately from `q`. Apply it only when the user requests that restriction or it clearly improves the research task.
+
+### Literature-Research Query Ladder
+
+For a topic review or published-claim check:
+
+1. Search the key phrase in `title:` and `abs:`.
+2. Search synonyms, abbreviations, spelling variants, author names, and relevant astronomical objects.
+3. Add year, refereed-status, collection, or document-type filters when useful.
+4. Review both recent results (`date desc`) and influential results (`citation_count desc`).
+5. Page beyond the first ten results when the result set or user request requires it.
+6. Deduplicate on `bibcode`; treat alternate bibcodes as versions of the same work when appropriate.
+7. Read abstracts before describing a paper as evidence for the claim.
+8. State the exact query families and material limits when reporting a negative search result.
+
+### Batch Bibcode Lookup
+
+Use big query for up to 2000 bibcodes:
+
+```text
 POST /search/bigquery?q=*:*&fl=bibcode,title&rows=2000&fq={!bitset}
 Content-Type: big-query/csv
-Body:
+```
+
+Request body:
+
+```text
 bibcode
 1907AN....174...59.
 1908PA.....16..445.
 ```
 
----
+## 2. Citation Export
 
-## 2. Export API
+Use `GET` for one bibcode and `POST` for multiple bibcodes:
 
-### Endpoints
+```text
+GET  /export/<format>/<bibcode>
+POST /export/<format>
+```
 
-**Single bibcode:** `GET /export/<format>/<bibcode>`
-
-**Multiple bibcodes:** `POST /export/<format>`
-
-Single-bibcode GET exports return raw text in the requested format. Multi-bibcode POST exports return JSON with an `export` field.
+Single-record `GET` responses contain raw citation text. Multi-record `POST` responses contain JSON with an `export` field.
 
 ```json
-{"bibcode": ["<bibcode1>", "<bibcode2>"], "sort": "first_author asc"}
+{"bibcode":["2016PhRvL.116f1102A","2017ApJ...848L..12A"],"sort":"first_author asc"}
 ```
 
-### Supported Formats
+Supported standard formats:
 
-| Format | Endpoint | Use Case |
-|--------|----------|----------|
-| `bibtex` | `/export/bibtex` | Standard BibTeX |
-| `bibtexabs` | `/export/bibtexabs` | BibTeX + abstract |
-| `ads` | `/export/ads` | ADS generic tagged format |
-| `aastex` | `/export/aastex` | AASTeX (LaTeX) |
-| `mnras` | `/export/mnras` | MNRAS style |
-| `icarus` | `/export/icarus` | Icarus style |
-| `soph` | `/export/soph` | Solar Physics |
-| `endnote` | `/export/endnote` | EndNote |
-| `ris` | `/export/ris` | RIS/Refman |
-| `refworks` | `/export/refworks` | RefWorks |
-| `medlars` | `/export/medlars` | MEDLARS |
-| `procite` | `/export/procite` | ProCite |
-| `ieee` | `/export/ieee` | IEEE format |
-| `votable` | `/export/votable` | VOTable XML |
-| `dcxml` | `/export/dcxml` | Dublin Core XML |
-| `refxml` | `/export/refxml` | REF-XML |
-| `refabsxml` | `/export/refabsxml` | REFABS-XML |
-| `rss` | `/export/rss` | RSS feed XML |
+| Group | Formats |
+|---|---|
+| BibTeX/tagged | `bibtex`, `bibtexabs`, `ads`, `endnote`, `procite`, `ris`, `refworks`, `medlars` |
+| LaTeX | `aastex`, `icarus`, `mnras`, `soph` |
+| XML/feed | `dcxml`, `refxml`, `refabsxml`, `votable`, `rss` |
+| Other | `ieee` |
 
----
+Return citation exports in a fenced code block. Offer an appropriate extension such as `.bib` or `.ris` when the user wants a file.
 
-## 3. Libraries API
+## 3. Libraries
 
-Manage personal and shared paper collections.
+Use the library ID returned by ADS; a library name is not an endpoint identifier.
 
-### List All Libraries
+| Task | Method and path | Body or notes |
+|---|---|---|
+| List libraries | `GET /biblib/libraries` | Supports `start`, `rows`, `sort`, `order` |
+| View library | `GET /biblib/libraries/<id>` | Add `raw=true` for exact stored bibcodes |
+| Create library | `POST /biblib/libraries` | `name`, `description`, `public`, `bibcode[]` |
+| Add/remove papers | `POST /biblib/documents/<id>` | `{"bibcode":[...],"action":"add"}` or `remove` |
+| Update metadata | `PUT /biblib/documents/<id>` | Include only changed fields |
+| Delete library | `DELETE /biblib/documents/<id>` | Confirm immediately before the call |
+| Add/remove by query | `POST /biblib/query/<id>` | `params` plus `action` |
+| Set operations | `POST /biblib/libraries/operations/<id>` | `union`, `intersection`, `difference`, `copy`, `empty` |
+| View permissions | `GET /biblib/permissions/<id>` | Read-only |
+| Change permissions | `POST /biblib/permissions/<id>` | `email` plus changed `read`/`write`/`admin` flags |
 
-```
-GET /biblib/libraries?start=0&rows=100&sort=date_last_modified&order=desc
-```
+Confirm immediately before:
 
-Returns: `libraries[]` with `name`, `id`, `description`, `num_documents`, `public`, `permission`, `date_created`, `date_last_modified`.
+- deleting a library;
+- emptying a library;
+- bulk-removing documents;
+- granting, revoking, or changing another user’s permissions.
 
-### Get Library Contents
+For `union`, `intersection`, and `difference`, provide a result-library name when the user supplied one. For `copy`, identify the secondary destination library. For `empty`, omit `libraries`.
 
-```
-GET /biblib/libraries/<library_id>
-```
+## 4. Metrics
 
-Returns: `documents[]` (bibcode list), `metadata`, `solr` (search results).
-
-Add `?raw=true` to get exact bibcodes even if not in ADS.
-
-### Create Library
-
-```
-POST /biblib/libraries
-{"name": "My Library", "description": "...", "public": false, "bibcode": ["bibcode1", "bibcode2"]}
-```
-
-### Add/Remove Papers
-
-```
-POST /biblib/documents/<library_id>
-{"bibcode": ["bibcode1", "bibcode2"], "action": "add"}    # or "remove"
-```
-
-### Add Papers by Query
-
-```
-POST /biblib/query/<library_id>
-{"params": {"q": "black holes", "fq": "database:astronomy"}, "action": "add"}
-```
-
-Or via GET: `GET /biblib/query/<library_id>?q=black+holes`
-
-### Update Library Metadata
-
-```
-PUT /biblib/documents/<library_id>
-{"name": "New Name", "description": "New desc", "public": true}
-```
-
-### Delete Library
-
-```
-DELETE /biblib/documents/<library_id>
-```
-
-### Library Set Operations
-
-```
-POST /biblib/libraries/operations/<primary_library_id>
-{"action": "union", "libraries": ["<secondary_id>"], "name": "Result Library"}
-```
-
-Supported actions: `union`, `intersection`, `difference`, `copy`, `empty`.
-
-### Permissions
-
-```
-GET /biblib/permissions/<library_id>
-POST /biblib/permissions/<library_id>
-{"email": "user@example.com", "permission": {"read": true, "write": true}}
-```
-
-Roles: `owner` > `admin` > `write` > `read`. Public libraries are readable by all.
-
----
-
-## 4. Metrics API
-
-Get citation statistics, h-index, and other bibliometric indicators.
-
-```
+```text
 POST /metrics
-{"bibcodes": ["bibcode1", "bibcode2"], "types": ["basic", "citations", "indicators"]}
 ```
 
-### Available Metric Types
-
-| Type | Returns |
-|------|---------|
-| `basic` | Publication count, usage stats, normalized counts |
-| `citations` | Citation stats (total, self, refereed, normalized) |
-| `indicators` | h-index, g-index, i10-index, m-index, tori, riq, read10 |
-| `histograms` | Citation/read/publication histograms over time |
-| `timeseries` | Time series for h-index, g-index, etc. |
-
----
-
-## 5. Citation Helper
-
-Suggest missing citations using "friends of friends" analysis.
-
+```json
+{
+  "bibcodes": ["2016PhRvL.116f1102A"],
+  "types": ["basic", "citations", "indicators"]
+}
 ```
+
+Available type values are `basic`, `citations`, `indicators`, `histograms`, and `timeseries`.
+
+The response uses keys containing spaces, including:
+
+- `basic stats`
+- `basic stats refereed`
+- `citation stats`
+- `citation stats refereed`
+- `indicators`
+- `indicators refereed`
+
+Read the returned keys before formatting the result. Report the denominator and paper set for aggregate metrics. Avoid presenting an h-index from a small arbitrary subset as an author-level h-index.
+
+## 5. Suggested and Related Papers
+
+Suggest potentially missing citations:
+
+```text
 POST /citation_helper
-{"bibcodes": ["bibcode1", "bibcode2"]}
+{"bibcodes":["2016PhRvL.116f1102A"]}
 ```
 
-Returns up to 10 suggested papers with `bibcode`, `title`, `author`, `score`.
+The response is an array of suggestions. Present title, author, bibcode, and score when available. Describe the result as an algorithmic suggestion, then assess topical relevance from metadata or abstract before recommending it.
 
----
+Find related records through search:
 
-## 6. Resolver (Links to External Resources)
-
-Get links to full text, data, and other external resources.
-
-```
-GET /resolver/<bibcode>              # all available links
-GET /resolver/<bibcode>/esource      # full text sources
-GET /resolver/<bibcode>/data         # data links
-GET /resolver/<bibcode>/citations    # citation links
-GET /resolver/<bibcode>/references   # reference links
-GET /resolver/<bibcode>/associated   # associated articles
+```text
+q=similar(bibcode:2016PhRvL.116f1102A)
+q=useful(bibcode:2016PhRvL.116f1102A)
 ```
 
-Full text link types: `pub_pdf`, `eprint_pdf`, `pub_html`, `eprint_html`, `ads_scan`.
+## 6. Full Text and Data Links
 
-Data link types include: `simbad`, `ned`, `vizier`, `chandra`, `mast`, `heasarc`, `jwst`, `zenodo`, `github`, and many more.
-
----
-
-## 7. Extracting arXiv Link
-
-The `identifier` field contains arxiv IDs:
-1. Find entry matching `arXiv:XXXX.XXXXX` in the `identifier` array
-2. Construct: `https://arxiv.org/abs/<id>`
-
-ADS abstract page: `https://ui.adsabs.harvard.edu/abs/<bibcode>`
-
----
-
-## Implementation Pattern (Python)
-
-```python
-import os, requests, json
-from urllib.parse import urlencode
-
-token = os.environ.get("ADS_API_TOKEN") or os.environ.get("ADS_DEV_KEY") or "<user_token>"
-headers = {"Authorization": f"Bearer {token}"}
-BASE = "https://api.adsabs.harvard.edu/v1"
-
-# Search
-params = urlencode({
-    "q": 'author:"Einstein" title:"relativity"',
-    "fl": "bibcode,title,author,abstract,year,doi,identifier,citation_count",
-    "rows": 10,
-    "sort": "citation_count desc"
-})
-r = requests.get(f"{BASE}/search/query?{params}", headers=headers)
-docs = r.json()["response"]["docs"]
-
-# Extract info
-for doc in docs:
-    title = doc.get("title", [""])[0]
-    authors = ", ".join(doc.get("author", []))
-    abstract = doc.get("abstract", "")
-    bibcode = doc.get("bibcode", "")
-    doi = doc.get("doi", [""])[0] if doc.get("doi") else ""
-    arxiv_id = next((i for i in doc.get("identifier", []) if "arXiv:" in i), "")
-    arxiv_url = f"https://arxiv.org/abs/{arxiv_id.replace('arXiv:', '')}" if arxiv_id else ""
-    ads_url = f"https://ui.adsabs.harvard.edu/abs/{bibcode}"
-
-# Get BibTeX
-bibcodes = [d["bibcode"] for d in docs]
-r = requests.post(f"{BASE}/export/bibtex", headers=headers,
-                   data=json.dumps({"bibcode": bibcodes}))
-bibtex = r.json()["export"]
-
-# List user libraries
-r = requests.get(f"{BASE}/biblib/libraries", headers=headers)
-libraries = r.json()["libraries"]
-
-# Get library contents
-lib_id = libraries[0]["id"]
-r = requests.get(f"{BASE}/biblib/libraries/{lib_id}", headers=headers)
-lib_bibcodes = r.json()["documents"]
-
-# Get metrics
-r = requests.post(f"{BASE}/metrics", headers=headers,
-                   data=json.dumps({"bibcodes": bibcodes, "types": ["indicators"]}))
-indicators = r.json()["indicators"]
-
-# Citation helper
-r = requests.post(f"{BASE}/citation_helper", headers=headers,
-                   data=json.dumps({"bibcodes": bibcodes}))
-suggestions = r.json()
+```text
+GET /resolver/<bibcode>
+GET /resolver/<bibcode>/<link_type>
 ```
 
-## Implementation Pattern (curl)
+Common link types include `esource`, `data`, `citations`, `references`, and `associated`. Resolver results can include publisher pages, arXiv, ADS scans, and archives such as SIMBAD, NED, VizieR, MAST, HEASARC, Zenodo, and GitHub.
 
-```bash
-TOKEN="${ADS_API_TOKEN:-$ADS_DEV_KEY}"
+Prefer a lawful open-access or author-posted link when several full-text sources are available. Never imply that a resolver link guarantees free access.
 
-# Search
-curl -sG "https://api.adsabs.harvard.edu/v1/search/query" \
-  -H "Authorization: Bearer $TOKEN" \
-  --data-urlencode 'q=author:"Einstein"' \
-  --data-urlencode 'fl=bibcode,title,author' \
-  --data-urlencode 'rows=5'
+## Result Presentation
 
-# Export BibTeX (single, GET)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/export/bibtex/2016PhRvL.116f1102A"
+For literature results, include:
 
-# Export BibTeX (multiple, POST)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -X POST "https://api.adsabs.harvard.edu/v1/export/bibtex" \
-  -d '{"bibcode":["2016PhRvL.116f1102A","2017ApJ...848L..12A"]}'
+1. A concise answer to the user’s question.
+2. A table or list with title, first authors, year, venue, citation count, and bibcode.
+3. Clickable ADS links in the form `https://ui.adsabs.harvard.edu/abs/<bibcode>`.
+4. DOI links and arXiv links when present.
+5. A thematic synthesis for multi-paper research.
+6. A search-method note with query families, filters, sorting, pagination, and the search date when completeness matters.
+7. A calibrated limitation statement for sparse or negative results.
 
-# List libraries
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/biblib/libraries"
+Extract an arXiv link by finding an `identifier` entry beginning with `arXiv:` and appending the remaining ID to `https://arxiv.org/abs/`.
 
-# Get library contents
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.adsabs.harvard.edu/v1/biblib/libraries/<library_id>"
+## Errors and Rate Limits
 
-# Metrics
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -X POST "https://api.adsabs.harvard.edu/v1/metrics" \
-  -d '{"bibcodes":["2016PhRvL.116f1102A"],"types":["indicators"]}'
-```
+| Symptom | Response |
+|---|---|
+| `401 Unauthorized` | Confirm that a current token exists and the header begins with `Bearer ` |
+| `403 Forbidden` | Check account/library permissions and the requested operation |
+| `404 Not Found` | Recheck bibcode, library ID, endpoint, and URL encoding |
+| `429 Too Many Requests` | Read `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; wait until reset |
+| Only `id` is returned | Add the required fields to `fl` |
+| Empty citation/reference arrays | Request `citation` or `reference` explicitly in `fl` |
+| Query breaks at `&` | Pass the query through `--data-urlencode` or an equivalent encoder |
+| Empty result set | Check syntax, remove unnecessary filters, try synonyms, and report the searched forms |
 
----
-
-## Rate Limits
-
-- Each endpoint rate-limited independently (~5000/day for search)
-- Check `X-RateLimit-Remaining` response header
-- Resets at midnight UTC
-- Big query: ~100 requests/day
-
-## Common Mistakes
-
-| Mistake | Fix |
-|---------|-----|
-| Getting only `id` back | Must specify `fl=bibcode,title,...` explicitly |
-| `title` is a string | `title` is an array, use `title[0]` |
-| Missing arxiv link | Check `identifier` array for `arXiv:` prefix entries |
-| URL encoding issues | Use `urlencode()` for query params, especially `&` in journal names |
-| Too few results | Default `rows=10`; set explicitly for more |
-| 401 Unauthorized | Token expired or missing `Bearer ` prefix |
-| Library 404 | Use library `id` (hash string), not `name` |
-| Metrics returns empty | Use `bibcodes` (plural) as the key, not `bibcode` |
-| Citation/reference fields empty | These fields must be explicitly requested in `fl=` |
+ADS rate limits are endpoint-specific and may change. Use response headers as the current source of truth.

@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "1.3.1",
-  "description": "Search NASA ADS literature, check published claims, export citations, inspect libraries, get citation metrics, and find related papers from Codex.",
+  "version": "1.4.0",
+  "description": "Research NASA ADS literature, check published claims with calibrated search scope, export citations, manage libraries, inspect metrics, and find related papers from Codex.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "NASA ADS",
     "shortDescription": "NASA ADS literature and citation workflows",
-    "longDescription": "Reusable Codex skill bundle for NASA ADS literature search, published-claim checks, citation export, library management, metrics, and related-paper lookups.",
+    "longDescription": "Reusable Codex skill bundle for scoped NASA ADS literature research, published-claim checks, citation export, library management, metrics, and related-paper lookups.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
