@@ -10,10 +10,9 @@ from contextlib import redirect_stderr
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
-from unittest.mock import patch
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = (
@@ -42,7 +41,7 @@ class FakeResponse:
     def read(self) -> bytes:
         return self._body
 
-    def __enter__(self) -> "FakeResponse":
+    def __enter__(self) -> FakeResponse:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -105,11 +104,10 @@ class TokenTests(unittest.TestCase):
 
 class ArgumentTests(unittest.TestCase):
     def test_rows_are_limited_to_ads_page_size(self):
-        with redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit) as context:
-                ads_api.build_parser().parse_args(
-                    ["search", "--query", "stars", "--rows", "2001"]
-                )
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as context:
+            ads_api.build_parser().parse_args(
+                ["search", "--query", "stars", "--rows", "2001"]
+            )
         self.assertEqual(context.exception.code, 2)
 
 
@@ -254,13 +252,22 @@ class RequestTests(unittest.TestCase):
 
     def test_suggest_posts_bibcodes(self):
         response = FakeResponse(b"[]")
-        code, stdout, _, opener = run_cli(["suggest", "2016PhRvL.116f1102A"], response)
+        code, stdout, _, opener = run_cli(
+            ["suggest", "2016PhRvL.116f1102A", "2017ApJ...848L..12A"], response
+        )
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout), [])
         self.assertEqual(
             json.loads(opener.requests[0].data),
-            {"bibcodes": ["2016PhRvL.116f1102A"]},
+            {"bibcodes": ["2016PhRvL.116f1102A", "2017ApJ...848L..12A"]},
         )
+
+    def test_suggest_rejects_single_bibcode(self):
+        response = FakeResponse(b"[]")
+        code, _, stderr, opener = run_cli(["suggest", "2016PhRvL.116f1102A"], response)
+        self.assertEqual(code, 2)
+        self.assertIn("at least two distinct bibcodes", stderr)
+        self.assertEqual(opener.requests, [])
 
     def test_resolver_encodes_bibcode_and_link_type(self):
         response = FakeResponse(b"[]")
@@ -351,18 +358,20 @@ class ErrorTests(unittest.TestCase):
         redirect_thread.start()
 
         try:
-            with patch.object(
-                ads_api,
-                "API_BASE_URL",
-                f"http://127.0.0.1:{redirect_server.server_port}",
+            with (
+                patch.object(
+                    ads_api,
+                    "API_BASE_URL",
+                    f"http://127.0.0.1:{redirect_server.server_port}",
+                ),
+                self.assertRaises(ads_api.CliError) as context,
             ):
-                with self.assertRaises(ads_api.CliError) as context:
-                    ads_api.request_api(
-                        "GET",
-                        "/start",
-                        "test-secret",
-                        timeout=5,
-                    )
+                ads_api.request_api(
+                    "GET",
+                    "/start",
+                    "test-secret",
+                    timeout=5,
+                )
             self.assertIn("redirect was not followed", str(context.exception))
             self.assertEqual(forwarded_authorization, [])
         finally:
@@ -378,6 +387,7 @@ class ErrorTests(unittest.TestCase):
         headers["X-RateLimit-Remaining"] = "0"
 
         def failing_opener(request, timeout):
+            self.assertEqual(timeout, 30.0)
             raise HTTPError(
                 request.full_url,
                 429,

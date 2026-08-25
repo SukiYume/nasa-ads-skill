@@ -15,11 +15,11 @@ The subcommand and arguments: $ARGUMENTS
 
 ## Instructions
 
-1. Use `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py`. Try `python3`, then `python`, then `py -3`. Do not recreate a supported call with curl, PowerShell, or temporary code. If the CLI reports a missing token, direct the user to https://ui.adsabs.harvard.edu/#user/settings/token and ask them to set `ADS_API_TOKEN` or `ADS_DEV_KEY`.
+1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/ads-cli.md`, then use its bundled CLI, launch order, token boundary, and failure handling.
 
 2. Parse the subcommand from `$ARGUMENTS`:
 
-### `suggest <bibcode1> [bibcode2] ...` (default)
+### `suggest <bibcode1> <bibcode2> [bibcode3] ...` (default)
 Suggest missing citations via "friends of friends" analysis:
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" suggest \
@@ -27,6 +27,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" suggest \
   2017ApJ...848L..12A
 ```
 Display each suggestion: title, author, bibcode, score. Label it as an algorithmic suggestion and inspect topical relevance before recommending it.
+The service models an existing bibliography, so require at least two distinct bibcodes. For a single seed paper, use `similar` instead.
 
 ### `links <bibcode>`
 Get links to full text, data archives, and other external resources:
@@ -35,6 +36,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" resolve \
   2016PhRvL.116f1102A
 ```
 Display available link types (PDF, HTML, data sources, etc.).
+
+Resolver labels identify candidates. When the user asks to retrieve or read article content, use `/nasa-ads:ads-fulltext` or follow `references/fulltext.md`; an arXiv `/abs/` page is metadata only.
 
 ### `similar <bibcode>`
 Find similar papers via the search API:
@@ -45,4 +48,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
   --rows 10
 ```
 
-3. If all Python 3 commands are unavailable, read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/http-fallback.md`. The CLI checks `ADS_API_TOKEN` and then `ADS_DEV_KEY`; never print or log the token. Check the exit status before parsing and present results with ADS links.
+3. Check the CLI exit status before parsing and present results with ADS links.

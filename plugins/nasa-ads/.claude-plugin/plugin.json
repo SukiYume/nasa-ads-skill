@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "description": "Search NASA ADS (Astrophysics Data System) for academic papers, check published claims, retrieve metadata, export BibTeX, manage libraries, get citation metrics, and find related papers via the ADS API.",
-  "version": "1.6.1",
+  "description": "Search NASA ADS for papers, read lawful full text, preserve searchable multi-topic paper knowledge, reuse prior reading, check claims, export citations, manage libraries, inspect metrics, and find related work.",
+  "version": "1.8.0",
   "homepage": "https://github.com/SukiYume/nasa-ads-skill",
   "repository": "https://github.com/SukiYume/nasa-ads-skill",
   "license": "MIT",
@@ -13,7 +13,10 @@
     "research",
     "citations",
     "bibtex",
-    "arxiv"
+    "arxiv",
+    "fulltext",
+    "database",
+    "literature-memory"
   ],
   "author": {
     "name": "Echo",

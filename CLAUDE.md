@@ -9,8 +9,10 @@ This repository packages the NASA ADS skill for Claude Code, Codex, and Gemini-c
 - Marketplace: `.claude-plugin/marketplace.json`
 - Shared skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
+- Bundled full-text CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py`
+- Bundled literature-memory CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py`
 - Conditional references: `plugins/nasa-ads/skills/nasa-ads/references/`
-- Commands are namespaced by plugin id: `/nasa-ads:ads-search`, `/nasa-ads:ads-bibtex`, `/nasa-ads:ads-library`, `/nasa-ads:ads-metrics`, `/nasa-ads:ads-cite`
+- Commands are namespaced by plugin id: `/nasa-ads:ads-search`, `/nasa-ads:ads-bibtex`, `/nasa-ads:ads-library`, `/nasa-ads:ads-metrics`, `/nasa-ads:ads-cite`, `/nasa-ads:ads-fulltext`, `/nasa-ads:ads-memory`
 
 ## API Token
 
@@ -18,7 +20,7 @@ The ADS API requires a personal token. Check `ADS_API_TOKEN` first, then `ADS_DE
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
 
-Use the bundled Python CLI for stable read-only API calls. Keep research judgment and library safety confirmations in Markdown.
+Use the bundled Python CLIs for stable read-only API calls, deterministic lawful full-text retrieval, and version-aware local literature memory. Keep article reading, visual interpretation, rich digest authorship, research judgment, and destructive library safety confirmations in Markdown.
 
 ## Documentation and Release Checks
 

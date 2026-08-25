@@ -1,228 +1,103 @@
 ---
 name: nasa-ads
-description: Search and investigate NASA ADS astronomy and astrophysics literature. Use when a user asks to find papers, check whether a claim or topic appears in published literature, retrieve titles/authors/abstracts/DOIs/arXiv IDs, export BibTeX or other citations, manage ADS libraries, inspect citation metrics, find related papers, or resolve full-text and data links. Trigger on terms such as paper, literature, citation, bibliography, BibTeX, arXiv, ADS, published, related work, references, library, h-index, astronomy, and astrophysics, plus Chinese requests including 文献, 论文, 查文献, 查论文, 文献调研, 论文调研, 论文检索, 有没有人发表, 有没有文献提到, 是否有相关论文, 已有研究, 引用导出, 获取 BibTeX, ADS 文献, arXiv 论文, 天文文献, 天文论文, and 天体物理论文.
+description: Search and investigate NASA ADS astronomy and astrophysics literature, retrieve and read lawful article full text, preserve rich multi-topic paper knowledge in a searchable local database, reuse prior full-text reading, check claims, export citations, manage ADS libraries, inspect metrics, and find related work. Use for literature reviews, papers, citations, BibTeX, arXiv/DOI/bibcode lookup, full-text reading, literature memory, libraries, astronomy, and astrophysics, plus Chinese requests including 文献, 论文, 文献调研, 查论文, 全文, 阅读论文, 文献数据库, 引用导出, ADS, arXiv, 天文文献, and 天体物理论文.
 ---
 
 # NASA ADS Agent Workflow
 
-Use the NASA Astrophysics Data System Developer API for literature research, citation export, libraries, bibliometrics, related-paper discovery, and resource-link resolution. Follow this file as runtime instructions for an agent; use the repository README only for human installation and onboarding.
+Use NASA ADS, lawful article sources, and the local evidence-aware literature database for astronomy research. This file is the agent runtime contract. The repository README is the human guide for project capabilities, installation, configuration, verification, and troubleshooting.
 
 ## Core Rules
 
-1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before every API workflow.
+1. Check `ADS_API_TOKEN`, then `ADS_DEV_KEY`, before an ADS API workflow.
 2. Never print, log, commit, or place the token in a URL or source file.
-3. Never follow an authenticated API redirect or forward the token to another origin.
+3. Never follow an authenticated API redirect or forward the token to an article host.
 4. Keep research calls read-only by default.
 5. Confirm immediately before deleting or emptying a library, bulk removal, permission changes, replacing or deleting a note, or transferring ownership.
-6. Describe an empty search as “no matching records found for these queries.” A search cannot establish that no relevant literature exists.
+6. Describe an empty search as “no matching records found for these queries.” Search results cannot establish that no relevant literature exists.
 7. Separate observational labels from intrinsic physical classes; a nondetection is not proof of absence.
-8. Use the official [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) for workflows not covered here.
+8. Search ADS for current literature on every new research task even when local paper knowledge is reusable.
+9. Use abstracts only to triage relevance. Claims about article content require full text, recorded visual reading, or an exact reusable database version with matching facet coverage.
+10. Ingest only material papers read beyond the abstract and summarized with evidence locators.
 
 ## Task Routing
 
-- Identifier or metadata lookup: run one precise `search`; expand only if ambiguous.
-- Citation export: resolve a missing bibcode with a precise `search`, then use `export`.
-- Bibliometrics: use `metrics` on the explicit paper set; do not enter the literature-research workflow.
-- Suggestions or resource links: use `suggest`, `similar(...)`, `useful(...)`, or `resolve`.
-- Literature question or claim check: use Literature Research and its Coverage Standard.
-- Libraries: load `references/libraries.md`. Other unsupported API work: load `references/http-fallback.md`.
+- ADS search, batch metadata, citation export, metrics, citation helper, or resolver: load [references/ads-cli.md](references/ads-cli.md) and use `scripts/ads_api.py`.
+- Full-text retrieval or article reading: load [references/fulltext.md](references/fulltext.md) and use `scripts/fulltext.py`.
+- Local paper lookup, digest inspection, topic or full-text search, ingest, or database statistics: load [references/literature-memory.md](references/literature-memory.md) and use `scripts/literature_db.py`.
+- Literature question, claim check, or multi-paper synthesis: load all three references above, then follow Literature Research and Coverage Standard.
+- ADS Libraries: load [references/libraries.md](references/libraries.md).
+- Another ADS endpoint or an unavailable CLI option: load [references/http-fallback.md](references/http-fallback.md) and verify the current [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/).
 
 ## Transport Selection
 
-1. Resolve `scripts/ads_api.py` relative to this `SKILL.md`.
-2. Try `python3`, then `python`, then `py -3` until one can run the bundled CLI.
-3. Use the CLI for every supported `search`, `bigquery`, `export`, `metrics`, `suggest`, or `resolve` call.
-4. Do not recreate a supported CLI call with curl, PowerShell, temporary code, or another HTTP client.
-5. Use direct HTTP only when Python 3 is unavailable, the task uses ADS Libraries, the endpoint is outside the CLI, or current official documentation confirms a requested option or format that the installed CLI does not expose.
-6. Do not use fallback to bypass an ADS API failure. Correct or report the failure.
-7. For ADS Libraries, read [references/libraries.md](references/libraries.md). For any other direct HTTP call, read [references/http-fallback.md](references/http-fallback.md) and state the reason in the method note.
+1. Resolve bundled scripts relative to this `SKILL.md`.
+2. Try `python3`, then `python`, then `py -3` until one can run the required CLI.
+3. Use the bundled CLI for every supported operation. Do not recreate its request, download, extraction, cache, database, or index logic with temporary code, curl, or PowerShell.
+4. Use direct HTTP only when Python 3 is unavailable, the task uses ADS Libraries, the endpoint is outside the CLI, or current official documentation confirms a requested option that the installed CLI does not expose.
+5. Correct or report an API error through the selected transport. Do not change transports to bypass it.
 
 ## Literature Research
 
-1. Define the question, operational categories, date range, and what evidence would support or weaken the claim.
+1. Define the question, operational categories, date range, and evidence that would support or weaken the claim.
 2. Build independent query families from exact terms, synonyms, competing interpretations, known objects or authors, and seed-paper citation chains.
-3. Run the required calls through the selected transport.
-4. Request only the fields and row count needed.
-5. Inspect response shape, `numFound`, returned rows, pagination, and rate limits when relevant.
-6. Deduplicate by bibcode, reconcile alternate records, and read abstracts before judging relevance.
-7. Track `doctype` and `property`; label preprints, abstracts, circulars, and other non-refereed records separately from refereed papers.
-8. Compare recent results with influential or foundational results.
-9. Distinguish direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
-10. Return a reader-facing synthesis with links, evidence calibration, and a concise search-method note.
+3. Request the necessary metadata, inspect `numFound`, returned rows, pagination, response shape, and rate limits when relevant.
+4. Deduplicate by bibcode, reconcile alternate records, label record type and publication status, and triage material papers by abstract.
+5. Run `literature_db.py lookup` for every prospective material paper and include the scientific topics required by the question.
+6. Reuse an exact stored version only when its digest covers those facets. Verify decisive numbers, equations, table cells, figure readings, and quotations against the stored article.
+7. For a database miss, changed version, missing digest, or uncovered facet, retrieve the best lawful version with `fulltext.py`. Read the complete material paper or every complete relevant section required by a targeted update.
+8. Build a layered digest containing every independently useful scientific facet discovered during a full reading. Validate and ingest it. For later targeted reading, inspect the current digest and use `--merge` to preserve earlier facets and revision history.
+9. Compare recent evidence with influential or foundational results. Separate direct evidence, counterevidence, selection effects, adjacent work, and algorithmic recommendations.
+10. Return a reader-facing synthesis with article links, calibrated evidence, version-aware full-text coverage, database-reuse counts, and a concise method note.
 
 ### Coverage Standard
 
-- For a focused literature review, use at least two independent query families and inspect the abstracts of material records.
-- For a broad, comprehensive, or claim-level review, cover terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent and citation-ranked results, and all manageable result pages. If the result set is too large, state the sampling rule and uncovered scope.
+- A focused review uses at least two independent query families, abstract triage, and full reading of the manageable material-paper set.
+- A broad, comprehensive, or claim-level review covers terminology and synonyms, counterclaims or selection effects, seed-paper citations or references, recent results, citation-ranked results, and all manageable result pages. State the sampling rule and uncovered scope when the set is too large.
 - Use `bigquery` to re-fetch complete metadata for the deduplicated evidence set.
-- Refine or discard query families dominated by false positives; do not treat `numFound` as a relevant-paper count.
-- Judge sufficiency by conceptual and evidentiary coverage, not by raw result count.
+- Refine query families dominated by false positives. `numFound` is not a relevant-paper count.
+- Label each material record as published-full-text, accepted-manuscript, preprint-full-text, visual-reading, or abstract-only. Abstract-only records support only abstract-level statements.
+- A database digest counts as full-text coverage only for its exact stored version and recorded facets. Report targeted verification and newly added facets separately.
+- Judge sufficiency by conceptual and evidentiary coverage rather than raw result count.
+
+### Digest Standard
+
+- Derive facets dynamically from the article’s research questions and evidence chains. The database has no fixed domain vocabulary.
+- Split facets when observables, samples, analyses, parameter regimes, result families, or inferential steps differ materially. Merge restatements of the same result.
+- Capture all material dimensions encountered during a full reading, including findings outside the current query.
+- Give every finding a kind, calibrated confidence, evidence locator, values with units or qualifiers when relevant, and retrieval keywords.
+- Keep entities, datasets, methods, data products, and global limitations in their dedicated layers.
+- A one-sentence summary, abstract paraphrase, section-title dump, or current-topic-only note does not satisfy the database standard.
 
 ## Credentials
 
-Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`. If both are absent, stop; direct the user to [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token), ask them to set either variable in the terminal that launches the host, and retry. If the user supplies a token for the current session, keep it in process memory and avoid commands that echo headers or command lines.
-
-## Bundled CLI
-
-Use `<skill-dir>/scripts/ads_api.py`, where `<skill-dir>` contains this `SKILL.md`. It uses only the Python standard library, reads the token variables itself, URL-encodes parameters, builds request bodies, rejects redirects, detects HTTP and ADS error responses, and never accepts a token on the command line.
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" --help
-```
-
-Use the first working Python 3 command selected above. Do not copy or rewrite the script into a temporary file.
-
-| Subcommand | Workflow |
-|---|---|
-| `search` | Literature and related-paper searches |
-| `bigquery` | Batch bibcode lookup |
-| `export` | Citation export |
-| `metrics` | Aggregate bibliometrics |
-| `suggest` | Citation-helper suggestions |
-| `resolve` | Full-text, data, citation, and reference links |
-
-Place global options before the subcommand. `--show-rate-limit` prints rate-limit headers to stderr; `--timeout <seconds>` sets a bounded timeout. JSON endpoints print UTF-8 JSON, and `export` prints citation text.
-
-Claude Code commands can locate the CLI at:
-
-```text
-${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py
-```
-
-## Literature Search
-
-Use this practical field set when the task needs full research metadata:
-
-```text
-bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype
-```
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" search \
-  --query 'title:"gravitational waves"' \
-  --fields 'bibcode,title,author,year,pub,doi,identifier,citation_count' \
-  --rows 10 \
-  --sort 'citation_count desc'
-```
-
-Repeat `--fq` for filters. Keep native ADS syntax in `--query`.
-
-Useful query forms:
-
-```text
-author:"Einstein, A"                         exact author
-author:"^Einstein, A"                        first author
-title:"gravitational waves"                  title phrase
-abs:"dark matter"                            abstract
-full:"machine learning"                      full text
-bibcode:2016PhRvL.116f1102A                  bibcode
-arxiv:1602.03837                             arXiv ID
-doi:10.1103/PhysRevLett.116.061102           DOI
-year:2020-2024                               year range
-bibstem:ApJ                                  journal abbreviation
-orcid:0000-0002-1825-0097                    ORCID
-citations(bibcode:2016PhRvL.116f1102A)       citing papers
-references(bibcode:2016PhRvL.116f1102A)      cited references
-trending(exoplanets)                         trending papers
-useful(bibcode:2016PhRvL.116f1102A)          useful papers
-similar(bibcode:2016PhRvL.116f1102A)         similar papers
-```
-
-For a topic review or claim check, apply Literature Research and its Coverage Standard. Record the exact query families and material limits for sparse or negative results.
-
-Use `bigquery` to retrieve metadata for a deduplicated bibcode set:
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" bigquery \
-  1907AN....174...59. \
-  1908PA.....16..445. \
-  --fields 'bibcode,title,author,abstract,year,pub,doi,identifier,citation_count'
-```
-
-Use `--bibcodes-file <path>` for a long list and `--start` when a batch exceeds 2000 returned records.
-
-## Citation Export
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" export \
-  2016PhRvL.116f1102A \
-  2017ApJ...848L..12A \
-  --format bibtex \
-  --sort 'first_author asc'
-```
-
-The CLI normalizes single-record and multi-record responses to citation text. Supported formats:
-
-- BibTeX/tagged: `bibtex`, `bibtexabs`, `ads`, `endnote`, `procite`, `ris`, `refworks`, `medlars`
-- LaTeX: `aastex`, `icarus`, `mnras`, `soph`
-- XML/feed: `dcxml`, `refxml`, `refabsxml`, `votable`, `rss`
-- Other: `ieee`
-
-Return exports in a fenced code block or save them with an appropriate extension when requested.
-
-## Metrics
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" metrics \
-  2016PhRvL.116f1102A \
-  --type basic \
-  --type citations \
-  --type indicators
-```
-
-Available types are `basic`, `citations`, `indicators`, `histograms`, and `timeseries`. Add `--type histograms` before repeating `--histogram` for requested categories.
-
-Read the returned keys before formatting; several contain spaces, such as `basic stats`, `citation stats`, and `indicators`, with corresponding `refereed` keys. Report the paper set and denominator. Do not present a metric from an arbitrary subset as an author-level metric.
-
-## Suggestions and Resource Links
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" suggest \
-  2016PhRvL.116f1102A
-```
-
-Present citation-helper results as algorithmic suggestions. Inspect topical relevance before recommending them.
-
-Find related records through `search` with `similar(...)` or `useful(...)`.
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" resolve \
-  2016PhRvL.116f1102A \
-  --link-type esource
-```
-
-Common resolver types include `esource`, `data`, `citations`, `references`, and `associated`. Prefer lawful open-access or author-posted links. A resolver result does not guarantee free access.
-
-## Libraries and Other Endpoints
-
-The CLI does not expose ADS Libraries. Read [references/libraries.md](references/libraries.md) before any library call and preserve every confirmation boundary defined there.
-
-For another unsupported endpoint, read [references/http-fallback.md](references/http-fallback.md), then consult the official ADS API documentation for the current method and schema.
+ADS API operations resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`. If both are absent, stop the ADS operation, direct the user to [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token), ask them to set either variable in the terminal that launches the host, and retry. A direct arXiv identifier can still use `fulltext.py` without ADS metadata enrichment. Keep a session token in process memory and avoid commands that echo headers or command lines.
 
 ## Result Presentation
 
 For literature research, include:
 
-1. A concise answer to the user’s question.
-2. Representative records with title, first authors, year, venue, citation count, and bibcode.
-3. ADS links in the form `https://ui.adsabs.harvard.edu/abs/<bibcode>`.
-4. DOI and arXiv links when present.
-5. A thematic synthesis for multi-paper work.
-6. Query families, filters, sorting, pagination, and search date when completeness matters.
-7. A calibrated limitation statement for sparse or negative results.
+1. A concise answer to the question.
+2. Representative records with title, first authors, year, venue, citation count, bibcode, and ADS link.
+3. DOI and arXiv links when present.
+4. A thematic synthesis for multi-paper work.
+5. Query families, filters, sorting, pagination, and search date when completeness matters.
+6. A calibrated limitation statement for sparse or negative results.
+7. Full-text coverage by selected version, visual-reading page ranges, and abstract-only reasons.
+8. Literature-memory counts: reused, targeted-verified, augmented, newly ingested, and version-refreshed papers.
 
-Build an arXiv link from an `identifier` value beginning with `arXiv:`.
+Build ADS links as `https://ui.adsabs.harvard.edu/abs/<bibcode>` and arXiv links from `identifier` values beginning with `arXiv:`.
 
-## Failures
+## Failure Routing
 
-- Missing token: give the token-page link and supported environment-variable names above, then stop.
-- `401`: verify that the token is current.
-- `403`: check account or library permissions.
-- `404`: recheck the bibcode, library ID, or endpoint.
-- `429`: report the rate-limit headers and wait until reset.
-- Unexpected redirect: stop and report it; do not switch to a client that follows the redirect.
-- ADS error payload: treat the operation as failed even when the HTTP status is `200`.
-- Only `id` returned: request the needed fields with `--fields`.
-- `undefined field object`: search the target name with `title:`, `abs:`, or `full:`; do not switch transports.
-- Empty result: relax unnecessary filters, try variants, and report the searched forms.
-- CLI launch failure after all three Python commands: use the direct HTTP fallback and state why.
+- Missing token: provide the token-page link and supported environment-variable names, then stop the ADS operation.
+- `401`, `403`, `404`, or `429`: report the relevant authentication, permission, identifier, or rate-limit context from the CLI.
+- Unexpected redirect or ADS error payload: treat the operation as failed.
+- Empty or malformed search: correct unnecessary filters, field the target term, try variants, and report the exact searched forms.
+- Full-text HTML `404`: let `fulltext.py` continue to the official arXiv PDF or next ranked candidate.
+- `needs_visual_reading`: use the host’s native PDF vision or bounded rendering procedure in `references/fulltext.md`.
+- `abstract_only`: report attempted candidates and limit claims to abstract-level evidence.
+- Literature database unavailable or corrupt: preserve fetched artifacts and digest files, continue the current synthesis, and state that storage failed.
+- SQLite FTS5 unavailable: use the CLI’s deterministic substring fallback.
+- Stored version lacks a requested facet: perform targeted reading and merge the added evidence.
+- CLI launch failure after all three Python commands: use the documented direct HTTP fallback when it supports the task and state why.
