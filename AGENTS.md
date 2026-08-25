@@ -12,6 +12,8 @@ Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex,
 - Packaged license: `plugins/nasa-ads/LICENSE`
 - Skill reference: `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
+- Bundled full-text CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py`
+- Bundled literature-memory CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py`
 - Conditional references: `plugins/nasa-ads/skills/nasa-ads/references/`
 - Gemini include file: `GEMINI.md`
 
@@ -24,6 +26,8 @@ Claude plugin commands are namespaced by plugin id:
 - `/nasa-ads:ads-library [subcommand]`
 - `/nasa-ads:ads-metrics <bibcodes>`
 - `/nasa-ads:ads-cite [subcommand]`
+- `/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs>`
+- `/nasa-ads:ads-memory <lookup, search, show, stats, or paper topics>`
 
 ## API Token
 
@@ -31,7 +35,7 @@ Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither i
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
 
-Use the bundled standard-library Python CLI for search, big query, citation export, metrics, citation-helper, and resolver calls. Keep query design, evidence assessment, result synthesis, and all library mutation confirmations in Markdown.
+Use the bundled standard-library ADS CLI for search, big query, citation export, metrics, citation-helper, and resolver calls. Use the bundled full-text CLI for deterministic lawful retrieval and preparation. Use the bundled literature-memory CLI for version-aware storage, lookup, structured digests, and local search. Keep article reading, visual interpretation, digest authorship, query design, evidence assessment, result synthesis, and all destructive library confirmations in Markdown.
 
 ## Documentation Contract
 
@@ -55,6 +59,8 @@ When behavior or installation changes, update these surfaces together:
 - `plugins/nasa-ads/LICENSE`
 - `plugins/nasa-ads/skills/nasa-ads/SKILL.md`
 - `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
+- `plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py`
+- `plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py`
 - affected files under `plugins/nasa-ads/skills/nasa-ads/references/`
 - `plugins/nasa-ads/skills/nasa-ads/agents/openai.yaml`
 - affected files under `plugins/nasa-ads/commands/`
@@ -69,7 +75,7 @@ Before committing:
 1. Run `claude plugin validate . --strict`.
 2. Parse every JSON manifest.
 3. Run the Codex skill validator from `skill-creator` with UTF-8 mode on Windows.
-4. Run `python -m unittest discover -s tests -v` and compile the bundled CLI.
+4. Run `python -m unittest discover -s tests -v` and compile all three bundled CLIs.
 5. Check README relative links and Markdown anchors.
 6. Test the documented Codex and Claude marketplace installs with disposable entries; record the pre-test state and remove only the exact test entries afterward.
 7. Run read-only ADS smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.

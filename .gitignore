@@ -14,6 +14,10 @@ Desktop.ini
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 venv/
 env/
 .env

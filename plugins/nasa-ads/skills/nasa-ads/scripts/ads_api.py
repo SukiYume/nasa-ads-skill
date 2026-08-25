@@ -6,16 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import socket
 import sys
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Sequence, TextIO
+from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-
-VERSION = "1.6.1"
+VERSION = "1.8.0"
 API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
 TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
 DEFAULT_FIELDS = (
@@ -200,7 +199,11 @@ def build_parser() -> argparse.ArgumentParser:
     suggest = subparsers.add_parser(
         "suggest", help="suggest potentially missing citations"
     )
-    suggest.add_argument("bibcodes", nargs="+")
+    suggest.add_argument(
+        "bibcodes",
+        nargs="+",
+        help="two or more bibcodes that define the existing bibliography",
+    )
 
     resolve = subparsers.add_parser(
         "resolve", help="resolve full-text, data, and related resource links"
@@ -360,7 +363,7 @@ def request_api(
         if rate_limit:
             message = f"{message} {rate_limit}"
         raise CliError(message) from exc
-    except (URLError, socket.timeout, TimeoutError) as exc:
+    except (URLError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
         raise CliError(f"Unable to reach the ADS API: {reason}") from exc
 
@@ -453,8 +456,10 @@ def suggest_request(
     args: argparse.Namespace,
 ) -> tuple[str, list[tuple[str, Any]], bytes, str]:
     bibcodes = unique_nonempty(args.bibcodes)
-    if not bibcodes:
-        raise CliError("Provide at least one bibcode.", exit_code=2)
+    if len(bibcodes) < 2:
+        raise CliError(
+            "Citation helper requires at least two distinct bibcodes.", exit_code=2
+        )
     payload = {"bibcodes": bibcodes}
     return "/citation_helper", [], json_bytes(payload), "application/json"
 

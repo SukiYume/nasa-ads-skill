@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Markdown research judgment with a bundled Python API client**
+**Full-text research judgment with reusable local literature memory**
 
 Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or another Markdown-skill host.
 
@@ -10,7 +10,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.6.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.8.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -30,27 +30,27 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 
 ## Overview
 
-NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) as a reusable workflow for Claude Code, Codex, Gemini CLI, and compatible Markdown-skill hosts. It can search astronomy and astrophysics literature, inspect publication metadata, export citations, work with ADS libraries, calculate bibliometric summaries, and discover related papers or full-text/data links.
+NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) as a reusable workflow for Claude Code, Codex, Gemini CLI, and compatible Markdown-skill hosts. It can search astronomy and astrophysics literature, retrieve and read lawful article full text, preserve rich multi-topic paper knowledge in a searchable local database, reuse prior reading by exact article version and topic coverage, inspect publication metadata, export citations, work with ADS libraries, calculate bibliometric summaries, and discover related papers or data links.
 
 The host sends requests directly from your computer to `https://api.adsabs.harvard.edu`. This repository stores no ADS token and runs no proxy service.
 
 This README is the reader guide: install the project on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
 
-Markdown handles query design, evidence assessment, safety confirmations, and synthesis. A bundled standard-library Python CLI handles stable read-only transport for search, batch lookup, citation export, metrics, citation suggestions, and resource resolution. The CLI rejects redirects and treats ADS error payloads as failed operations.
+The skill keeps research judgment in agent instructions and repeatable mechanics in three bundled Python CLIs. They handle stable ADS API transport; deterministic full-text discovery, download, validation, caching, extraction, scan detection, and page rendering; and a version-aware SQLite literature library with a content-addressed object store and full-text search. Their core path uses the Python standard library; optional PDF helpers improve extraction and rendering. The ADS CLI rejects authenticated redirects and treats ADS error payloads as failed operations.
 
 ## Install with One Agent Prompt
 
 If an agent with terminal and internet access is already running on the computer, copy the single sentence below into it. This is a natural-language prompt, not a shell command.
 
 ```text
-Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the repository README and SKILL.md completely, identify the agent host you are running in, install any missing documented prerequisites and the complete skill through that host's README instructions, replace only an existing nasa-ads installation if necessary, check ADS_API_TOKEN and then ADS_DEV_KEY without displaying either value and direct me to the documented token setup if both are absent, verify that SKILL.md and scripts/ads_api.py are installed, run ads_api.py --version, run the documented public-paper API smoke test when credentials are available, and report the installation path, version, and validation result.
+Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the repository README and SKILL.md completely, identify the agent host you are running in, install any missing documented prerequisites and the complete skill through that host's README instructions, replace only an existing nasa-ads installation if necessary, check ADS_API_TOKEN and then ADS_DEV_KEY without displaying either value and direct me to the documented token setup if both are absent, verify that SKILL.md, scripts/ads_api.py, scripts/fulltext.py, scripts/literature_db.py, references/ads-cli.md, references/fulltext.md, and references/literature-memory.md are installed, run all three CLIs with --version, run the documented public-paper API smoke test when credentials are available, run the arXiv full-text and literature-memory smoke tests, and report the installation path, version, and validation result.
 ```
 
 ## Supported Hosts
 
 | Host | Integration | What becomes available |
 |---|---|---|
-| Claude Code | Marketplace plugin | Five namespaced slash commands plus natural-language skill activation |
+| Claude Code | Marketplace plugin | Seven namespaced slash commands plus natural-language skill activation |
 | Codex CLI / desktop app | Marketplace plugin | Installable NASA ADS skill with UI metadata |
 | Codex CLI / IDE extension | Standalone skill | `$nasa-ads` and automatic activation from matching requests |
 | Gemini CLI | `GEMINI.md` import | Project or user-level NASA ADS instructions |
@@ -61,12 +61,16 @@ Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-ski
 | Capability | Examples |
 |---|---|
 | Literature search | Author, title, abstract, full text, bibcode, DOI, arXiv ID, ORCID, year, journal, or target name |
-| Claim checking | Search several formulations, inspect abstracts, and report the searched scope |
+| Claim checking | Search several formulations, triage abstracts, read material papers in full, and report evidence coverage |
+| Full-text reading | Published open versions, author manuscripts, direct arXiv HTML/PDF, ADS scans, caching, extraction, and visual fallback |
+| Literature memory | Version-aware SQLite records, verified article objects, multi-topic digests, atomic findings, evidence locators, digest history, and metadata/summary/full-text search |
 | Metadata | Title, authors, abstract, year, venue, DOI, identifiers, citation count, and read count |
 | Citation export | BibTeX, BibTeX with abstracts, AASTeX, MNRAS, RIS, EndNote, IEEE, XML formats, and more |
 | ADS libraries | List, view, create, update, share, combine, empty, and delete libraries |
 | Bibliometrics | Basic statistics, citations, h-index, g-index, i10-index, histograms, and time series |
 | Discovery | Suggested citations, similar/useful papers, publisher pages, arXiv, and data-archive links |
+
+Facets are created dynamically from each article's independent research questions and evidence chains. The database does not prescribe FRB, exoplanet, cosmology, theory, simulation, catalog, or instrument-specific fields.
 
 ## How It Works
 
@@ -75,10 +79,19 @@ flowchart LR
     A["Your request"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
     B --> M["Markdown research judgment"]
-    M --> P["Bundled Python CLI<br/>stable read-only calls"]
+    M --> P["ADS API CLI<br/>stable read-only calls"]
+    M --> F["Full-text CLI<br/>fetch, cache, extract"]
+    M --> L["Literature-memory CLI<br/>lookup, index, reuse"]
     T["ADS_API_TOKEN<br/>or ADS_DEV_KEY"] --> P
     P --> C["ADS Developer API"]
+    F --> X["Publisher / author / arXiv / ADS scan"]
     C --> D["JSON or citation text"]
+    X --> R["Text / PDF / rendered pages"]
+    R --> M
+    M --> K["Layered digest<br/>facets + evidence locators"]
+    R --> L
+    K --> L
+    L --> M
     M --> E["Linked, reader-facing result"]
     D --> E
 ```
@@ -93,8 +106,9 @@ Prepare these items on the new computer:
    - [Codex CLI setup](https://developers.openai.com/codex/cli/)
    - [Gemini CLI installation](https://geminicli.com/docs/get-started/installation/)
 3. **An ADS account and API token**, created later in [Configure the ADS token](#configure-the-ads-token).
-4. **One API transport**: Python 3.10 or newer is the recommended default and is available from [python.org/downloads](https://www.python.org/downloads/). The bundled CLI uses only the Python standard library. If Python is unavailable, use `curl` on macOS/Linux/WSL or PowerShell on Windows for the conditional direct HTTP fallback.
-5. **Outbound HTTPS access** to `api.adsabs.harvard.edu`.
+4. **One API transport**: Python 3.10 or newer is the recommended default and is available from [python.org/downloads](https://www.python.org/downloads/). The core path of all three bundled CLIs needs no third-party Python package. If Python is unavailable, use `curl` on macOS/Linux/WSL or PowerShell on Windows for the conditional ADS API fallback; persistent literature memory requires Python and SQLite.
+5. **Optional PDF helpers**: `pdftotext` and `pdfinfo` improve PDF text handling; `pdftoppm` renders scanned pages. A capable host can visually read a downloaded PDF or rendered pages when these helpers are absent.
+6. **Outbound HTTPS access** to `api.adsabs.harvard.edu`, `arxiv.org`, and any selected lawful publisher or repository source.
 
 Check the installed commands:
 
@@ -151,6 +165,8 @@ Run `/reload-plugins` if the installation happened during an existing session. T
 /nasa-ads:ads-library [subcommand]
 /nasa-ads:ads-metrics <bibcodes>
 /nasa-ads:ads-cite [subcommand]
+/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs>
+/nasa-ads:ads-memory <lookup, search, show, stats, or paper topics>
 ```
 
 Continue with [Configure the ADS token](#configure-the-ads-token), then run the public-paper test in [Verify the API](#verify-the-api).
@@ -211,6 +227,10 @@ Verify the required file:
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/scripts/fulltext.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/scripts/literature_db.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/fulltext.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/literature-memory.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/http-fallback.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/libraries.md" \
   && echo "NASA ADS skill installed"
@@ -238,6 +258,10 @@ Verify the required file:
 $nasaAdsSkillReady = `
   (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\fulltext.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\literature_db.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\fulltext.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\literature-memory.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\http-fallback.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\libraries.md")
 $nasaAdsSkillReady
@@ -428,6 +452,50 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
 
 Use `py -3` in place of `python` when that is how Python is registered. If you cloned the repository to another location, enter that checkout instead. The JSON response should contain the bibcode `2016PhRvL.116f1102A`.
 
+### Full-text smoke test
+
+This public arXiv paper has an official HTML version, so the smoke test needs no PDF helper. It also works without an ADS token when no token is present.
+
+macOS, Linux, or WSL:
+
+```bash
+python3 plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py fetch \
+  arXiv:1901.04502 \
+  --source arxiv
+```
+
+Windows PowerShell:
+
+```powershell
+python plugins\nasa-ads\skills\nasa-ads\scripts\fulltext.py fetch `
+  'arXiv:1901.04502' `
+  --source arxiv
+```
+
+The result should report `status: fulltext`, select `https://arxiv.org/html/1901.04502`, and provide existing `artifact_path`, `text_path`, and `manifest_path` files under the user cache. The script uses `https://arxiv.org/pdf/<id>` automatically when official HTML is unavailable.
+
+Use `--format pdf` when you explicitly need the PDF for equation, figure, table, pagination, or visual-reading checks; `--format html` requests only structured HTML. The default `--format auto` keeps the HTML-first fallback workflow.
+
+### Literature-memory smoke test
+
+The database CLI can verify its schema and digest contract without an ADS token. `template` prints JSON and does not create a library.
+
+macOS, Linux, or WSL:
+
+```bash
+python3 plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py --version
+python3 plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py template
+```
+
+Windows PowerShell:
+
+```powershell
+python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py --version
+python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
+```
+
+The CLI version command on either platform should report `1.8.0`. The template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading`. A live library is created on first database operation under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
+
 ### Direct HTTP fallback
 
 Use this only when Python 3 cannot run the bundled CLI or an endpoint is not exposed by it. Follow the credential preflight, redirect rule, response checks, and platform-specific example in [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md).
@@ -442,6 +510,9 @@ Natural-language requests work in every supported host:
 - “List my ADS libraries.”
 - “Show citation metrics for these bibcodes.”
 - “Find papers similar to `2016PhRvL.116f1102A`.”
+- “Retrieve and read the full text of `2019MNRAS.489..176M`, then summarize its methods, results, and limitations.”
+- “Search my literature memory for papers with circular-polarization sign reversals, and show the matching findings and evidence locations.”
+- “Look up `2023ApJ...955..142Z` in the database and tell me whether activity, waiting time, energy distribution, and synthetic spectrum are already covered.”
 - “检索 2022 年以来关于快速射电暴重复暴的论文，并按主题总结。”
 - “查一下这个说法有没有天文文献提到，说明检索范围。”
 
@@ -453,9 +524,11 @@ Claude Code command examples:
 /nasa-ads:ads-library create "My Reading List"
 /nasa-ads:ads-metrics 2016PhRvL.116f1102A
 /nasa-ads:ads-cite links 2016PhRvL.116f1102A
+/nasa-ads:ads-fulltext 2019MNRAS.489..176M arXiv:1602.03837
+/nasa-ads:ads-memory lookup 2023ApJ...955..142Z waiting-time circular-polarization
 ```
 
-The skill instructs the agent to return linked, readable results; refine weak literature searches; and label empty searches by their actual query scope.
+A literature-research result should be linked and readable, identify the searched scope, distinguish published, preprint, visual-reading, and abstract-only evidence, and report which papers were reused, verified, augmented, newly stored, or refreshed. Full readings are preserved as multi-facet evidence records so later questions can retrieve the relevant parts without reducing a paper to one sentence.
 
 ## Troubleshooting
 
@@ -466,7 +539,7 @@ The skill instructs the agent to return linked, readable results; refine weak li
 | Codex marketplace or plugin is missing | Run `codex plugin marketplace upgrade nasa-ads-community`, run `codex plugin add nasa-ads@nasa-ads-community`, and start a new session |
 | Codex standalone skill is absent from `/skills` | Confirm `~/.agents/skills/nasa-ads/SKILL.md` exists and start a new session |
 | Gemini does not load the instructions | Check the relative path in `~/.gemini/GEMINI.md`, then run `/memory reload` and `/memory show` |
-| Python CLI cannot start | Install Python 3.10 or newer, try `python3`, `python`, or `py -3`, and confirm the complete skill folder includes `scripts/ads_api.py` |
+| Python CLI cannot start | Install Python 3.10 or newer, try `python3`, `python`, or `py -3`, and confirm the complete skill folder includes `scripts/ads_api.py`, `scripts/fulltext.py`, and `scripts/literature_db.py` |
 | `401 Unauthorized` | Set a current token, open a new terminal, and verify the `Bearer` header path through the smoke test |
 | `403 Forbidden` | Check ADS account access and library permissions |
 | `429 Too Many Requests` | Read the `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers |
@@ -474,6 +547,14 @@ The skill instructs the agent to return linked, readable results; refine weak li
 | ADS application error with HTTP `200` | Treat the operation as failed and report the returned error detail |
 | Search returns no papers | Remove unnecessary filters, try synonyms and spelling variants, and record the query scope |
 | Query breaks around `&` or spaces | Use the bundled CLI, which URL-encodes parameters; direct HTTP fallbacks must encode `q`, `fq`, and `sort` |
+| arXiv HTML returns `404` | Let `fulltext.py` continue to the official `/pdf/<id>` candidate; install `pdftotext` or use host PDF vision when needed |
+| Full-text status is `needs_visual_reading` | Open the selected PDF with the host's PDF vision tool or use `fulltext.py render --pages <range>` in batches of at most twenty pages |
+| Full-text status is `abstract_only` | Inspect candidate errors, report the access limitation, and keep scientific conclusions within abstract-level evidence |
+| A stored paper returns `targeted_reading` | The requested facet is missing; search the stored full text, read the complete relevant sections, then ingest the added facet with `--merge` |
+| A stored paper returns `version_changed` | Compare the refreshed manifest's canonical content hash; changed scientific text becomes a separate version, while an HTML/PDF shell-only change reuses the existing digest |
+| Summary search misses an exact article phrase | Retry with `literature_db.py search '<phrase>' --scope fulltext --mode phrase`; verify quotations against the stored article |
+| SQLite lacks FTS5 | The database CLI automatically uses deterministic case-insensitive term matching; advanced `--mode fts` queries are unavailable |
+| A Chinese query misses a known facet | Update to 1.8.0 or newer; CJK term queries automatically use substring matching and report `search_engine: substring` |
 
 ## Updating an Existing Install
 
@@ -530,6 +611,10 @@ Run `/memory reload` in Gemini CLI after updating. Start a new Codex or Claude C
 - Review this public repository before installation.
 - Keep `ADS_API_TOKEN` and `ADS_DEV_KEY` outside tracked files.
 - Never follow redirects for authenticated ADS API requests.
+- Full-text requests send no ADS authorization header to arXiv, publishers, author repositories, or Unpaywall.
+- Full-text artifacts are cached under the user cache directory; keep restricted manuscripts and shared-machine caches within the user's access policy.
+- Literature objects and digests remain local under the user data directory. The database is not uploaded to ADS, arXiv, publishers, or an embedding service.
+- The database CLI exposes no delete command. Back up the complete library and ask for explicit confirmation before any manual deletion, clearing, relocation, or history removal.
 - Confirm destructive ADS library actions, note replacement or deletion, permission changes, and ownership transfer.
 - Treat publisher and data-archive links as external destinations.
 - ADS rate limits are endpoint-specific; response headers are the live authority.

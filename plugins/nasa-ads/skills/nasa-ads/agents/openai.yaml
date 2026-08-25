@@ -1,8 +1,8 @@
 interface:
   display_name: "NASA ADS"
-  short_description: "Search ADS, export citations, metrics, and libraries"
+  short_description: "Search ADS and reuse full-text paper knowledge"
   brand_color: "#0B3D91"
-  default_prompt: "Use $nasa-ads to search astronomy papers, export citations, inspect metrics, manage libraries, or resolve full-text and data links."
+  default_prompt: "Use $nasa-ads to research astronomy literature, reuse exact stored paper versions when their facets cover the question, read remaining material papers in full, and preserve rich searchable evidence digests."
 
 policy:
   allow_implicit_invocation: true
