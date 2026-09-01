@@ -10,7 +10,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.8.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.12.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -43,7 +43,7 @@ Skill 把研究判断保留在 agent 指令中，把可重复的机械步骤交�
 如果电脑上已经运行着可以使用终端和网络的 agent，把下面这一句话复制给它即可。这是自然语言提示词，不是 shell 命令。
 
 ```text
-请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：完整阅读仓库的 README 和 SKILL.md，识别你所在的 agent 宿主，按 README 中该宿主的说明安装缺少的前置条件和完整 skill；如已有 nasa-ads，只替换这一项；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 但不要显示其值，如果两者都不存在就引导我按文档配置 token；确认 SKILL.md、scripts/ads_api.py、scripts/fulltext.py、scripts/literature_db.py、references/ads-cli.md、references/fulltext.md 和 references/literature-memory.md 均已安装，分别运行三个 CLI 的 --version，在凭据可用时运行 README 中的公开论文 API smoke test，再运行 arXiv 全文和文献记忆 smoke test，并报告安装路径、版本与验证结果。
+请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：完整阅读仓库的 README 和 SKILL.md，识别你所在的 agent 宿主，按 README 中该宿主的说明安装缺少的前置条件和完整 skill；如已有 nasa-ads，只替换这一项；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 且不显示其值，如果两者都不存在就引导我按文档配置 token；确认 SKILL.md、agents/openai.yaml、scripts/ads_api.py、scripts/fulltext.py、scripts/literature_db.py、references/ads-cli.md、references/fulltext.md、references/literature-memory.md、references/digest-schema.md、references/libraries.md 和 references/http-fallback.md 均已安装，分别运行三个 CLI 的 --version，在凭据可用时运行 README 中的公开论文 API smoke test，再运行 arXiv 全文和文献记忆 smoke test，并报告安装路径、版本与验证结果。
 ```
 
 ## 支持的宿主
@@ -63,7 +63,7 @@ Skill 把研究判断保留在 agent 指令中，把可重复的机械步骤交�
 | 文献检索 | 作者、标题、摘要、全文、bibcode、DOI、arXiv ID、ORCID、年份、期刊或目标名称 |
 | 论断核查 | 使用多组检索表达式、通过摘要初筛、阅读全文材料并交代证据覆盖 |
 | 全文阅读 | 开放发表版、作者稿、直接 arXiv HTML/PDF、ADS 扫描件、缓存、文本抽取和视觉回退 |
-| 文献记忆 | 版本感知 SQLite 记录、已验证论文对象、多主题摘要、原子结论、证据定位、摘要历史，以及元数据/摘要/全文检索 |
+| 文献记忆 | 版本感知 SQLite 记录、已验证论文对象、每个精确文章版本唯一的完整 schema-version-2 摘要、章节—facet 覆盖、原子结论、健康审计、可恢复备份，以及元数据/摘要/全文检索 |
 | 元数据 | 标题、作者、摘要、年份、期刊、DOI、标识符、被引数和阅读数 |
 | 引用导出 | BibTeX、带摘要 BibTeX、AASTeX、MNRAS、RIS、EndNote、IEEE、XML 等格式 |
 | ADS 文库 | 列出、查看、创建、更新、分享、集合运算、清空和删除 libraries |
@@ -71,6 +71,8 @@ Skill 把研究判断保留在 agent 指令中，把可重复的机械步骤交�
 | 关联发现 | 引用建议、similar/useful 论文、出版社、arXiv 和数据归档链接 |
 
 Facet 根据每篇文章中可独立回答的研究问题与证据链动态生成。数据库不预设 FRB、系外行星、宇宙学、理论、模拟、星表或仪器专用字段。
+
+日常调研采用逐篇“打开门禁”。Agent 检查任何论文正文、页面、图片、图注、表格、公式、附录或引文上下文前，会先在本地文献记忆中核对精确版本。缺失或不完整的精确版本必须完成全文阅读或整篇视觉阅读、覆盖全部重要科学维度的分层摘要、验证和入库，然后才能使用用户请求的细节。持久入库属于 skill 的默认行为。ADS 元数据和摘要初筛位于此门禁之外，与当前任务无关的数据库缺口也位于本次处理范围之外。
 
 ## 工作原理
 
@@ -106,7 +108,7 @@ flowchart LR
    - [Codex CLI 安装文档](https://developers.openai.com/codex/cli/)
    - [Gemini CLI 安装文档](https://geminicli.com/docs/get-started/installation/)
 3. **ADS 账号和 API token**：稍后按[配置 ADS token](#配置-ads-token)完成。
-4. **一种 API 传输方式**：推荐安装 [Python 3.10 或更新版本](https://www.python.org/downloads/)；三个自带 CLI 的核心路径都不需要第三方 Python 包。如果无法使用 Python，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，进入条件式 ADS API 直接 HTTP 回退；持久文献记忆需要 Python 和 SQLite。
+4. **Python 3.10 或更新版本**：完整的全文与文献记忆流程需要 Python，可从 [python.org/downloads](https://www.python.org/downloads/) 安装。三个自带 CLI 的核心路径都不需要第三方 Python 包。Python 不可用时，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，执行有限的 ADS 元数据/API 直接 HTTP 回退；该回退不提供全文准备和持久文献记忆。
 5. **可选 PDF 工具**：`pdftotext` 和 `pdfinfo` 可改善 PDF 文本处理，`pdftoppm` 可渲染扫描页。缺少这些工具时，具备相应能力的宿主仍可直接视觉阅读下载的 PDF 或页面图片。
 6. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`、`arxiv.org` 和流程选中的合法出版社或仓储来源。
 
@@ -226,11 +228,14 @@ cp -R \
 
 ```bash
 test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/agents/openai.yaml" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/fulltext.py" \
   && test -f "$HOME/.agents/skills/nasa-ads/scripts/literature_db.py" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/ads-cli.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/fulltext.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/literature-memory.md" \
+  && test -f "$HOME/.agents/skills/nasa-ads/references/digest-schema.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/http-fallback.md" \
   && test -f "$HOME/.agents/skills/nasa-ads/references/libraries.md" \
   && echo "NASA ADS skill installed"
@@ -257,11 +262,14 @@ Copy-Item -Recurse -Force `
 ```powershell
 $nasaAdsSkillReady = `
   (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\agents\openai.yaml") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\fulltext.py") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\literature_db.py") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\ads-cli.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\fulltext.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\literature-memory.md") -and `
+  (Test-Path "$HOME\.agents\skills\nasa-ads\references\digest-schema.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\http-fallback.md") -and `
   (Test-Path "$HOME\.agents\skills\nasa-ads\references\libraries.md")
 $nasaAdsSkillReady
@@ -472,7 +480,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\fulltext.py fetch `
   --source arxiv
 ```
 
-结果应报告 `status: fulltext`，选择 `https://arxiv.org/html/1901.04502`，并在用户缓存目录中给出确实存在的 `artifact_path`、`text_path` 和 `manifest_path`。官方 HTML 不可用时，脚本会自动尝试 `https://arxiv.org/pdf/<id>`。
+结果应报告 `status: fulltext`，选择 `https://arxiv.org/html/1901.04502`，并在用户缓存目录中给出确实存在的 `artifact_path`、`text_path` 和 `manifest_path`。官方 HTML 不可用时，脚本会自动尝试 `https://arxiv.org/pdf/<id>`。总结前可把返回的 `text_path` 传给 `fulltext.py outline <text_path>`，检查推断出的文章结构。
 
 在公式、图、表、页码或视觉阅读检查中明确需要 PDF 时，使用 `--format pdf`；`--format html` 只请求结构化 HTML。默认的 `--format auto` 保持 HTML 优先和自动回退流程。
 
@@ -494,7 +502,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py --version
 python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
 ```
 
-两个平台上的 CLI 版本命令均应报告 `1.8.0`。模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading`。第一次执行数据库操作时，会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建文献库。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
+两个平台上的 CLI 版本命令均应报告 `1.12.0`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。`init`、入库、元数据补充、备份和索引重建操作会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
 
 ### 直接 HTTP 回退
 
@@ -513,6 +521,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
 - “获取并阅读 `2019MNRAS.489..176M` 的全文，然后总结方法、结果和局限性。”
 - “在我的文献记忆中检索出现圆偏振符号反转的论文，并给出匹配结论和证据位置。”
 - “查询数据库中的 `2023ApJ...955..142Z`，检查活动性、等待时间、能量分布和合成频谱是否已经覆盖。”
+- “审计我的文献数据库；任何修复开始前先创建备份，并解释每条警告。”
 - “检索 2022 年以来关于快速射电暴重复暴的论文，并按主题总结。”
 - “检查这个论断是否出现在已有研究中，说明检索范围和限制。”
 
@@ -526,9 +535,10 @@ Claude Code 命令示例：
 /nasa-ads:ads-cite links 2016PhRvL.116f1102A
 /nasa-ads:ads-fulltext 2019MNRAS.489..176M arXiv:1602.03837
 /nasa-ads:ads-memory lookup 2023ApJ...955..142Z waiting-time circular-polarization
+/nasa-ads:ads-memory audit
 ```
 
-文献调研结果应当带链接、便于阅读，说明检索范围，区分发表版、预印本、视觉阅读和摘要限定证据，并报告哪些论文得到复用、核验、补充、新入库或版本刷新。完整阅读会保存为多 facet 证据记录，后续问题可以检索相关内容，而不会把整篇论文压缩成一句话。
+文献调研结果应当带链接、便于阅读，说明检索范围，区分发表版、预印本、视觉阅读和摘要限定证据，并报告哪些论文得到复用、核验、补充、新入库或版本刷新。数据库中不存在的论文会先完整阅读，并以结构验证通过的 `full` 摘要首次入库；扫描件采用整篇 `visual` 覆盖。Facet 根据文章中可独立复用的科学维度建立，每个主要已读章节都会映射到其科学 facet 或明确的章节角色。后续任务会把定向证据合并到精确版本唯一的已存摘要中。经过确认的修复会先创建备份，再用一条完整记录替换无效摘要。维护 CLI 提供只读审计、一致性备份、元数据补充和确定性索引重建。
 
 ## 排错
 
@@ -550,13 +560,18 @@ Claude Code 命令示例：
 | arXiv HTML 返回 `404` | 让 `fulltext.py` 继续尝试官方 `/pdf/<id>`；需要时安装 `pdftotext` 或使用宿主 PDF 视觉能力 |
 | 全文状态为 `needs_visual_reading` | 用宿主 PDF 视觉工具打开选中的 PDF，或通过 `fulltext.py render --pages <range>` 分批渲染，每批不超过二十页 |
 | 全文状态为 `abstract_only` | 检查候选错误，报告访问限制，并把科学结论限定在摘要级证据范围内 |
+| 首次入库拒绝 `targeted` 摘要 | 完整阅读文章并提交 `full` 摘要；扫描件需要逐页检查并提交整篇 `visual` 覆盖 |
 | 已存论文返回 `targeted_reading` | 请求的 facet 尚未覆盖；检索本地全文，完整阅读相关章节，再用 `--merge` 加入新 facet |
 | 已存论文返回 `version_changed` | 比较刷新后 manifest 的正文内容指纹；科学正文变化时建立独立版本，仅 HTML/PDF 外壳变化时复用既有摘要 |
+| 只读命令报告数据库 schema 不匹配 | 使用兼容的更新前 CLI 创建完整备份，安装当前文件，显式运行 `literature_db.py init`，然后运行 `audit` |
 | 摘要检索找不到文章中的原句 | 使用 `literature_db.py search '<phrase>' --scope fulltext --mode phrase`；引用前对照存储的文章 |
 | SQLite 不支持 FTS5 | 数据库 CLI 会自动使用确定性的大小写不敏感词项匹配；此时不能使用高级 `--mode fts` 查询 |
-| 中文查询找不到已知 facet | 更新到 1.8.0 或更新版本；CJK 词项查询会自动使用子串匹配，并报告 `search_engine: substring` |
+| `audit` 把最新 arXiv 条目列在 `arxiv_records_awaiting_ads_bibcode` 中 | 论文会继续使用 arXiv 元数据参与检索；ADS 分配 bibcode 后重新发现并运行 `enrich` |
+| 中文查询找不到已知 facet | 更新到当前发布版本；CJK 词项查询会自动使用子串匹配，并报告 `search_engine: substring` |
 
 ## 更新已有安装
+
+1.11.0 引入数据库 schema 2。先用更新前已安装的 CLI 创建完整文献库备份，再更新 skill 或 plugin 文件并运行 `literature_db.py init`。这项一次性迁移会为每个文章版本保留当前最高修订，删除 digest 修订字段，并强制每个文章版本只存一条 digest。1.12.0 保持所有读取命令为只读，因此迁移前会先报告 schema 不匹配。迁移后运行 `literature_db.py audit`。
 
 Claude Code 或 Codex plugin 需要刷新 marketplace 和已经安装的 plugin：
 
@@ -614,7 +629,7 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 - 向 arXiv、出版社、作者仓储或 Unpaywall 请求全文时不会携带 ADS authorization header。
 - 全文文件会保存在用户缓存目录；受限稿件和共享电脑缓存应遵守用户所在环境的访问策略。
 - 文献对象和摘要保留在用户数据目录中，不会上传到 ADS、arXiv、出版社或 embedding 服务。
-- 数据库 CLI 不提供删除命令。手工删除、清空、迁移或移除历史前，应备份完整文献库并取得明确确认。
+- 数据库 CLI 不提供删除命令。手工删除、清空、迁移或替换完整摘要前，应备份完整文献库并取得明确确认。
 - 删除/清空 ADS library、替换/删除 library 备注、修改分享权限或转移所有权前进行确认。
 - 把出版社和数据归档链接视为外部站点。
 - ADS 的 rate limit 由各 endpoint 独立控制，响应 headers 是当前依据。

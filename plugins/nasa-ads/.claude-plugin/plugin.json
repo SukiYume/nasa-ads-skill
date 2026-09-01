@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "description": "Search NASA ADS for papers, read lawful full text, preserve searchable multi-topic paper knowledge, reuse prior reading, check claims, export citations, manage libraries, inspect metrics, and find related work.",
-  "version": "1.8.0",
+  "description": "Research NASA ADS literature, read material papers in full, preserve searchable version-aware paper knowledge, reuse prior reading, check claims, export citations, manage libraries, and inspect metrics.",
+  "version": "1.12.0",
   "homepage": "https://github.com/SukiYume/nasa-ads-skill",
   "repository": "https://github.com/SukiYume/nasa-ads-skill",
   "license": "MIT",

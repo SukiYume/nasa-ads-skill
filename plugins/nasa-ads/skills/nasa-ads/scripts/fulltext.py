@@ -22,10 +22,11 @@ from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "1.8.0"
+VERSION = "1.12.0"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -75,6 +76,18 @@ SKIP_TAGS = {
 }
 HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 FOCUS_TAGS = {"article", "main"}
+MEASUREMENT_ONLY_RE = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s*"
+    r"(?:uJy|μJy|mJy|Jy|Hz|kHz|MHz|GHz|THz|μs|us|ms|s|min|h|d|yr|"
+    r"eV|keV|MeV|GeV|TeV|K|pc|kpc|Mpc|Gpc|mm|cm|m|km|"
+    r"deg|arcsec|mas|rad|mag|%)$",
+    re.IGNORECASE,
+)
+DATE_ONLY_RE = re.compile(
+    r"^\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
+    r"September|October|November|December)\s+\d{4}$",
+    re.IGNORECASE,
+)
 
 
 class FullTextError(Exception):
@@ -299,6 +312,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=300.0,
         help="render timeout in seconds (default: 300)",
     )
+    outline = subparsers.add_parser(
+        "outline", help="extract a reviewable section outline from prepared article text"
+    )
+    outline.add_argument("text", help="prepared article text path")
+    outline.add_argument(
+        "--limit",
+        type=ads_api.positive_int,
+        default=200,
+        help="maximum headings to return (default: 200)",
+    )
     return parser
 
 
@@ -318,6 +341,60 @@ def normalize_text(value: str) -> str:
 
 def count_words(value: str) -> int:
     return len(re.findall(r"\b[^\W_][\w'-]*\b", value, flags=re.UNICODE))
+
+
+def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
+    headings: list[str] = []
+    seen: set[str] = set()
+    in_references = False
+    numbered = re.compile(
+        r"^(?:§\s*\d+(?:\.\d+){0,3}\s+|"
+        r"(?:\d+(?:\.\d+){0,3}|[A-Z]\.\d+(?:\.\d+){0,2})[.)]?\s+|"
+        r"[IVXLC]+[.)]\s+|"
+        r"(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+)(\S.*)$",
+        re.IGNORECASE,
+    )
+    named = re.compile(
+        r"^(?:abstract|introduction|background|observations?|data|methods?|"
+        r"analysis|results?|discussion|conclusions?|summary|limitations?|"
+        r"acknowledg(?:e)?ments?|references|bibliography)$",
+        re.IGNORECASE,
+    )
+    for raw_line in value.splitlines():
+        line = " ".join(raw_line.split())
+        if not line or len(line) > 180:
+            continue
+        if MEASUREMENT_ONLY_RE.fullmatch(line) or DATE_ONLY_RE.fullmatch(line):
+            continue
+        match = numbered.match(line)
+        if in_references:
+            if not re.match(
+                r"^(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+",
+                line,
+                re.IGNORECASE,
+            ):
+                continue
+            in_references = False
+        if not match and not named.match(line):
+            continue
+        if match:
+            heading_text = match.group(1)
+            if not any(character.isalpha() for character in heading_text):
+                continue
+            if ". " in heading_text:
+                continue
+        if re.match(r"^(?:Figure|Table)\s+\d", line, re.IGNORECASE):
+            continue
+        key = line.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        headings.append(line)
+        if key in {"references", "bibliography"}:
+            in_references = True
+        if len(headings) >= limit:
+            break
+    return headings
 
 
 def list_value(value: Any) -> list[str]:
@@ -568,10 +645,30 @@ def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str
             )
             if title_overlap < 0.35:
                 raise FullTextError("HTML title does not match the target record.")
+    outline: list[str] = []
+    in_references = False
+    for raw_heading in parser.headings:
+        heading = normalize_text(raw_heading)
+        if not heading:
+            continue
+        if in_references:
+            if not re.match(
+                r"^(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+",
+                heading,
+                re.IGNORECASE,
+            ):
+                continue
+            in_references = False
+        outline.append(heading)
+        if heading.casefold() in {"references", "bibliography"}:
+            in_references = True
+        if len(outline) >= 200:
+            break
     return text, {
         "characters": len(text),
         "words": word_count,
-        "headings": len(parser.headings),
+        "headings": len(outline),
+        "outline": outline,
         "focused_article": used_focus,
         "document_title": parser.document_title() or None,
         "title_token_overlap": title_overlap,
@@ -692,6 +789,7 @@ def assess_pdf_text(
             "pages": page_count,
             "characters_per_page": round(characters_per_page, 1),
             "extractor": extractor,
+            "outline": infer_text_outline(text or ""),
         },
         warnings,
     )
@@ -831,6 +929,59 @@ def ads_search_record(query: str, token: str, timeout: float) -> dict[str, Any] 
         payload.get("response", {}).get("docs", []) if isinstance(payload, dict) else []
     )
     return docs[0] if docs and isinstance(docs[0], dict) else None
+
+
+def arxiv_metadata_record(
+    arxiv_id: str, *, timeout: float, max_bytes: int
+) -> dict[str, Any] | None:
+    base_id = re.sub(r"v\d+$", "", arxiv_id, flags=re.IGNORECASE)
+    downloaded = fetch_external(
+        "https://export.arxiv.org/api/query?" + urlencode({"id_list": base_id}),
+        timeout=timeout,
+        max_bytes=min(max_bytes, 5 * 1024 * 1024),
+    )
+    try:
+        root = ElementTree.fromstring(downloaded.body)
+    except ElementTree.ParseError as exc:
+        raise FullTextError(f"Unable to parse arXiv metadata: {exc}") from exc
+    atom = "{http://www.w3.org/2005/Atom}"
+    arxiv = "{http://arxiv.org/schemas/atom}"
+    entry = root.find(f"{atom}entry")
+    if entry is None:
+        return None
+
+    def text_of(name: str) -> str | None:
+        node = entry.find(name)
+        if node is None or not node.text:
+            return None
+        return " ".join(node.text.split())
+
+    entry_id = text_of(f"{atom}id") or ""
+    returned_id = arxiv_id_from_value(entry_id)
+    if not returned_id or re.sub(
+        r"v\d+$", "", returned_id, flags=re.IGNORECASE
+    ) != base_id:
+        return None
+    title = text_of(f"{atom}title")
+    abstract = text_of(f"{atom}summary")
+    published = text_of(f"{atom}published")
+    authors = [
+        " ".join((node.findtext(f"{atom}name") or "").split())
+        for node in entry.findall(f"{atom}author")
+    ]
+    authors = [author for author in authors if author]
+    doi = text_of(f"{arxiv}doi")
+    return {
+        "title": [title] if title else [],
+        "author": authors,
+        "abstract": abstract,
+        "doi": [doi] if doi else [],
+        "identifier": [f"arXiv:{base_id}"],
+        "property": ["ARTICLE", "EPRINT_OPENACCESS", "OPENACCESS"],
+        "doctype": "eprint",
+        "year": published[:4] if published and len(published) >= 4 else None,
+        "pub": "arXiv e-prints",
+    }
 
 
 def ads_resolver_records(
@@ -1038,6 +1189,15 @@ def discover(
             )
         except ads_api.CliError as exc:
             warnings.append(f"ads_metadata_lookup_failed: {exc}")
+    if record is None and identifier_type == "arxiv":
+        try:
+            record = arxiv_metadata_record(
+                normalized_identifier, timeout=timeout, max_bytes=max_bytes
+            )
+            if record:
+                warnings.append("metadata_source: arxiv")
+        except FullTextError as exc:
+            warnings.append(f"arxiv_metadata_lookup_failed: {exc}")
 
     title = first_value(record.get("title")) if record else None
     abstract = record.get("abstract") if record else None
@@ -1460,6 +1620,20 @@ def execute(
             timeout=args.timeout,
             environ=environ,
         )
+        json.dump(result, stdout, ensure_ascii=False, indent=2)
+        stdout.write("\n")
+        return 0
+    if args.command == "outline":
+        text_path = Path(args.text).expanduser().resolve()
+        if not text_path.is_file():
+            raise FullTextError(f"Prepared article text does not exist: {text_path}", 2)
+        article_text = text_path.read_text(encoding="utf-8", errors="replace")
+        result = {
+            "status": "outlined",
+            "text_path": str(text_path),
+            "words": count_words(article_text),
+            "headings": infer_text_outline(article_text, limit=args.limit),
+        }
         json.dump(result, stdout, ensure_ascii=False, indent=2)
         stdout.write("\n")
         return 0

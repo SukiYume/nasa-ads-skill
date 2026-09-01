@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "1.8.0",
-  "description": "Research NASA ADS literature, read lawful full text, preserve searchable multi-topic paper knowledge, reuse prior reading, check claims, export citations, manage libraries, inspect metrics, and find related papers from Codex.",
+  "version": "1.12.0",
+  "description": "Research NASA ADS literature, read material papers in full, preserve searchable version-aware paper knowledge, reuse prior reading, check claims, export citations, manage libraries, and inspect metrics from Codex.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -26,7 +26,7 @@
   "interface": {
     "displayName": "NASA ADS",
     "shortDescription": "ADS literature, full text, and reusable knowledge",
-    "longDescription": "Reusable Codex skill bundle for scoped NASA ADS literature research, lawful full-text reading, searchable version-aware paper memory, multi-topic evidence digests, published-claim checks, citation export, library management, metrics, and related-paper lookups.",
+    "longDescription": "Reusable Codex skill bundle for NASA ADS research, lawful full-text reading, searchable version-aware paper memory, one complete section-mapped multi-topic digest per opened article version, database health checks, citation export, library management, metrics, and related-paper discovery.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
@@ -36,11 +36,8 @@
     "websiteURL": "https://github.com/SukiYume/nasa-ads-skill",
     "defaultPrompt": [
       "Search NASA ADS for recent papers on exoplanet atmospheres.",
-      "Retrieve and read full text for the material papers in this literature review.",
-      "Search my local literature memory for prior full-text findings on circular polarization.",
-      "Check whether a claim or topic has been mentioned in the literature.",
-      "Export BibTeX for 2016PhRvL.116f1102A.",
-      "Show citation metrics for these ADS bibcodes."
+      "Inspect one paper figure and preserve a complete digest for its exact article version.",
+      "Search my local literature memory for prior full-text findings on circular polarization."
     ],
     "brandColor": "#0B3D91"
   }

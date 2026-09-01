@@ -81,6 +81,32 @@ class IdentifierTests(unittest.TestCase):
             ("bibcode", "2019MNRAS.489..176M"),
         )
 
+    def test_arxiv_atom_metadata_fills_fresh_records(self):
+        atom = b"""<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns='http://www.w3.org/2005/Atom' xmlns:arxiv='http://arxiv.org/schemas/atom'>
+  <entry>
+    <id>https://arxiv.org/abs/2608.30943v1</id>
+    <title>The DSA Chronoscope survey</title>
+    <summary>A complete survey forecast.</summary>
+    <published>2026-08-31T00:00:00Z</published>
+    <author><name>Liam Connor</name></author>
+  </entry>
+</feed>"""
+        downloaded = fulltext.Downloaded(
+            body=atom,
+            final_url="https://export.arxiv.org/api/query?id_list=2608.30943",
+            content_type="application/atom+xml",
+            headers={},
+        )
+        with patch.object(fulltext, "fetch_external", return_value=downloaded):
+            record = fulltext.arxiv_metadata_record(
+                "2608.30943", timeout=10, max_bytes=1024 * 1024
+            )
+        self.assertIsNotNone(record)
+        self.assertEqual(record["title"], ["The DSA Chronoscope survey"])
+        self.assertEqual(record["author"], ["Liam Connor"])
+        self.assertEqual(record["year"], "2026")
+
 
 class CandidateTests(unittest.TestCase):
     def test_arxiv_candidates_use_html_and_pdf_not_abs(self):
@@ -117,14 +143,15 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(candidate.access, "open")
 
     def test_direct_arxiv_discovery_does_not_require_ads_credentials(self):
-        result = fulltext.discover(
-            "arXiv:1901.04502",
-            source="auto",
-            use_unpaywall=False,
-            timeout=10,
-            max_bytes=1024 * 1024,
-            environ={},
-        )
+        with patch.object(fulltext, "arxiv_metadata_record", return_value=None):
+            result = fulltext.discover(
+                "arXiv:1901.04502",
+                source="auto",
+                use_unpaywall=False,
+                timeout=10,
+                max_bytes=1024 * 1024,
+                environ={},
+            )
         self.assertIsNone(result["bibcode"])
         self.assertEqual(result["arxiv_ids"], ["1901.04502"])
         self.assertEqual(
@@ -136,15 +163,16 @@ class CandidateTests(unittest.TestCase):
         )
 
     def test_direct_arxiv_discovery_can_require_pdf(self):
-        result = fulltext.discover(
-            "arXiv:1901.04502",
-            source="arxiv",
-            use_unpaywall=False,
-            timeout=10,
-            max_bytes=1024 * 1024,
-            environ={},
-            output_format="pdf",
-        )
+        with patch.object(fulltext, "arxiv_metadata_record", return_value=None):
+            result = fulltext.discover(
+                "arXiv:1901.04502",
+                source="arxiv",
+                use_unpaywall=False,
+                timeout=10,
+                max_bytes=1024 * 1024,
+                environ={},
+                output_format="pdf",
+            )
         self.assertEqual(result["requested_format"], "pdf")
         self.assertEqual(
             [(candidate.format, candidate.url) for candidate in result["candidates"]],
@@ -166,6 +194,9 @@ class HtmlExtractionTests(unittest.TestCase):
             f"<h2>Methods</h2><p>{paragraphs}</p>"
             "<annotation>duplicate hidden formula tokens</annotation>"
             "<h2>Results</h2><p>The result is significant.</p>"
+            "<h2>References</h2><p>A. Example, 2026.</p>"
+            "<h2>Instructions for reporting errors</h2>"
+            "<h2>Appendix A Additional checks</h2>"
             "</article></body></html>"
         ).encode()
         text, statistics = fulltext.extract_html(body, "A stellar measurement")
@@ -174,6 +205,45 @@ class HtmlExtractionTests(unittest.TestCase):
         self.assertNotIn("duplicate hidden", text)
         self.assertTrue(statistics["focused_article"])
         self.assertGreaterEqual(statistics["headings"], 3)
+        self.assertIn("Methods", statistics["outline"])
+        self.assertIn("Results", statistics["outline"])
+        self.assertNotIn("Instructions for reporting errors", statistics["outline"])
+        self.assertIn("Appendix A Additional checks", statistics["outline"])
+
+    def test_prepared_text_outline_extracts_numbered_and_named_sections(self):
+        article = """Abstract
+1 Introduction
+1.1 Survey design
+1.8 Jy
+1 ms
+30 January 2017
+I employ parallaxes from Gaia.
+1 mas yr-1, respectively. I only consider the clean sample
+6.3370 ± 0.0460
+§ 2. I describe the data used in this paper
+§ 2 Definitions
+Figure 1: simulated sky
+2 Methods
+3 Results
+References
+I. Example Author
+Appendix A Additional checks
+A.1 Robustness tests
+"""
+        self.assertEqual(
+            fulltext.infer_text_outline(article),
+            [
+                "Abstract",
+                "1 Introduction",
+                "1.1 Survey design",
+                "§ 2 Definitions",
+                "2 Methods",
+                "3 Results",
+                "References",
+                "Appendix A Additional checks",
+                "A.1 Robustness tests",
+            ],
+        )
 
     def test_access_page_is_rejected(self):
         body = (

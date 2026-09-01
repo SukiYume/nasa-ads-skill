@@ -17,9 +17,9 @@ from typing import Any, TextIO
 import ads_api
 import fulltext
 
-VERSION = "1.8.0"
-DATABASE_SCHEMA_VERSION = 1
-DIGEST_SCHEMA_VERSION = 1
+VERSION = "1.12.0"
+DATABASE_SCHEMA_VERSION = 2
+DIGEST_SCHEMA_VERSION = 2
 READING_STATUSES = {"full", "targeted", "visual"}
 READING_STATUS_RANK = {"targeted": 1, "visual": 2, "full": 3}
 FINDING_KINDS = {
@@ -33,6 +33,27 @@ FINDING_KINDS = {
 }
 CONFIDENCE_LEVELS = {"high", "medium", "low"}
 DATA_PRODUCT_TYPES = {"data", "code", "catalog", "table", "software", "other"}
+COVERAGE_ROLES = {
+    "scientific",
+    "methods",
+    "context",
+    "limitations",
+    "data-products",
+    "references",
+    "administrative",
+}
+GENERIC_SECTION_LABELS = {
+    "all sections",
+    "complete article",
+    "entire article",
+    "full article",
+    "full paper",
+    "whole article",
+    "全文",
+    "全部章节",
+    "整篇文章",
+    "整篇论文",
+}
 SCOPE_COLUMNS = {
     "all": (),
     "metadata": ("title", "authors", "abstract", "identifiers", "entities"),
@@ -134,10 +155,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--identifier",
         help="select one input when --manifest contains a multi-result wrapper",
     )
-    ingest.add_argument(
+    update_mode = ingest.add_mutually_exclusive_group()
+    update_mode.add_argument(
         "--merge",
         action="store_true",
-        help="merge the incoming facets into the current digest as a new revision",
+        help="merge the incoming evidence into the stored digest in place",
+    )
+    update_mode.add_argument(
+        "--replace-digest",
+        action="store_true",
+        help=(
+            "replace the stored digest in place with a complete full or "
+            "whole-document visual digest"
+        ),
+    )
+    enrich = subparsers.add_parser(
+        "enrich", help="update metadata and identifiers for an existing paper"
+    )
+    enrich.add_argument("--manifest", required=True, help="fulltext.py manifest JSON")
+    enrich.add_argument(
+        "--identifier",
+        help="select one input when --manifest contains a multi-result wrapper",
     )
 
     lookup = subparsers.add_parser(
@@ -153,7 +191,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = subparsers.add_parser("show", help="show a stored paper and its evidence")
     show.add_argument("identifier")
-    show.add_argument("--history", action="store_true")
     show.add_argument("--include-fulltext", action="store_true")
 
     search = subparsers.add_parser(
@@ -168,7 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--limit", type=ads_api.positive_int, default=20)
 
     list_command = subparsers.add_parser(
-        "list", help="list stored papers and their current digest coverage"
+        "list", help="list stored papers and their digest coverage"
     )
     list_command.add_argument("--topic", action="append", default=[])
     list_command.add_argument("--year-from", type=int)
@@ -176,11 +213,41 @@ def build_parser() -> argparse.ArgumentParser:
     list_command.add_argument("--limit", type=ads_api.positive_int, default=50)
 
     subparsers.add_parser("stats", help="show library and evidence coverage counts")
+    audit = subparsers.add_parser(
+        "audit", help="run read-only integrity, object, index, and digest-quality checks"
+    )
+    audit.add_argument(
+        "--skip-hashes",
+        action="store_true",
+        help="skip artifact, extracted-text, and canonical-content hash checks",
+    )
+    backup = subparsers.add_parser(
+        "backup", help="create a consistent database and object-store backup"
+    )
+    backup.add_argument(
+        "--destination",
+        help="new backup directory; defaults to a timestamped sibling backup",
+    )
     subparsers.add_parser("reindex", help="rebuild the local search index")
     return parser
 
 
-SCHEMA_SQL = """
+DIGEST_TABLE_BODY_SQL = """
+    id INTEGER PRIMARY KEY,
+    version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    schema_version INTEGER NOT NULL,
+    language TEXT NOT NULL,
+    overview TEXT NOT NULL,
+    significance TEXT NOT NULL,
+    reading_status TEXT NOT NULL,
+    digest_hash TEXT NOT NULL,
+    digest_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(version_id)
+"""
+
+
+SCHEMA_SQL = f"""
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -253,22 +320,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX IF NOT EXISTS artifacts_version_idx ON artifacts(version_id);
 
 CREATE TABLE IF NOT EXISTS digests (
-    id INTEGER PRIMARY KEY,
-    version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
-    revision INTEGER NOT NULL,
-    schema_version INTEGER NOT NULL,
-    language TEXT NOT NULL,
-    overview TEXT NOT NULL,
-    significance TEXT NOT NULL,
-    reading_status TEXT NOT NULL,
-    digest_hash TEXT NOT NULL,
-    digest_json TEXT NOT NULL,
-    is_current INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN (0, 1)),
-    created_at TEXT NOT NULL,
-    UNIQUE(version_id, revision)
+{DIGEST_TABLE_BODY_SQL}
 );
-CREATE UNIQUE INDEX IF NOT EXISTS digests_one_current_idx
-    ON digests(version_id) WHERE is_current = 1;
 
 CREATE TABLE IF NOT EXISTS facets (
     id INTEGER PRIMARY KEY,
@@ -344,6 +397,91 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
 """
 
 
+def migrate_schema_1_to_2(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(digests)")
+    }
+    history_columns = {"revision", "is_current"}
+    if not history_columns.issubset(columns):
+        raise LiteratureError(
+            "Database schema 1 has an unrecognized digests table. Restore the "
+            "pre-migration backup and inspect the database before retrying."
+        )
+
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "CREATE TEMP TABLE digest_migration_keep(id INTEGER PRIMARY KEY)"
+        )
+        connection.execute(
+            """
+            INSERT INTO digest_migration_keep(id)
+            SELECT candidate.id
+            FROM digests AS candidate
+            WHERE candidate.id = (
+                SELECT ranked.id
+                FROM digests AS ranked
+                WHERE ranked.version_id = candidate.version_id
+                ORDER BY ranked.is_current DESC, ranked.revision DESC, ranked.id DESC
+                LIMIT 1
+            )
+            """
+        )
+        connection.execute(
+            "DELETE FROM findings WHERE facet_id IN ("
+            "SELECT id FROM facets WHERE digest_id NOT IN "
+            "(SELECT id FROM digest_migration_keep))"
+        )
+        connection.execute(
+            "DELETE FROM facets WHERE digest_id NOT IN "
+            "(SELECT id FROM digest_migration_keep)"
+        )
+        connection.execute(
+            "DELETE FROM search_documents WHERE digest_id NOT IN "
+            "(SELECT id FROM digest_migration_keep)"
+        )
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'search_fts'"
+        ).fetchone():
+            connection.execute(
+                "DELETE FROM search_fts WHERE digest_id NOT IN "
+                "(SELECT id FROM digest_migration_keep)"
+            )
+        connection.execute(f"CREATE TABLE digests_v2 ({DIGEST_TABLE_BODY_SQL})")
+        connection.execute(
+            """
+            INSERT INTO digests_v2(
+                id, version_id, schema_version, language, overview,
+                significance, reading_status, digest_hash, digest_json, created_at
+            )
+            SELECT id, version_id, schema_version, language, overview,
+                   significance, reading_status, digest_hash, digest_json, created_at
+            FROM digests
+            WHERE id IN (SELECT id FROM digest_migration_keep)
+            """
+        )
+        connection.execute("DROP TABLE digests")
+        connection.execute("ALTER TABLE digests_v2 RENAME TO digests")
+        connection.execute("DROP TABLE digest_migration_keep")
+        connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+    violations = list(connection.execute("PRAGMA foreign_key_check"))
+    if violations:
+        raise LiteratureError(
+            "Database schema migration created foreign-key violations. Restore "
+            "the pre-migration backup before retrying."
+        )
+
+
 def initialize_schema(connection: sqlite3.Connection) -> bool:
     version = int(connection.execute("PRAGMA user_version").fetchone()[0])
     if version > DATABASE_SCHEMA_VERSION:
@@ -351,9 +489,14 @@ def initialize_schema(connection: sqlite3.Connection) -> bool:
             f"Database schema {version} is newer than supported schema "
             f"{DATABASE_SCHEMA_VERSION}."
         )
-    connection.executescript(SCHEMA_SQL)
     if version == 0:
+        connection.executescript(SCHEMA_SQL)
         connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
+    elif version == 1:
+        migrate_schema_1_to_2(connection)
+        connection.executescript(SCHEMA_SQL)
+    else:
+        connection.executescript(SCHEMA_SQL)
     fts5 = True
     try:
         connection.executescript(FTS_SQL)
@@ -380,6 +523,41 @@ def connect_library(library_dir: Path) -> tuple[sqlite3.Connection, bool]:
     connection.execute("PRAGMA busy_timeout = 10000")
     connection.execute("PRAGMA journal_mode = WAL")
     return connection, initialize_schema(connection)
+
+
+def connect_library_readonly(
+    library_dir: Path, *, allow_missing: bool = False
+) -> tuple[sqlite3.Connection, bool]:
+    database_path = (library_dir / "literature.sqlite3").resolve()
+    if not database_path.is_file():
+        if allow_missing:
+            connection = sqlite3.connect(":memory:")
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            fts5 = initialize_schema(connection)
+            connection.execute("PRAGMA query_only = ON")
+            return connection, fts5
+        raise LiteratureError(f"Literature database does not exist: {database_path}", 2)
+    connection = sqlite3.connect(
+        f"{database_path.as_uri()}?mode=ro", uri=True, timeout=10.0
+    )
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA query_only = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    if version != DATABASE_SCHEMA_VERSION:
+        connection.close()
+        raise LiteratureError(
+            f"Database schema {version} does not match supported schema "
+            f"{DATABASE_SCHEMA_VERSION}. Create a backup with the compatible "
+            "pre-update CLI, then run literature_db.py init explicitly.",
+            2,
+        )
+    fts_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'"
+    ).fetchone()
+    return connection, fts_table is not None
 
 
 def load_json(path_value: str, stdin: TextIO) -> Any:
@@ -474,7 +652,15 @@ def validate_named_records(
 
 def validate_locator(value: Any, name: str) -> dict[str, Any]:
     locator = require_mapping(value, name)
-    allowed = {"section", "page", "figure", "table", "appendix", "paragraph"}
+    allowed = {
+        "section",
+        "page",
+        "figure",
+        "table",
+        "equation",
+        "appendix",
+        "paragraph",
+    }
     unknown = set(locator) - allowed
     if unknown:
         raise LiteratureError(
@@ -485,7 +671,14 @@ def validate_locator(value: Any, name: str) -> dict[str, Any]:
             locator[key] = require_string(item, f"{name}.{key}")
     if not any(locator.values()):
         raise LiteratureError(
-            f"{name} must identify a section, page, figure, or table.", 2
+            f"{name} must identify a section, page, figure, table, equation, "
+            "appendix, or paragraph.",
+            2,
+        )
+    section = locator.get("section")
+    if section and " ".join(section.split()).casefold() in GENERIC_SECTION_LABELS:
+        raise LiteratureError(
+            f"{name}.section must identify a specific article section.", 2
         )
     return locator
 
@@ -515,6 +708,98 @@ def validate_values(value: Any, name: str) -> list[dict[str, Any]]:
     return result
 
 
+def validate_section_coverage(
+    value: Any,
+    name: str,
+    *,
+    sections: Sequence[str],
+    facet_keys: set[str],
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not value:
+        raise LiteratureError(f"{name} must contain every major read section.", 2)
+    result: list[dict[str, Any]] = []
+    seen_sections: set[str] = set()
+    referenced_facets: set[str] = set()
+    for index, raw in enumerate(value):
+        item_name = f"{name}[{index}]"
+        item = require_mapping(raw, item_name)
+        reject_unknown_fields(
+            item, item_name, {"section", "role", "facet_keys", "notes"}
+        )
+        section = require_string(item.get("section"), f"{item_name}.section")
+        normalized_section = " ".join(section.split()).casefold()
+        if normalized_section in GENERIC_SECTION_LABELS:
+            raise LiteratureError(
+                f"{item_name}.section must name a real article section.", 2
+            )
+        if normalized_section in seen_sections:
+            raise LiteratureError(f"duplicate section coverage: {section}.", 2)
+        seen_sections.add(normalized_section)
+        role = require_string(item.get("role"), f"{item_name}.role")
+        if role not in COVERAGE_ROLES:
+            raise LiteratureError(
+                f"{item_name}.role must be one of "
+                f"{', '.join(sorted(COVERAGE_ROLES))}.",
+                2,
+            )
+        mapped = string_list(item.get("facet_keys", []), f"{item_name}.facet_keys")
+        unknown_facets = set(mapped) - facet_keys
+        if unknown_facets:
+            raise LiteratureError(
+                f"{item_name}.facet_keys references unknown facets: "
+                f"{', '.join(sorted(unknown_facets))}.",
+                2,
+            )
+        notes = require_string(
+            item.get("notes", ""), f"{item_name}.notes", allow_empty=True
+        )
+        if role == "scientific" and not mapped:
+            raise LiteratureError(
+                f"{item_name} marks a scientific section without a facet mapping.",
+                2,
+            )
+        if role != "scientific" and mapped:
+            raise LiteratureError(
+                f"{item_name} assigns facets to a {role} section. Only scientific "
+                "sections can carry facet mappings.",
+                2,
+            )
+        if role != "scientific" and not notes:
+            raise LiteratureError(
+                f"{item_name} requires notes explaining its {role} disposition.",
+                2,
+            )
+        referenced_facets.update(mapped)
+        result.append(
+            {
+                "section": section,
+                "role": role,
+                "facet_keys": mapped,
+                "notes": notes,
+            }
+        )
+    expected_sections = {" ".join(section.split()).casefold() for section in sections}
+    missing_sections = expected_sections - seen_sections
+    extra_sections = seen_sections - expected_sections
+    if missing_sections or extra_sections:
+        details: list[str] = []
+        if missing_sections:
+            details.append(f"missing {len(missing_sections)} read sections")
+        if extra_sections:
+            details.append(f"contains {len(extra_sections)} unlisted sections")
+        raise LiteratureError(
+            f"{name} must map digest.reading.sections exactly; " + "; ".join(details) + ".",
+            2,
+        )
+    uncovered_facets = facet_keys - referenced_facets
+    if uncovered_facets:
+        raise LiteratureError(
+            f"{name} does not map facets: {', '.join(sorted(uncovered_facets))}.",
+            2,
+        )
+    return result
+
+
 def validate_digest(raw: Any) -> dict[str, Any]:
     digest = require_mapping(raw, "digest")
     required = {
@@ -540,9 +825,13 @@ def validate_digest(raw: Any) -> dict[str, Any]:
         raise LiteratureError(
             f"digest has unsupported fields: {', '.join(sorted(unknown))}.", 2
         )
-    if digest["schema_version"] != DIGEST_SCHEMA_VERSION:
+    schema_version = digest["schema_version"]
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise LiteratureError("digest.schema_version must be an integer.", 2)
+    if schema_version != DIGEST_SCHEMA_VERSION:
         raise LiteratureError(
-            f"digest.schema_version must be {DIGEST_SCHEMA_VERSION}.", 2
+            f"digest.schema_version must be {DIGEST_SCHEMA_VERSION}.",
+            2,
         )
     digest["language"] = require_string(digest["language"], "digest.language")
 
@@ -704,18 +993,16 @@ def validate_digest(raw: Any) -> dict[str, Any]:
     digest["data_products"] = products
 
     reading = require_mapping(digest["reading"], "digest.reading")
-    reject_unknown_fields(
-        reading,
-        "digest.reading",
-        {
-            "status",
-            "sections",
-            "page_ranges",
-            "visual_page_ranges",
-            "unread_sections",
-            "notes",
-        },
-    )
+    reading_fields = {
+        "status",
+        "sections",
+        "page_ranges",
+        "visual_page_ranges",
+        "unread_sections",
+        "notes",
+    }
+    reading_fields.add("coverage")
+    reject_unknown_fields(reading, "digest.reading", reading_fields)
     status = require_string(reading.get("status"), "digest.reading.status")
     if status not in READING_STATUSES:
         raise LiteratureError(
@@ -740,6 +1027,25 @@ def validate_digest(raw: Any) -> dict[str, Any]:
         raise LiteratureError(
             "digest.reading.visual_page_ranges cannot be empty for visual reading.", 2
         )
+    if not reading["sections"]:
+        raise LiteratureError(
+            "digest.reading.sections cannot be empty for schema version 2.", 2
+        )
+    reading["coverage"] = validate_section_coverage(
+        reading.get("coverage"),
+        "digest.reading.coverage",
+        sections=reading["sections"],
+        facet_keys=facet_keys,
+    )
+    if status in {"full", "visual"} and reading["unread_sections"]:
+        raise LiteratureError(
+            "A complete schema version 2 digest cannot list unread sections.", 2
+        )
+    if status in {"full", "visual"} and not overview["questions"]:
+        raise LiteratureError(
+            "A complete full or visual digest requires at least one research question.",
+            2,
+        )
     digest["reading"] = reading
     return digest
 
@@ -751,7 +1057,7 @@ def digest_template() -> dict[str, Any]:
         "overview": {
             "summary": "",
             "significance": "",
-            "questions": [],
+            "questions": [""],
         },
         "keywords": [],
         "entities": [{"name": "", "type": "", "description": "", "aliases": []}],
@@ -782,21 +1088,35 @@ def digest_template() -> dict[str, Any]:
                         "locator": {"section": ""},
                         "values": [],
                         "keywords": [],
-                    }
+                    },
                 ],
                 "methods": [],
                 "limitations": [],
-            }
+            },
         ],
         "global_limitations": [],
         "data_products": [],
         "reading": {
             "status": "full",
-            "sections": [],
+            "sections": ["Major scientific section", "Methods and data"],
             "page_ranges": [],
             "visual_page_ranges": [],
             "unread_sections": [],
             "notes": "",
+            "coverage": [
+                {
+                    "section": "Major scientific section",
+                    "role": "scientific",
+                    "facet_keys": ["topic-slug"],
+                    "notes": "",
+                },
+                {
+                    "section": "Methods and data",
+                    "role": "methods",
+                    "facet_keys": [],
+                    "notes": "Record methods and datasets in their dedicated layers.",
+                },
+            ],
         },
     }
 
@@ -873,8 +1193,45 @@ def merge_facets(
     return result
 
 
+def merge_section_coverage(
+    current: list[dict[str, Any]], incoming: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    result = [json.loads(json.dumps(item)) for item in current]
+    positions = {
+        str(item.get("section", "")).strip().casefold(): index
+        for index, item in enumerate(result)
+    }
+    for raw in incoming:
+        item = json.loads(json.dumps(raw))
+        key = str(item.get("section", "")).strip().casefold()
+        if key in positions:
+            old = result[positions[key]]
+            old["facet_keys"] = merge_string_lists(
+                old.get("facet_keys", []), item.get("facet_keys", [])
+            )
+            if "scientific" in {old.get("role"), item.get("role")}:
+                old["role"] = "scientific"
+                old["notes"] = ""
+            else:
+                old["role"] = item.get("role") or old.get("role")
+                old_notes = str(old.get("notes", "")).strip()
+                new_notes = str(item.get("notes", "")).strip()
+                old["notes"] = " ".join(
+                    ordered_unique_casefolded_strings([old_notes, new_notes])
+                )
+        else:
+            positions[key] = len(result)
+            result.append(item)
+    return result
+
+
 def merge_digests(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     merged = json.loads(json.dumps(current))
+    if incoming.get("schema_version") != DIGEST_SCHEMA_VERSION:
+        raise LiteratureError(
+            f"Targeted updates require digest schema {DIGEST_SCHEMA_VERSION}.", 2
+        )
+    merged["schema_version"] = DIGEST_SCHEMA_VERSION
     merged["language"] = incoming.get("language") or merged["language"]
     for field in ("summary", "significance"):
         if incoming["overview"].get(field):
@@ -899,6 +1256,7 @@ def merge_digests(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str
     )
     current_reading = merged["reading"]
     incoming_reading = incoming["reading"]
+    current_was_complete = current_reading["status"] in {"full", "visual"}
     if (
         READING_STATUS_RANK[incoming_reading["status"]]
         > READING_STATUS_RANK[current_reading["status"]]
@@ -908,9 +1266,13 @@ def merge_digests(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str
         current_reading[field] = merge_string_lists(
             current_reading.get(field, []), incoming_reading.get(field, [])
         )
-    current_reading["unread_sections"] = incoming_reading.get(
-        "unread_sections", current_reading.get("unread_sections", [])
+    current_reading["coverage"] = merge_section_coverage(
+        current_reading.get("coverage", []), incoming_reading.get("coverage", [])
     )
+    if not current_was_complete:
+        current_reading["unread_sections"] = incoming_reading.get(
+            "unread_sections", current_reading.get("unread_sections", [])
+        )
     incoming_notes = incoming_reading.get("notes", "").strip()
     if incoming_notes and incoming_notes not in current_reading.get("notes", ""):
         current_notes = current_reading.get("notes", "").strip()
@@ -960,9 +1322,9 @@ def aliases_from_manifest(manifest: Mapping[str, Any]) -> list[tuple[str, str, s
             aliases.append((kind, display, normalized))
 
     append("bibcode", manifest.get("bibcode"))
-    for doi in manifest.get("doi", []) or []:
+    for doi in fulltext.list_value(manifest.get("doi")):
         append("doi", doi)
-    for arxiv_id in manifest.get("arxiv_ids", []) or []:
+    for arxiv_id in fulltext.list_value(manifest.get("arxiv_ids")):
         append("arxiv", arxiv_id)
     input_type = manifest.get("input_type")
     if input_type in {"bibcode", "doi", "arxiv"}:
@@ -1012,7 +1374,7 @@ def select_manifest_result(payload: Any, identifier: str | None) -> dict[str, An
     return require_mapping(payload, "manifest")
 
 
-def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -> None:
+def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -> str:
     status = manifest.get("status")
     if status not in {"fulltext", "needs_visual_reading"}:
         raise LiteratureError(
@@ -1030,6 +1392,7 @@ def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -
         raise LiteratureError(
             "Selected artifact hash does not match its full-text manifest.", 2
         )
+    content_hash = actual_hash
     if status == "fulltext":
         text_path_value = selected.get("text_path")
         if not text_path_value or not Path(str(text_path_value)).is_file():
@@ -1043,11 +1406,10 @@ def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -
             raise LiteratureError(
                 "Selected text hash does not match its full-text manifest.", 2
             )
-        actual_content_hash = fulltext.canonical_text_sha256(
-            text_path.read_text(encoding="utf-8", errors="replace")
-        )
+        full_text_value = text_path.read_text(encoding="utf-8", errors="replace")
+        content_hash = fulltext.canonical_text_sha256(full_text_value)
         expected_content_hash = selected.get("content_sha256")
-        if expected_content_hash and actual_content_hash != expected_content_hash:
+        if expected_content_hash and content_hash != expected_content_hash:
             raise LiteratureError(
                 "Selected content hash does not match its full-text manifest.", 2
             )
@@ -1057,11 +1419,11 @@ def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -
                 "reading status.",
                 2,
             )
-    if status == "needs_visual_reading" and digest["reading"]["status"] != "visual":
-        raise LiteratureError(
-            "A needs_visual_reading manifest requires visual reading coverage.", 2
-        )
-    if status == "needs_visual_reading":
+    else:
+        if digest["reading"]["status"] != "visual":
+            raise LiteratureError(
+                "A needs_visual_reading manifest requires visual reading coverage.", 2
+            )
         expected_content_hash = selected.get("content_sha256")
         if expected_content_hash and expected_content_hash != actual_hash:
             raise LiteratureError(
@@ -1069,6 +1431,24 @@ def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -
                 "its content identity.",
                 2,
             )
+    return content_hash
+
+
+def validate_paper_metadata(
+    manifest: dict[str, Any],
+) -> list[tuple[str, str, str]]:
+    require_string(manifest.get("title"), "manifest.title")
+    aliases = aliases_from_manifest(manifest)
+    canonical_key(aliases)
+    return aliases
+
+
+def validate_ingest_metadata(
+    manifest: dict[str, Any],
+) -> list[tuple[str, str, str]]:
+    aliases = validate_paper_metadata(manifest)
+    manifest_version_kind(manifest)
+    return aliases
 
 
 def atomic_copy(
@@ -1152,6 +1532,28 @@ def paper_ids_for_aliases(
     return paper_ids
 
 
+def manifest_version_kind(manifest: Mapping[str, Any]) -> str:
+    selected = require_mapping(manifest.get("selected"), "manifest.selected")
+    candidate = selected.get("candidate")
+    if not isinstance(candidate, Mapping):
+        return "unknown"
+    return str(candidate.get("version") or "unknown")
+
+
+def existing_version_id(
+    connection: sqlite3.Connection,
+    paper_id: int,
+    version_kind: str,
+    content_sha256: str,
+) -> int | None:
+    row = connection.execute(
+        "SELECT id FROM versions "
+        "WHERE paper_id = ? AND version_kind = ? AND content_sha256 = ?",
+        (paper_id, version_kind, content_sha256),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
 def upsert_paper(
     connection: sqlite3.Connection,
     manifest: dict[str, Any],
@@ -1173,19 +1575,47 @@ def upsert_paper(
     except (TypeError, ValueError):
         year = None
     metadata = {
-        "property": manifest.get("property") or [],
-        "doi": manifest.get("doi") or [],
-        "arxiv_ids": manifest.get("arxiv_ids") or [],
+        "property": ordered_unique_casefolded_strings(
+            fulltext.list_value(manifest.get("property"))
+        ),
+        "doi": ordered_unique_casefolded_strings(
+            fulltext.list_value(manifest.get("doi"))
+        ),
+        "arxiv_ids": ordered_unique_casefolded_strings(
+            fulltext.list_value(manifest.get("arxiv_ids"))
+        ),
         "citation_count": manifest.get("citation_count"),
         "read_count": manifest.get("read_count"),
     }
     if matches:
         paper_id = matches.pop()
+        existing = connection.execute(
+            "SELECT * FROM papers WHERE id = ?", (paper_id,)
+        ).fetchone()
+        existing_authors = json.loads(existing["authors_json"])
+        existing_metadata = json.loads(existing["metadata_json"])
+        bibcode = str(existing["bibcode"] or "").strip() or bibcode
+        title = str(existing["title"] or "").strip() or title
+        authors = existing_authors or authors
+        abstract = str(existing["abstract"] or "").strip() or abstract
+        year = existing["year"] if existing["year"] is not None else year
+        pub = str(existing["pub"] or "").strip() or manifest.get("pub")
+        doctype = str(existing["doctype"] or "").strip() or manifest.get("doctype")
+        for field in ("property", "doi", "arxiv_ids"):
+            metadata[field] = ordered_unique_casefolded_strings(
+                [
+                    *fulltext.list_value(existing_metadata.get(field)),
+                    *metadata[field],
+                ]
+            )
+        for field in ("citation_count", "read_count"):
+            if metadata[field] is None:
+                metadata[field] = existing_metadata.get(field)
         connection.execute(
             """
             UPDATE papers
-            SET bibcode = COALESCE(?, bibcode), title = ?, authors_json = ?,
-                abstract = ?, year = COALESCE(?, year), pub = ?, doctype = ?,
+            SET bibcode = ?, title = ?, authors_json = ?,
+                abstract = ?, year = ?, pub = ?, doctype = ?,
                 metadata_json = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -1195,8 +1625,8 @@ def upsert_paper(
                 json_text(authors),
                 abstract,
                 year,
-                manifest.get("pub"),
-                manifest.get("doctype"),
+                pub,
+                doctype,
                 json_text(metadata),
                 now,
                 paper_id,
@@ -1250,15 +1680,12 @@ def upsert_version(
 ) -> tuple[int, bool]:
     selected = manifest["selected"]
     candidate = selected.get("candidate") or {}
-    version_kind = candidate.get("version") or "unknown"
-    row = connection.execute(
-        "SELECT id FROM versions "
-        "WHERE paper_id = ? AND version_kind = ? AND content_sha256 = ?",
-        (paper_id, version_kind, stored["content_sha256"]),
-    ).fetchone()
+    version_kind = manifest_version_kind(manifest)
+    version_id = existing_version_id(
+        connection, paper_id, version_kind, stored["content_sha256"]
+    )
     statistics = selected.get("statistics") or {}
-    if row:
-        version_id = int(row["id"])
+    if version_id is not None:
         connection.execute(
             """
             UPDATE versions
@@ -1351,56 +1778,82 @@ def upsert_version(
     return version_id, version_created
 
 
-def current_digest_row(
+def stored_digest_row(
     connection: sqlite3.Connection, version_id: int
 ) -> sqlite3.Row | None:
     return connection.execute(
-        "SELECT * FROM digests WHERE version_id = ? AND is_current = 1",
+        "SELECT * FROM digests WHERE version_id = ?",
         (version_id,),
     ).fetchone()
+
+
+def stored_digest_is_complete(row: sqlite3.Row | None) -> bool:
+    if row is None:
+        return False
+    try:
+        digest = validate_digest(json.loads(row["digest_json"]))
+    except (json.JSONDecodeError, LiteratureError):
+        return False
+    return digest["reading"]["status"] in {"full", "visual"}
 
 
 def insert_digest(
     connection: sqlite3.Connection,
     version_id: int,
     digest: dict[str, Any],
-) -> tuple[int, int, bool]:
+) -> tuple[int, bool, bool]:
     digest_hash = stable_digest(digest)
-    current = current_digest_row(connection, version_id)
-    if current and current["digest_hash"] == digest_hash:
-        return int(current["id"]), int(current["revision"]), False
-    revision_row = connection.execute(
-        "SELECT COALESCE(MAX(revision), 0) AS revision "
-        "FROM digests WHERE version_id = ?",
-        (version_id,),
-    ).fetchone()
-    revision = int(revision_row["revision"]) + 1
-    connection.execute(
-        "UPDATE digests SET is_current = 0 WHERE version_id = ? AND is_current = 1",
-        (version_id,),
-    )
-    cursor = connection.execute(
-        """
-        INSERT INTO digests(
-            version_id, revision, schema_version, language, overview,
-            significance, reading_status, digest_hash, digest_json,
-            is_current, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-        """,
-        (
-            version_id,
-            revision,
-            digest["schema_version"],
-            digest["language"],
-            digest["overview"]["summary"],
-            digest["overview"]["significance"],
-            digest["reading"]["status"],
-            digest_hash,
-            json_text(digest),
-            fulltext.utc_now(),
-        ),
-    )
-    digest_id = int(cursor.lastrowid)
+    stored_digest = stored_digest_row(connection, version_id)
+    if stored_digest and stored_digest["digest_hash"] == digest_hash:
+        return int(stored_digest["id"]), False, False
+    now = fulltext.utc_now()
+    if stored_digest:
+        digest_id = int(stored_digest["id"])
+        connection.execute("DELETE FROM facets WHERE digest_id = ?", (digest_id,))
+        connection.execute(
+            """
+            UPDATE digests
+            SET schema_version = ?, language = ?, overview = ?,
+                significance = ?, reading_status = ?, digest_hash = ?,
+                digest_json = ?, created_at = ?
+            WHERE id = ?
+            """,
+            (
+                digest["schema_version"],
+                digest["language"],
+                digest["overview"]["summary"],
+                digest["overview"]["significance"],
+                digest["reading"]["status"],
+                digest_hash,
+                json_text(digest),
+                now,
+                digest_id,
+            ),
+        )
+        digest_created = False
+    else:
+        cursor = connection.execute(
+            """
+            INSERT INTO digests(
+                version_id, schema_version, language, overview,
+                significance, reading_status, digest_hash, digest_json,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                version_id,
+                digest["schema_version"],
+                digest["language"],
+                digest["overview"]["summary"],
+                digest["overview"]["significance"],
+                digest["reading"]["status"],
+                digest_hash,
+                json_text(digest),
+                now,
+            ),
+        )
+        digest_id = int(cursor.lastrowid)
+        digest_created = True
     for facet_index, facet in enumerate(digest["facets"]):
         facet_cursor = connection.execute(
             """
@@ -1441,13 +1894,14 @@ def insert_digest(
                     json_text(finding["keywords"]),
                 ),
             )
-    return digest_id, revision, True
+    return digest_id, True, digest_created
 
 
 def join_record_text(records: Iterable[Mapping[str, Any]]) -> str:
     parts: list[str] = []
     for record in records:
-        for value in record.values():
+        for key in sorted(record):
+            value = record[key]
             if isinstance(value, str):
                 parts.append(value)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -1561,28 +2015,104 @@ def ingest_record(
     digest: dict[str, Any],
     *,
     merge: bool,
+    replace_digest: bool = False,
 ) -> dict[str, Any]:
-    validate_ingest_manifest(manifest, digest)
+    digest = validate_digest(digest)
+    aliases = validate_ingest_metadata(manifest)
+    content_sha256 = validate_ingest_manifest(manifest, digest)
+    matching_papers = paper_ids_for_aliases(connection, aliases)
+    if len(matching_papers) > 1:
+        raise LiteratureError(
+            "Identifiers in the manifest already belong to different papers."
+        )
+    paper_exists = bool(matching_papers)
+    existing_paper_id = next(iter(matching_papers)) if paper_exists else None
+    current_exact_version_id = None
+    stored_exact_digest = None
+    if existing_paper_id is not None:
+        current_exact_version_id = existing_version_id(
+            connection,
+            existing_paper_id,
+            manifest_version_kind(manifest),
+            content_sha256,
+        )
+        if current_exact_version_id is not None:
+            stored_exact_digest = stored_digest_row(
+                connection, current_exact_version_id
+            )
+    if digest["reading"]["status"] == "targeted" and not stored_digest_is_complete(
+        stored_exact_digest
+    ):
+        raise LiteratureError(
+            "A targeted digest requires a complete full or whole-document visual "
+            "digest for this exact article version.",
+            2,
+        )
+    if replace_digest and not paper_exists:
+        raise LiteratureError(
+            "--replace-digest requires an existing paper and stored digest.", 2
+        )
+    if replace_digest and digest["reading"]["status"] not in {"full", "visual"}:
+        raise LiteratureError(
+            "--replace-digest requires a complete full or whole-document "
+            "visual digest.",
+            2,
+        )
+    if replace_digest:
+        version_id = current_exact_version_id
+        if version_id is None or stored_exact_digest is None:
+            raise LiteratureError(
+                "--replace-digest requires an existing stored digest for "
+                "this exact article version.",
+                2,
+            )
+    incoming_digest = json.loads(json.dumps(digest))
+    preflight_digest_id = None
+    if stored_exact_digest is not None and not replace_digest:
+        preflight_digest_id = int(stored_exact_digest["id"])
+        stored_payload = json.loads(stored_exact_digest["digest_json"])
+        if merge:
+            digest = merge_digests(stored_payload, incoming_digest)
+        elif stable_digest(stored_payload) != stable_digest(digest):
+            raise LiteratureError(
+                "This article version already has a different digest. Use "
+                "--merge for additive evidence or --replace-digest for a "
+                "verified complete replacement. Both operations update the "
+                "single stored digest in place.",
+                2,
+            )
     stored = store_objects(library_dir, manifest)
-    aliases = aliases_from_manifest(manifest)
     try:
         connection.execute("BEGIN IMMEDIATE")
         paper_id = upsert_paper(connection, manifest, aliases)
         version_id, version_created = upsert_version(
             connection, paper_id, manifest, stored
         )
-        current = current_digest_row(connection, version_id)
-        if current:
-            current_digest = json.loads(current["digest_json"])
-            if merge:
-                digest = merge_digests(current_digest, digest)
-            elif stable_digest(current_digest) != stable_digest(digest):
-                raise LiteratureError(
-                    "This article version already has a different digest. "
-                    "Use --merge to preserve its existing facets and history.",
-                    2,
-                )
-        digest_id, revision, digest_created = insert_digest(
+        stored_row = stored_digest_row(connection, version_id)
+        if stored_row:
+            stored_payload = json.loads(stored_row["digest_json"])
+            preflight_matches = (
+                preflight_digest_id is not None
+                and int(stored_row["id"]) == preflight_digest_id
+            )
+            if not replace_digest and not preflight_matches:
+                if merge:
+                    digest = merge_digests(stored_payload, incoming_digest)
+                elif stable_digest(stored_payload) != stable_digest(digest):
+                    raise LiteratureError(
+                        "This article version already has a different digest. "
+                        "Use --merge for additive evidence or --replace-digest for "
+                        "a verified complete replacement. Both operations update "
+                        "the single stored digest in place.",
+                        2,
+                    )
+        elif replace_digest:
+            raise LiteratureError(
+                "--replace-digest requires an existing stored digest for "
+                "this exact article version.",
+                2,
+            )
+        digest_id, digest_changed, digest_created = insert_digest(
             connection, version_id, digest
         )
         document = build_search_document(
@@ -1602,13 +2132,15 @@ def ingest_record(
         connection.rollback()
         raise
     return {
-        "status": "ingested" if digest_created else "unchanged",
+        "status": (
+            "ingested" if digest_created else "updated" if digest_changed else "unchanged"
+        ),
         "paper_id": paper_id,
         "version_id": version_id,
         "digest_id": digest_id,
-        "revision": revision,
         "version_created": version_created,
         "digest_created": digest_created,
+        "digest_changed": digest_changed,
         "canonical_key": stored_paper["canonical_key"],
         "bibcode": manifest.get("bibcode"),
         "title": manifest.get("title"),
@@ -1621,6 +2153,72 @@ def ingest_record(
         },
         "reading_status": digest["reading"]["status"],
         "facets": [facet["key"] for facet in digest["facets"]],
+    }
+
+
+def enrich_paper_metadata(
+    connection: sqlite3.Connection,
+    fts5: bool,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    aliases = validate_paper_metadata(manifest)
+    matching = paper_ids_for_aliases(connection, aliases)
+    if not matching:
+        raise LiteratureError(
+            "Metadata enrichment requires an existing paper identifier.", 2
+        )
+    if len(matching) > 1:
+        raise LiteratureError(
+            "Metadata identifiers already belong to different papers.", 2
+        )
+    expected_paper_id = next(iter(matching))
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        paper_id = upsert_paper(connection, manifest, aliases)
+        if paper_id != expected_paper_id:
+            raise LiteratureError("Metadata enrichment changed paper identity.")
+        rows = connection.execute(
+            """
+            SELECT v.id AS version_id, v.text_path, d.id AS digest_id, d.digest_json
+            FROM versions v
+            JOIN digests d ON d.version_id = v.id
+            WHERE v.paper_id = ?
+            ORDER BY v.id
+            """,
+            (paper_id,),
+        ).fetchall()
+        for row in rows:
+            full_text_value = ""
+            if row["text_path"] and Path(row["text_path"]).is_file():
+                full_text_value = Path(row["text_path"]).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            document = build_search_document(
+                connection,
+                paper_id,
+                int(row["version_id"]),
+                int(row["digest_id"]),
+                json.loads(row["digest_json"]),
+                full_text_value,
+            )
+            replace_search_document(connection, document, fts5)
+        paper = connection.execute(
+            "SELECT * FROM papers WHERE id = ?", (paper_id,)
+        ).fetchone()
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    return {
+        "status": "enriched",
+        "paper_id": paper_id,
+        "canonical_key": paper["canonical_key"],
+        "bibcode": paper["bibcode"],
+        "title": paper["title"],
+        "authors": len(json.loads(paper["authors_json"])),
+        "abstract": bool(str(paper["abstract"] or "").strip()),
+        "year": paper["year"],
+        "versions_reindexed": len(rows),
     }
 
 
@@ -1652,9 +2250,9 @@ def preferred_version(
     return connection.execute(
         f"""
         SELECT v.*, d.id AS digest_id, d.digest_json, d.reading_status,
-               d.revision, d.created_at AS digest_created_at
+               d.created_at AS digest_updated_at
         FROM versions v
-        LEFT JOIN digests d ON d.version_id = v.id AND d.is_current = 1
+        LEFT JOIN digests d ON d.version_id = v.id
         WHERE v.paper_id = ? {hash_clause}
         ORDER BY
             CASE v.version_kind
@@ -1687,24 +2285,45 @@ def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
     return needle in haystack or all(token in haystack for token in needle.split())
 
 
+def article_open_gate(reuse_status: str) -> dict[str, Any]:
+    if reuse_status == "reusable":
+        return {
+            "open_gate_action": "reuse_complete_record",
+            "complete_ingest_required": False,
+        }
+    if reuse_status == "targeted_reading":
+        return {
+            "open_gate_action": "targeted_merge",
+            "complete_ingest_required": False,
+        }
+    return {
+        "open_gate_action": "complete_ingest",
+        "complete_ingest_required": True,
+    }
+
+
 def reuse_assessment(
     version: sqlite3.Row | None,
     topics: Sequence[str],
     artifact_hash: str | None,
 ) -> dict[str, Any]:
     if version is None:
+        status = "version_changed" if artifact_hash else "needs_reading"
         return {
-            "reuse_status": "version_changed" if artifact_hash else "needs_reading",
+            "reuse_status": status,
             "matched_topics": [],
             "missing_topics": list(topics),
+            **article_open_gate(status),
         }
     if version["digest_id"] is None:
         return {
             "reuse_status": "needs_reading",
             "matched_topics": [],
             "missing_topics": list(topics),
+            **article_open_gate("needs_reading"),
         }
-    digest = json.loads(version["digest_json"])
+    digest = validate_digest(json.loads(version["digest_json"]))
+    digest_schema_version = int(digest["schema_version"])
     matched: list[str] = []
     missing: list[str] = []
     for topic in topics:
@@ -1713,10 +2332,10 @@ def reuse_assessment(
         else:
             missing.append(topic)
     reading_status = version["reading_status"]
-    if missing or (reading_status == "targeted" and not topics):
+    if reading_status == "targeted":
+        status = "needs_reading"
+    elif missing:
         status = "targeted_reading"
-    elif reading_status == "targeted":
-        status = "reusable_for_topics"
     else:
         status = "reusable"
     return {
@@ -1724,7 +2343,8 @@ def reuse_assessment(
         "matched_topics": matched,
         "missing_topics": missing,
         "reading_status": reading_status,
-        "digest_revision": version["revision"],
+        "digest_schema_version": digest_schema_version,
+        **article_open_gate(status),
     }
 
 
@@ -1754,6 +2374,7 @@ def lookup_one(
             "reuse_status": "not_found",
             "matched_topics": [],
             "missing_topics": list(topics),
+            **article_open_gate("not_found"),
         }
     version = preferred_version(connection, int(paper["id"]), artifact_hash)
     assessment = reuse_assessment(version, topics, artifact_hash)
@@ -1796,12 +2417,10 @@ def digest_details(digest_row: sqlite3.Row) -> dict[str, Any]:
     digest = json.loads(digest_row["digest_json"])
     return {
         "id": digest_row["id"],
-        "revision": digest_row["revision"],
         "schema_version": digest_row["schema_version"],
         "language": digest_row["language"],
         "reading_status": digest_row["reading_status"],
-        "is_current": bool(digest_row["is_current"]),
-        "created_at": digest_row["created_at"],
+        "updated_at": digest_row["created_at"],
         "digest": digest,
     }
 
@@ -1810,7 +2429,6 @@ def show_paper(
     connection: sqlite3.Connection,
     identifier: str,
     *,
-    history: bool,
     include_fulltext: bool,
 ) -> dict[str, Any]:
     paper = find_paper_by_identifier(connection, identifier)
@@ -1824,11 +2442,9 @@ def show_paper(
     ).fetchall()
     version_values: list[dict[str, Any]] = []
     for version in versions:
-        digest_sql = "SELECT * FROM digests WHERE version_id = ?"
-        if not history:
-            digest_sql += " AND is_current = 1"
-        digest_sql += " ORDER BY revision DESC"
-        digest_rows = connection.execute(digest_sql, (version["id"],)).fetchall()
+        digest_row = connection.execute(
+            "SELECT * FROM digests WHERE version_id = ?", (version["id"],)
+        ).fetchone()
         version_value: dict[str, Any] = {
             "id": version["id"],
             "artifact_sha256": version["sha256"],
@@ -1845,7 +2461,7 @@ def show_paper(
             "word_count": version["word_count"],
             "page_count": version["page_count"],
             "status": version["status"],
-            "digests": [digest_details(row) for row in digest_rows],
+            "digest": digest_details(digest_row) if digest_row else None,
             "artifacts": [
                 dict(artifact)
                 for artifact in connection.execute(
@@ -2030,7 +2646,6 @@ def search_library(
         year_clauses.append("p.year <= ?")
         parameters.append(year_to)
     year_sql = "" if not year_clauses else " AND " + " AND ".join(year_clauses)
-    candidate_limit = max(limit * 5, limit)
     use_fts = fts5 and (mode == "fts" or not contains_cjk(query))
     if use_fts:
         expression = build_search_expression(query, mode, scope)
@@ -2039,19 +2654,18 @@ def search_library(
             SELECT p.id AS paper_id, p.bibcode, p.title, p.year, p.pub,
                    v.id AS version_id, v.version_kind, v.sha256,
                    v.content_sha256,
-                   d.id AS digest_id, d.reading_status, d.revision,
+                   d.id AS digest_id, d.reading_status,
                    bm25(search_fts) AS score,
                    snippet(search_fts, -1, '[', ']', ' … ', 28) AS snippet
             FROM search_fts
             JOIN papers p ON p.id = CAST(search_fts.paper_id AS INTEGER)
             JOIN versions v ON v.id = CAST(search_fts.version_id AS INTEGER)
             JOIN digests d ON d.id = CAST(search_fts.digest_id AS INTEGER)
-            WHERE search_fts MATCH ? AND d.is_current = 1 {year_sql}
-            ORDER BY score
-            LIMIT ?
+            WHERE search_fts MATCH ? {year_sql}
+            ORDER BY score, p.id, v.id
             """,
-            (expression, *parameters, candidate_limit),
-        ).fetchall()
+            (expression, *parameters),
+        )
     else:
         columns = SCOPE_COLUMNS[scope] or SEARCH_COLUMNS[3:]
         searchable_columns = [
@@ -2070,17 +2684,17 @@ def search_library(
             SELECT p.id AS paper_id, p.bibcode, p.title, p.year, p.pub,
                     v.id AS version_id, v.version_kind, v.sha256,
                     v.content_sha256,
-                   d.id AS digest_id, d.reading_status, d.revision,
+                   d.id AS digest_id, d.reading_status,
                    0.0 AS score, substr(sd.overview, 1, 300) AS snippet
             FROM search_documents sd
             JOIN papers p ON p.id = sd.paper_id
             JOIN versions v ON v.id = sd.version_id
             JOIN digests d ON d.id = sd.digest_id
-            WHERE {" AND ".join(term_clauses)} AND d.is_current = 1 {year_sql}
-            LIMIT ?
+            WHERE {" AND ".join(term_clauses)} {year_sql}
+            ORDER BY p.id, v.id
             """,
-            (*term_parameters, *parameters, candidate_limit),
-        ).fetchall()
+            (*term_parameters, *parameters),
+        )
     results: list[dict[str, Any]] = []
     seen_papers: set[int] = set()
     for row in rows:
@@ -2105,7 +2719,6 @@ def search_library(
                 "artifact_sha256": row["sha256"],
                 "content_sha256": row["content_sha256"],
                 "reading_status": row["reading_status"],
-                "digest_revision": row["revision"],
                 "score": round(float(row["score"]), 6),
                 "snippet": row["snippet"],
                 "matched_topics": matched_topics,
@@ -2182,7 +2795,6 @@ def list_library(
                 "artifact_sha256": version["sha256"],
                 "content_sha256": version["content_sha256"],
                 "reading_status": version["reading_status"],
-                "digest_revision": version["revision"],
                 "matched_topics": matched,
                 "facets": facets_for_digest(connection, int(version["digest_id"])),
             }
@@ -2200,14 +2812,18 @@ def library_stats(
         table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
         for table in tables
     }
-    current = int(
+    complete = int(
         connection.execute(
-            "SELECT COUNT(*) FROM digests WHERE is_current = 1"
+            "SELECT COUNT(*) FROM digests "
+            "WHERE schema_version = ?",
+            (DIGEST_SCHEMA_VERSION,),
         ).fetchone()[0]
     )
     reading_rows = connection.execute(
         "SELECT reading_status, COUNT(*) AS count FROM digests "
-        "WHERE is_current = 1 GROUP BY reading_status"
+        "WHERE schema_version = ? "
+        "GROUP BY reading_status",
+        (DIGEST_SCHEMA_VERSION,),
     ).fetchall()
     object_bytes = 0
     object_files = 0
@@ -2224,9 +2840,353 @@ def library_stats(
         "library_dir": str(library_dir),
         "database_path": str(library_dir / "literature.sqlite3"),
         "fts5": fts5,
-        "counts": {**counts, "current_digests": current},
+        "counts": {**counts, "complete_digests": complete},
         "reading_status": {row["reading_status"]: row["count"] for row in reading_rows},
         "objects": {"files": object_files, "bytes": object_bytes},
+    }
+
+
+def path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def create_library_backup(
+    connection: sqlite3.Connection,
+    fts5: bool,
+    library_dir: Path,
+    destination_value: str | None,
+) -> dict[str, Any]:
+    timestamp = fulltext.utc_now()
+    stamp = re.sub(r"[^0-9A-Za-z]", "", timestamp)[:15]
+    destination = (
+        Path(destination_value).expanduser().resolve()
+        if destination_value
+        else (library_dir.parent / "backups" / f"literature-{stamp}").resolve()
+    )
+    if path_is_within(destination, library_dir):
+        raise LiteratureError("Backup destination must be outside the live library.", 2)
+    if destination.exists():
+        raise LiteratureError(f"Backup destination already exists: {destination}", 2)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    if temporary.exists():
+        raise LiteratureError(f"Temporary backup path already exists: {temporary}", 2)
+    try:
+        temporary.mkdir(parents=False)
+        backup_database = temporary / "literature.sqlite3"
+        target = sqlite3.connect(backup_database)
+        try:
+            connection.backup(target)
+        finally:
+            target.close()
+        objects_source = library_dir / "objects"
+        if objects_source.is_dir():
+            shutil.copytree(objects_source, temporary / "objects")
+        check = sqlite3.connect(backup_database)
+        try:
+            integrity = [row[0] for row in check.execute("PRAGMA integrity_check")]
+        finally:
+            check.close()
+        if integrity != ["ok"]:
+            raise LiteratureError("Backup database failed its integrity check.")
+        stats = library_stats(connection, fts5, library_dir)
+        fulltext.atomic_write_text(
+            temporary / "backup.json",
+            pretty_json(
+                {
+                    "backup_schema_version": 1,
+                    "database_schema_version": DATABASE_SCHEMA_VERSION,
+                    "created_at": timestamp,
+                    "source_library": str(library_dir.resolve()),
+                    "database_integrity": integrity,
+                    "counts": stats["counts"],
+                    "objects": stats["objects"],
+                }
+            ),
+        )
+        os.replace(temporary, destination)
+    except Exception:
+        if temporary.exists() and path_is_within(temporary, destination.parent):
+            shutil.rmtree(temporary)
+        raise
+    return {
+        "status": "created",
+        "destination": str(destination),
+        "created_at": timestamp,
+        "counts": stats["counts"],
+        "objects": stats["objects"],
+    }
+
+
+def audit_library(
+    connection: sqlite3.Connection,
+    fts5: bool,
+    library_dir: Path,
+    *,
+    verify_hashes: bool,
+) -> dict[str, Any]:
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    information: dict[str, Any] = {}
+
+    integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
+    quick_check = [row[0] for row in connection.execute("PRAGMA quick_check")]
+    foreign_keys = [dict(row) for row in connection.execute("PRAGMA foreign_key_check")]
+    if integrity != ["ok"] or quick_check != ["ok"]:
+        errors.append({"kind": "sqlite_integrity", "details": integrity})
+    if foreign_keys:
+        errors.append({"kind": "foreign_key_violations", "count": len(foreign_keys)})
+
+    relation_checks = {
+        "papers_without_versions": """
+            SELECT COUNT(*) FROM papers p
+            WHERE NOT EXISTS (SELECT 1 FROM versions v WHERE v.paper_id = p.id)
+        """,
+        "versions_without_digest": """
+            SELECT COUNT(*) FROM versions v
+            WHERE NOT EXISTS (
+                SELECT 1 FROM digests d
+                WHERE d.version_id = v.id
+            )
+        """,
+        "versions_with_multiple_digests": """
+            SELECT COUNT(*) FROM (
+                SELECT version_id FROM digests
+                GROUP BY version_id HAVING COUNT(*) > 1
+            )
+        """,
+        "digests_without_search_documents": """
+            SELECT COUNT(*) FROM digests d
+            WHERE NOT EXISTS (
+                SELECT 1 FROM search_documents sd WHERE sd.digest_id = d.id
+            )
+        """,
+        "search_documents_without_matching_digest": """
+            SELECT COUNT(*) FROM search_documents sd
+            WHERE NOT EXISTS (
+                SELECT 1 FROM digests d
+                WHERE d.id = sd.digest_id AND d.version_id = sd.version_id
+            )
+        """,
+    }
+    relation_results = {
+        name: int(connection.execute(sql).fetchone()[0])
+        for name, sql in relation_checks.items()
+    }
+    for name, count in relation_results.items():
+        if count:
+            errors.append({"kind": name, "count": count})
+
+    rows = connection.execute(
+        """
+        SELECT p.id AS paper_id, p.canonical_key, p.bibcode, p.title,
+               p.authors_json, p.abstract, p.year, v.id AS version_id,
+               v.status, v.sha256,
+               v.text_sha256, v.content_sha256, v.artifact_path, v.text_path,
+               v.manifest_path, d.id AS digest_id, d.digest_json
+        FROM papers p
+        JOIN versions v ON v.paper_id = p.id
+        JOIN digests d ON d.version_id = v.id
+        ORDER BY v.id
+        """
+    ).fetchall()
+
+    invalid_digests: list[dict[str, str]] = []
+    incomplete_reading: list[str] = []
+    metadata_missing = {"bibcode": [], "authors": [], "abstract": [], "year": []}
+    arxiv_awaiting_bibcode: list[str] = []
+    search_mismatches: list[str] = []
+    referenced_object_dirs: set[Path] = set()
+    object_issues: list[dict[str, str]] = []
+
+    for row in rows:
+        key = str(row["canonical_key"])
+        try:
+            raw_digest = json.loads(row["digest_json"])
+            digest = validate_digest(raw_digest)
+        except (json.JSONDecodeError, LiteratureError) as exc:
+            invalid_digests.append({"paper": key, "error": str(exc)})
+            digest = None
+        if digest is not None:
+            if (
+                digest["reading"]["status"] not in {"full", "visual"}
+                or digest["reading"]["unread_sections"]
+            ):
+                incomplete_reading.append(key)
+
+        if not row["bibcode"]:
+            if key.startswith("arxiv:"):
+                arxiv_awaiting_bibcode.append(key)
+            else:
+                metadata_missing["bibcode"].append(key)
+        try:
+            authors = json.loads(row["authors_json"])
+        except json.JSONDecodeError:
+            authors = []
+        if not authors:
+            metadata_missing["authors"].append(key)
+        if not str(row["abstract"] or "").strip():
+            metadata_missing["abstract"].append(key)
+        if row["year"] is None:
+            metadata_missing["year"].append(key)
+
+        full_text_value = ""
+        text_path = Path(str(row["text_path"])) if row["text_path"] else None
+        if text_path and text_path.is_file():
+            full_text_value = text_path.read_text(encoding="utf-8", errors="replace")
+        if digest is not None:
+            expected_document = build_search_document(
+                connection,
+                int(row["paper_id"]),
+                int(row["version_id"]),
+                int(row["digest_id"]),
+                digest,
+                full_text_value,
+            )
+            stored_document = connection.execute(
+                "SELECT * FROM search_documents WHERE version_id = ?",
+                (row["version_id"],),
+            ).fetchone()
+            if stored_document is None or any(
+                str(stored_document[column]) != expected_document[column]
+                for column in SEARCH_COLUMNS
+            ):
+                search_mismatches.append(key)
+
+        for column in ("artifact_path", "text_path", "manifest_path"):
+            raw_path = row[column]
+            if not raw_path:
+                if column != "text_path" or row["status"] == "fulltext":
+                    object_issues.append(
+                        {"paper": key, "kind": f"missing_{column}"}
+                    )
+                continue
+            path = Path(str(raw_path))
+            referenced_object_dirs.add(path.parent.resolve())
+            if not path.is_file():
+                object_issues.append(
+                    {"paper": key, "kind": f"missing_{column}", "path": str(path)}
+                )
+            elif not path_is_within(path, library_dir / "objects"):
+                object_issues.append(
+                    {"paper": key, "kind": "path_outside_object_store", "path": str(path)}
+                )
+        artifact_path = Path(str(row["artifact_path"])) if row["artifact_path"] else None
+        if verify_hashes and artifact_path and artifact_path.is_file():
+            if fulltext.sha256_file(artifact_path) != row["sha256"]:
+                object_issues.append({"paper": key, "kind": "artifact_hash_mismatch"})
+        if verify_hashes and text_path and text_path.is_file():
+            if fulltext.sha256_file(text_path) != row["text_sha256"]:
+                object_issues.append({"paper": key, "kind": "text_hash_mismatch"})
+            if (
+                row["status"] == "fulltext"
+                and fulltext.canonical_text_sha256(full_text_value)
+                != row["content_sha256"]
+            ):
+                object_issues.append({"paper": key, "kind": "content_hash_mismatch"})
+        if (
+            verify_hashes
+            and row["status"] == "needs_visual_reading"
+            and row["content_sha256"] != row["sha256"]
+        ):
+            object_issues.append(
+                {"paper": key, "kind": "visual_content_identity_mismatch"}
+            )
+        manifest_path = Path(str(row["manifest_path"])) if row["manifest_path"] else None
+        if manifest_path and manifest_path.is_file():
+            try:
+                stored_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                database_object = stored_manifest.get("database_object") or {}
+                expected_paths = {
+                    "artifact_path": str(artifact_path.resolve()) if artifact_path else None,
+                    "text_path": str(text_path.resolve()) if text_path else None,
+                    "content_sha256": row["content_sha256"],
+                }
+                if any(database_object.get(name) != value for name, value in expected_paths.items()):
+                    object_issues.append({"paper": key, "kind": "manifest_database_object_mismatch"})
+            except (OSError, json.JSONDecodeError):
+                object_issues.append({"paper": key, "kind": "invalid_stored_manifest"})
+
+    orphan_dirs: list[dict[str, Any]] = []
+    objects_dir = library_dir / "objects"
+    if objects_dir.is_dir():
+        for prefix in objects_dir.iterdir():
+            if not prefix.is_dir():
+                continue
+            for object_dir in prefix.iterdir():
+                if not object_dir.is_dir() or object_dir.resolve() in referenced_object_dirs:
+                    continue
+                files = [path for path in object_dir.rglob("*") if path.is_file()]
+                if files:
+                    orphan_dirs.append(
+                        {
+                            "path": str(object_dir.resolve()),
+                            "files": len(files),
+                            "bytes": sum(path.stat().st_size for path in files),
+                        }
+                    )
+
+    fts_mismatches: list[str] = []
+    if fts5:
+        for document in connection.execute("SELECT * FROM search_documents"):
+            fts_row = connection.execute(
+                "SELECT * FROM search_fts WHERE version_id = ?",
+                (str(document["version_id"]),),
+            ).fetchone()
+            if fts_row is None or any(
+                str(fts_row[column]) != str(document[column])
+                for column in SEARCH_COLUMNS
+            ):
+                fts_mismatches.append(str(document["version_id"]))
+
+    if invalid_digests:
+        errors.append({"kind": "invalid_digests", "items": invalid_digests})
+    if incomplete_reading:
+        errors.append(
+            {"kind": "incomplete_reading_digests", "papers": incomplete_reading}
+        )
+    if object_issues:
+        errors.append({"kind": "object_integrity", "items": object_issues})
+    if search_mismatches:
+        warnings.append({"kind": "search_document_drift", "papers": search_mismatches})
+    if fts_mismatches:
+        errors.append({"kind": "fts_document_mismatch", "version_ids": fts_mismatches})
+    if orphan_dirs:
+        warnings.append({"kind": "orphan_object_directories", "items": orphan_dirs})
+    missing_metadata_counts = {name: len(items) for name, items in metadata_missing.items()}
+    if any(missing_metadata_counts.values()):
+        warnings.append(
+            {
+                "kind": "incomplete_metadata",
+                "counts": missing_metadata_counts,
+                "papers": metadata_missing,
+            }
+        )
+    information.update(
+        {
+            "arxiv_records_awaiting_ads_bibcode": arxiv_awaiting_bibcode,
+        }
+    )
+    status = "unhealthy" if errors else "attention" if warnings else "healthy"
+    return {
+        "status": status,
+        "checked_at": fulltext.utc_now(),
+        "library_dir": str(library_dir),
+        "database": {
+            "integrity_check": integrity,
+            "quick_check": quick_check,
+            "foreign_key_violations": len(foreign_keys),
+            "relations": relation_results,
+        },
+        "counts": library_stats(connection, fts5, library_dir)["counts"],
+        "hashes_verified": verify_hashes,
+        "errors": errors,
+        "warnings": warnings,
+        "information": information,
     }
 
 
@@ -2237,7 +3197,7 @@ def rebuild_index(connection: sqlite3.Connection, fts5: bool) -> dict[str, Any]:
                d.id AS digest_id, d.digest_json
         FROM papers p
         JOIN versions v ON v.paper_id = p.id
-        JOIN digests d ON d.version_id = v.id AND d.is_current = 1
+        JOIN digests d ON d.version_id = v.id
         ORDER BY v.id
         """
     ).fetchall()
@@ -2300,7 +3260,13 @@ def execute(
         if args.library_dir
         else default_library_dir(environ)
     )
-    connection, fts5 = connect_library(library_dir)
+    read_commands = {"lookup", "show", "search", "list", "stats", "audit"}
+    if args.command in read_commands:
+        connection, fts5 = connect_library_readonly(
+            library_dir, allow_missing=args.command != "audit"
+        )
+    else:
+        connection, fts5 = connect_library(library_dir)
     try:
         if args.command == "init":
             result = {
@@ -2310,7 +3276,7 @@ def execute(
         elif args.command == "ingest":
             manifest_payload = load_json(args.manifest, stdin)
             manifest = select_manifest_result(manifest_payload, args.identifier)
-            digest = validate_digest(load_json(args.digest, stdin))
+            digest = load_json(args.digest, stdin)
             result = ingest_record(
                 connection,
                 fts5,
@@ -2318,7 +3284,12 @@ def execute(
                 manifest,
                 digest,
                 merge=args.merge,
+                replace_digest=args.replace_digest,
             )
+        elif args.command == "enrich":
+            manifest_payload = load_json(args.manifest, stdin)
+            manifest = select_manifest_result(manifest_payload, args.identifier)
+            result = enrich_paper_metadata(connection, fts5, manifest)
         elif args.command == "lookup":
             result = {
                 "results": [
@@ -2336,7 +3307,6 @@ def execute(
             result = show_paper(
                 connection,
                 args.identifier,
-                history=args.history,
                 include_fulltext=args.include_fulltext,
             )
         elif args.command == "search":
@@ -2361,6 +3331,17 @@ def execute(
             )
         elif args.command == "stats":
             result = library_stats(connection, fts5, library_dir)
+        elif args.command == "audit":
+            result = audit_library(
+                connection,
+                fts5,
+                library_dir,
+                verify_hashes=not args.skip_hashes,
+            )
+        elif args.command == "backup":
+            result = create_library_backup(
+                connection, fts5, library_dir, args.destination
+            )
         elif args.command == "reindex":
             result = rebuild_index(connection, fts5)
         else:
