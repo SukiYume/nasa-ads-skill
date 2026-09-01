@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Full-text research judgment with reusable local literature memory**
+**Full-text astronomy research with reusable local literature memory**
 
 Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or another Markdown-skill host.
 
@@ -10,7 +10,7 @@ Use the NASA Astrophysics Data System from Claude Code, Codex, Gemini CLI, or an
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.12.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.12.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -34,13 +34,11 @@ NASA ADS Skill packages the public [NASA Astrophysics Data System Developer API]
 
 The host sends requests directly from your computer to `https://api.adsabs.harvard.edu`. This repository stores no ADS token and runs no proxy service.
 
-This README is the reader guide: install the project on a new computer, configure the token, verify the connection, and troubleshoot the host. [`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) is the agent runtime contract and intentionally does not repeat installation guidance.
-
-The skill keeps research judgment in agent instructions and repeatable mechanics in three bundled Python CLIs. They handle stable ADS API transport; deterministic full-text discovery, download, validation, caching, extraction, scan detection, and page rendering; and a version-aware SQLite literature library with a content-addressed object store and full-text search. Their core path uses the Python standard library; optional PDF helpers improve extraction and rendering. The ADS CLI rejects authenticated redirects and treats ADS error payloads as failed operations.
+The package combines a reusable research workflow with three bundled Python CLIs. They provide stable ADS API access; deterministic full-text discovery, download, validation, caching, extraction, scan detection, and page rendering; and a version-aware SQLite literature library with a content-addressed object store and full-text search. Their core path uses the Python standard library. Optional PDF helpers improve extraction and rendering. The ADS CLI rejects authenticated redirects and treats ADS error payloads as failed operations.
 
 ## Install with One Agent Prompt
 
-If an agent with terminal and internet access is already running on the computer, copy the single sentence below into it. This is a natural-language prompt, not a shell command.
+If an agent with terminal and internet access is already running on the computer, paste the following natural-language prompt into its chat.
 
 ```text
 Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the repository README and SKILL.md completely, identify the agent host you are running in, install any missing documented prerequisites and the complete skill through that host's README instructions, replace only an existing nasa-ads installation if necessary, check ADS_API_TOKEN and then ADS_DEV_KEY without displaying either value and direct me to the documented token setup if both are absent, verify that SKILL.md, agents/openai.yaml, scripts/ads_api.py, scripts/fulltext.py, scripts/literature_db.py, references/ads-cli.md, references/fulltext.md, references/literature-memory.md, references/digest-schema.md, references/libraries.md, and references/http-fallback.md are installed, run all three CLIs with --version, run the documented public-paper API smoke test when credentials are available, run the arXiv full-text and literature-memory smoke tests, and report the installation path, version, and validation result.
@@ -70,9 +68,9 @@ Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-ski
 | Bibliometrics | Basic statistics, citations, h-index, g-index, i10-index, histograms, and time series |
 | Discovery | Suggested citations, similar/useful papers, publisher pages, arXiv, and data-archive links |
 
-Facets are created dynamically from each article's independent research questions and evidence chains. The database does not prescribe FRB, exoplanet, cosmology, theory, simulation, catalog, or instrument-specific fields.
+Facets are created dynamically from each article's independent research questions and evidence chains. The same database can represent FRB, exoplanet, cosmology, theory, simulation, catalog, instrument, and other research without a fixed domain ontology.
 
-Ordinary research applies a per-article open gate. When the agent inspects any article body, page, figure, caption, table, equation, appendix, or quotation context, it first checks the exact version in local memory. A missing or incomplete exact version receives complete full-text or whole-document visual reading, a layered digest of every material scientific dimension, validation, and ingest before the requested detail is used. Persistent ingest is the default skill behavior. ADS metadata and abstract triage stay outside this gate, and unrelated database gaps stay outside the current task.
+Full-text use includes a per-article completeness check. Before any body section, page, figure, caption, table, equation, appendix, or quotation context is used, the exact article version is checked against local memory. A missing or incomplete version receives complete full-text reading or whole-document visual review, a layered digest of every material scientific dimension, validation, and persistent storage. Metadata and abstracts remain available for relevance triage. Database maintenance stays scoped to the articles used in the current task.
 
 ## How It Works
 
@@ -80,7 +78,7 @@ Ordinary research applies a per-article open gate. When the agent inspects any a
 flowchart LR
     A["Your request"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    B --> M["Markdown research judgment"]
+    B --> M["Literature research workflow"]
     M --> P["ADS API CLI<br/>stable read-only calls"]
     M --> F["Full-text CLI<br/>fetch, cache, extract"]
     M --> L["Literature-memory CLI<br/>lookup, index, reuse"]
@@ -502,7 +500,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py --version
 python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
 ```
 
-The CLI version command on either platform should report `1.12.0`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. `init`, ingest, enrichment, backup, and reindex operations create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
+The CLI version command on either platform should report `1.12.1`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. `init`, ingest, enrichment, backup, and reindex operations create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
 
 ### Direct HTTP fallback
 

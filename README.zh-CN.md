@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**全文研究判断配合可复用的本地文献记忆**
+**支持全文阅读与本地文献记忆的天文学调研工具**
 
 在 Claude Code、Codex、Gemini CLI 或其他 Markdown skill 宿主中使用 NASA Astrophysics Data System。
 
@@ -10,7 +10,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.12.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.12.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
@@ -34,13 +34,11 @@ NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https:
 
 宿主会从你的电脑直接访问 `https://api.adsabs.harvard.edu`。本仓库不保存 ADS token，也不运行中转服务。
 
-README 是面向读者的使用指南：帮助你在全新电脑安装、配置 token、验证连接和排错。[`SKILL.md`](plugins/nasa-ads/skills/nasa-ads/SKILL.md) 是 agent 的运行契约，不再重复安装说明。
-
-Skill 把研究判断保留在 agent 指令中，把可重复的机械步骤交给三个自带 Python CLI。它们分别负责稳定的 ADS API 调用，确定性的全文发现、下载、验证、缓存、抽取、扫描检测和页面渲染，以及带内容寻址对象存储和全文检索的版本感知 SQLite 文献库。核心路径只使用 Python 标准库；可选 PDF 工具用于改善抽取和渲染。ADS CLI 会拒绝携带认证信息的重定向，并把 ADS 错误响应判定为调用失败。
+这个项目由一套可复用的文献调研工作流和三个自带 Python CLI 组成。它们提供稳定的 ADS API 调用，确定性的全文发现、下载、验证、缓存、抽取、扫描检测和页面渲染，以及带内容寻址对象存储和全文检索的版本感知 SQLite 文献库。核心路径只使用 Python 标准库。可选 PDF 工具可改善抽取和渲染。ADS CLI 会拒绝携带认证信息的重定向，并把 ADS 错误响应判定为调用失败。
 
 ## 一句话交给 Agent 安装
 
-如果电脑上已经运行着可以使用终端和网络的 agent，把下面这一句话复制给它即可。这是自然语言提示词，不是 shell 命令。
+如果电脑上已经运行着可以使用终端和网络的 agent，把下面这段自然语言提示词粘贴到对话框即可。
 
 ```text
 请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：完整阅读仓库的 README 和 SKILL.md，识别你所在的 agent 宿主，按 README 中该宿主的说明安装缺少的前置条件和完整 skill；如已有 nasa-ads，只替换这一项；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 且不显示其值，如果两者都不存在就引导我按文档配置 token；确认 SKILL.md、agents/openai.yaml、scripts/ads_api.py、scripts/fulltext.py、scripts/literature_db.py、references/ads-cli.md、references/fulltext.md、references/literature-memory.md、references/digest-schema.md、references/libraries.md 和 references/http-fallback.md 均已安装，分别运行三个 CLI 的 --version，在凭据可用时运行 README 中的公开论文 API smoke test，再运行 arXiv 全文和文献记忆 smoke test，并报告安装路径、版本与验证结果。
@@ -70,9 +68,9 @@ Skill 把研究判断保留在 agent 指令中，把可重复的机械步骤交�
 | 文献计量 | 基础统计、引用、h-index、g-index、i10-index、直方图和时间序列 |
 | 关联发现 | 引用建议、similar/useful 论文、出版社、arXiv 和数据归档链接 |
 
-Facet 根据每篇文章中可独立回答的研究问题与证据链动态生成。数据库不预设 FRB、系外行星、宇宙学、理论、模拟、星表或仪器专用字段。
+Facet 根据每篇文章中可独立回答的研究问题与证据链动态生成。同一个数据库可以容纳 FRB、系外行星、宇宙学、理论、模拟、星表、仪器及其他研究领域，无需固定的领域本体。
 
-日常调研采用逐篇“打开门禁”。Agent 检查任何论文正文、页面、图片、图注、表格、公式、附录或引文上下文前，会先在本地文献记忆中核对精确版本。缺失或不完整的精确版本必须完成全文阅读或整篇视觉阅读、覆盖全部重要科学维度的分层摘要、验证和入库，然后才能使用用户请求的细节。持久入库属于 skill 的默认行为。ADS 元数据和摘要初筛位于此门禁之外，与当前任务无关的数据库缺口也位于本次处理范围之外。
+全文使用包含逐篇完整性检查。系统在使用论文正文、页面、图片、图注、表格、公式、附录或引文上下文前，会先在本地文献记忆中核对精确版本。缺失或不完整的版本会完成全文阅读或整篇视觉检查，形成覆盖全部重要科学维度的分层摘要，并在验证后持久入库。元数据和摘要可用于相关性初筛。数据库维护范围保持在当前任务实际使用的文章内。
 
 ## 工作原理
 
@@ -80,7 +78,7 @@ Facet 根据每篇文章中可独立回答的研究问题与证据链动态生�
 flowchart LR
     A["你的请求"] --> B["Claude Code / Codex / Gemini CLI"]
     S["NASA ADS Skill"] --> B
-    B --> M["Markdown 研究判断"]
+    B --> M["文献调研工作流"]
     M --> P["ADS API CLI<br/>稳定只读调用"]
     M --> F["全文 CLI<br/>获取、缓存、抽取"]
     M --> L["文献记忆 CLI<br/>查找、索引、复用"]
@@ -502,7 +500,7 @@ python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py --version
 python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
 ```
 
-两个平台上的 CLI 版本命令均应报告 `1.12.0`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。`init`、入库、元数据补充、备份和索引重建操作会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
+两个平台上的 CLI 版本命令均应报告 `1.12.1`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。`init`、入库、元数据补充、备份和索引重建操作会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
 
 ### 直接 HTTP 回退
 
