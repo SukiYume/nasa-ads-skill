@@ -6,6 +6,7 @@
   "plugins": [
     {
       "name": "nasa-ads",
+      "description": "Research NASA ADS literature with lawful full text and searchable version-aware paper memory.",
       "source": {
         "source": "local",
         "path": "./plugins/nasa-ads"

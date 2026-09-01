@@ -47,8 +47,8 @@ Repeat `--fq '<filter>'` for filters.
 
 5. If the user asks for BibTeX, run the bundled CLI’s `export` subcommand for the selected bibcodes.
 
-6. For literature research or claim checks, try useful synonyms and independent query variants, deduplicate by bibcode, and use abstracts only for triage. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/literature-memory.md` and run `literature_db.py lookup` for every prospective material paper with the requested topics. Reuse only exact stored versions with matching facet coverage.
+6. For literature research or claim checks, use independent query variants, deduplicate by bibcode, and triage with metadata and abstracts. When a paper becomes prospective material evidence, read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/literature-memory.md` and run `lookup` with the requested topics before opening article content.
 
-7. For database misses, changed versions, or uncovered facets, read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/fulltext.md`; fetch and read the article, then validate and ingest a multi-facet digest. Capture all material scientific dimensions encountered during full reading, not only the current query. Use `ingest --merge` after targeted reading.
+7. For every opened exact version requiring complete ingest or facet expansion, read `references/fulltext.md` and `references/digest-schema.md`, then finish the routed reading and storage workflow before using article details.
 
 8. Present results clearly in markdown format. Include published/preprint/visual/abstract-only coverage and reused/verified/augmented/new/version-refreshed database counts for literature research. If no records match, state the queries and filters used, then describe the outcome as "no matching records found for these queries."
