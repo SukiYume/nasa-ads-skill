@@ -72,7 +72,7 @@ class ReleaseSyncTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(path.is_file())
 
-    def test_readme_and_skill_have_distinct_audiences(self):
+    def test_readme_and_skill_keep_user_and_runtime_sections_separate(self):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         skill = (
             REPO_ROOT / "plugins" / "nasa-ads" / "skills" / "nasa-ads" / "SKILL.md"
@@ -92,6 +92,7 @@ class ReleaseSyncTests(unittest.TestCase):
             "## Failure Routing",
         ):
             self.assertIn(runtime_heading, skill)
+            self.assertNotIn(runtime_heading, readme)
         self.assertIn("references/ads-cli.md", skill)
         self.assertIn("references/digest-schema.md", skill)
 

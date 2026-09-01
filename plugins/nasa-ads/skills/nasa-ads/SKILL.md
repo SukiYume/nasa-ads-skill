@@ -5,7 +5,7 @@ description: Search and investigate NASA ADS astronomy and astrophysics literatu
 
 # NASA ADS Agent Workflow
 
-Use NASA ADS, lawful article sources, and the local evidence-aware literature database for astronomy research. This file defines agent behavior. The repository README explains the project, installation, configuration, verification, and troubleshooting to users.
+Use NASA ADS, lawful article sources, and the local evidence-aware literature database to search, read, preserve, and synthesize astronomy research evidence.
 
 ## Core Invariants
 

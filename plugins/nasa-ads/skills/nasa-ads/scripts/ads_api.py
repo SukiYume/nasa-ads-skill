@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
 TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
 DEFAULT_FIELDS = (

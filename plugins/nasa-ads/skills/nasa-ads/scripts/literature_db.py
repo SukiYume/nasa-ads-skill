@@ -17,7 +17,7 @@ from typing import Any, TextIO
 import ads_api
 import fulltext
 
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 DATABASE_SCHEMA_VERSION = 2
 DIGEST_SCHEMA_VERSION = 2
 READING_STATUSES = {"full", "targeted", "visual"}
