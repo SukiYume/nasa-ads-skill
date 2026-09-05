@@ -218,7 +218,26 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(
             result.stdout.strip(), f"adslib {adslib.literature_db.VERSION}"
         )
-        self.assertEqual(len(list(bin_dir.iterdir())), 1)
+        self.assertEqual(len(list(bin_dir.iterdir())), 3 if os.name == "nt" else 1)
+        bash = Path("C:/Program Files/Git/bin/bash.exe")
+        if os.name == "nt" and bash.is_file():
+            result = subprocess.run(
+                [
+                    str(bash),
+                    "--noprofile",
+                    "--norc",
+                    "-c",
+                    'export PATH="$(cygpath -u "$1"):$PATH"; adslib --version',
+                    "adslib-test",
+                    bin_dir.as_posix(),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(adslib.literature_db.VERSION, result.stdout)
 
     def test_foreign_command_is_preserved(self):
         target = self.root / ("adslib.cmd" if os.name == "nt" else "adslib")
