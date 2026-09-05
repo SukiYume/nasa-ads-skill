@@ -1,14 +1,16 @@
 # Layered Digest and Ingest
 
-Load this reference when an opened article version needs a new digest, a targeted merge, validation, ingest, or approved replacement.
+Load this reference when an investigated article version needs a new digest, a targeted merge, validation, ingest, or approved replacement. Apply the shared [reading scope](../SKILL.md#reading-scope).
+
+Persistent tasks follow the complete digest and ingest procedure below. For an explicit no-library-write task, follow [SKILL.md](../SKILL.md#core-invariants): retain reading coverage and evidence traceability in the task's synthesis, and skip database ingest and replacement.
 
 ## Completion Standard
 
-A database record represents a completed reading of one exact article version. It contains verified artifact provenance plus a schema-version-2 digest. A complete digest covers every material scientific dimension found in the article and traces its claims to real article locations.
+The library stores metadata records, abstract summaries, and complete article digests at distinct evidence levels. A complete article digest represents a completed reading of one exact article version. It contains verified artifact provenance plus a schema-version-2 digest. A complete digest covers every material scientific dimension found in the article and traces its claims to real article locations. Search-only records follow [literature-memory.md](literature-memory.md).
 
 Digest depth follows the paper's evidence structure. Scientifically narrow articles can contain one principal question and one facet. Broad articles usually produce more facets and findings because their observables, samples, analyses, parameter regimes, result families, or inferential steps differ. The schema uses structural coverage and evidence traceability as its completion test.
 
-The current research question controls the user-facing synthesis. The digest also captures material dimensions outside that question so future work can retrieve them independently.
+The digest captures material dimensions across the paper so future work can retrieve them independently. Its depth and structure follow the article's evidence; the current research question guides the user-facing synthesis.
 
 ## Digest Layers
 
@@ -95,7 +97,7 @@ facet_keys
 notes
 ```
 
-Use real article headings. Roles are `scientific`, `methods`, `context`, `limitations`, `data-products`, `references`, and `administrative`. Scientific sections list every facet they support. Each facet maps to at least one scientific section. Other roles use an empty `facet_keys` list and a concise disposition note. Include the bibliography under `references` and record appendices or supplementary material according to their content.
+Use real article headings. Roles are `scientific`, `methods`, `context`, `limitations`, `data-products`, `references`, and `administrative`. Scientific sections list every facet they support. Methods, context, limitations, and data-product sections can also support facets. Each facet maps to at least one substantive section. References and administrative sections use an empty `facet_keys` list. Every section outside the scientific role includes a concise disposition note. Include the bibliography under `references` and record appendices or supplementary material according to their content.
 
 The structural minimum for a complete digest consists of one research question, one facet, one finding in each facet, a real locator for every finding, complete section coverage, and an empty unread-section list. Additional content follows the article itself. `global_limitations` can remain empty when the article supplies no defensible paper-wide limitation.
 
@@ -116,7 +118,7 @@ python3 "<skill-dir>/scripts/literature_db.py" ingest \
   --digest "<digest.json>"
 ```
 
-The first ingest for an exact version accepts `full` or whole-document `visual` coverage. It verifies artifact, text, and canonical-content hashes when available, checks eligibility before object copying, reconciles identifiers, commits one SQLite transaction, and rebuilds the search document. `abstract_only` manifests remain outside the database. `needs_visual_reading` manifests require `visual` status and explicit page ranges.
+The first complete ingest for an exact version accepts `full` or whole-document `visual` coverage. It verifies artifact, text, and canonical-content hashes when available, checks eligibility before object copying, reconciles identifiers, commits one SQLite transaction, and rebuilds the search document. `abstract_only` manifests can supply catalog metadata and abstract summaries through `capture`. Complete ingest requires readable full text or a visually read artifact. `needs_visual_reading` manifests require `visual` status and explicit page ranges covering every page within the recorded page count.
 
 For a later targeted reading of an exact version with a complete digest, inspect the stored record, read the complete relevant sections, and merge the accumulated evidence:
 
@@ -127,7 +129,7 @@ python3 "<skill-dir>/scripts/literature_db.py" ingest \
   --merge
 ```
 
-The merge preserves existing record lists and limitations, updates matching facet keys, adds newly verified facets, merges section coverage, and leaves one digest for the exact version. A changed canonical-content version requires its own complete `full` or `visual` digest.
+The merge preserves the existing paper-wide overview, accumulated record lists, detailed method descriptions, and limitations. It updates matching facet summaries, adds newly verified findings and facets, merges section coverage, and leaves one digest for the exact version. Concurrent changes trigger a retry. A changed canonical-content version requires its own complete `full` or `visual` digest. Use the durable `manifest_path` returned by `lookup` for local targeted reading and merge.
 
 An approved repair starts with `literature_db.py backup`. Rebuild the complete digest from the stored article, then replace it:
 
@@ -140,4 +142,4 @@ python3 "<skill-dir>/scripts/literature_db.py" ingest \
 
 Replacement requires an existing exact-version digest plus complete `full` or whole-document `visual` coverage. The backup supplies recovery.
 
-Successful ingest completes the article-open gate. A storage failure preserves the fetched artifact and digest file for retry and blocks use of newly opened article details until persistence succeeds or the user changes the workflow.
+Successful ingest stores the complete exact-version digest and saves its keywords as retrieval tags. Inspect `classification_status` and assign missing topic memberships through `annotate` or `organize`, using the existing collection tree. Verify task completion with the checks in [Literature Research](../SKILL.md#literature-research). Storage errors follow the shared [failure routing](../SKILL.md#failure-routing), which tracks verified scientific evidence and incomplete persistence separately.

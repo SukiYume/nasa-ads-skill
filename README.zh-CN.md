@@ -2,25 +2,22 @@
 
 <div align="center">
 
-**支持全文阅读与本地文献记忆的天文学调研工具**
+**用于天文文献调研、论文写作与个人知识积累**
 
-在 Claude Code、Codex、Gemini CLI 或其他 Markdown skill 宿主中使用 NASA Astrophysics Data System。
+文献综述 · 写作证据 · 本地 Web · BibTeX
 
-[![NASA ADS](https://img.shields.io/badge/NASA%20ADS-Developer%20API-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Codex](https://img.shields.io/badge/Codex-plugin%20%2B%20skill-10A37F)](https://developers.openai.com/plugins/)
-[![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-GEMINI.md-4285F4)](https://geminicli.com/docs/cli/gemini-md/)
-[![Version](https://img.shields.io/badge/version-1.12.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
+[![Version](https://img.shields.io/badge/version-1.14.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
+[![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/SukiYume/nasa-ads-skill.svg?label=Stars&logo=github)](https://github.com/SukiYume/nasa-ads-skill)
 
 [项目概览](#项目概览) ·
-[Agent 一句话安装](#一句话交给-agent-安装) ·
-[支持的宿主](#支持的宿主) ·
-[安装](#安装) ·
-[配置 token](#配置-ads-token) ·
-[验证](#验证-api) ·
-[开始使用](#开始使用) ·
+[快速安装](#一句话交给-agent-安装) ·
+[调研与写作](#开始使用) ·
+[Web 文献库](#打开-web-文献库) ·
+[个人文献库](#个人文献库) ·
 [排错](#排错) ·
 [English](README.md)
 
@@ -30,616 +27,190 @@
 
 ## 项目概览
 
-NASA ADS Skill 把公开的 [NASA Astrophysics Data System Developer API](https://ui.adsabs.harvard.edu/help/api/) 封装成 Claude Code、Codex、Gemini CLI 和兼容 Markdown skill 宿主可复用的工作流。它可以检索天文和天体物理文献、获取并阅读合法可访问的论文全文、把论文中的多主题知识保存到可检索的本地数据库、按照精确文章版本与话题覆盖复用既有阅读、读取论文元数据、导出引用、管理 ADS libraries、汇总文献计量指标，以及寻找相关论文和数据链接。
+**NASA ADS Skill** 将 [NASA ADS](https://ui.adsabs.harvard.edu/) 接入 Claude Code、Codex、Gemini CLI 及其他 Markdown skill 宿主，用于检索天文文献、核查论断，为**综述以及论文的引言、方法和讨论**寻找证据。
 
-宿主会从你的电脑直接访问 `https://api.adsabs.harvard.edu`。本仓库不保存 ADS token，也不运行中转服务。
+每次调研都为后续工作积累知识：
 
-这个项目由一套可复用的文献调研工作流和三个自带 Python CLI 组成。它们提供稳定的 ADS API 调用，确定性的全文发现、下载、验证、缓存、抽取、扫描检测和页面渲染，以及带内容寻址对象存储和全文检索的版本感知 SQLite 文献库。核心路径只使用 Python 标准库。可选 PDF 工具可改善抽取和渲染。ADS CLI 会拒绝携带认证信息的重定向，并把 ADS 错误响应判定为调用失败。
+- **总结与分类**：文献调研默认静默积累个人文献库，Agent 完成总结、层级分类和保存。
+- **阅读与核查**：内容调研形成完整文章总结，保留证据位置与阅读覆盖。
+- **复用与引用**：后续任务复用已存知识，个人文献库支持本地 Web 浏览和 BibTeX 导出。
 
 ## 一句话交给 Agent 安装
 
-如果电脑上已经运行着可以使用终端和网络的 agent，把下面这段自然语言提示词粘贴到对话框即可。
+将下面的提示词粘贴给可以使用终端和网络的 Agent。它会选择当前宿主对应的安装说明，并检查安装是否完整。
+
+<details>
+<summary><strong>展开并复制安装提示词</strong> · 由 Agent 完成安装与验证</summary>
 
 ```text
-请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：完整阅读仓库的 README 和 SKILL.md，识别你所在的 agent 宿主，按 README 中该宿主的说明安装缺少的前置条件和完整 skill；如已有 nasa-ads，只替换这一项；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 且不显示其值，如果两者都不存在就引导我按文档配置 token；确认 SKILL.md、agents/openai.yaml、scripts/ads_api.py、scripts/fulltext.py、scripts/literature_db.py、references/ads-cli.md、references/fulltext.md、references/literature-memory.md、references/digest-schema.md、references/libraries.md 和 references/http-fallback.md 均已安装，分别运行三个 CLI 的 --version，在凭据可用时运行 README 中的公开论文 API smoke test，再运行 arXiv 全文和文献记忆 smoke test，并报告安装路径、版本与验证结果。
+请在这台电脑上从 https://github.com/SukiYume/nasa-ads-skill 安装当前 NASA ADS Skill：阅读 README，按 docs/installation.zh-CN.md 中当前 Agent 宿主对应的步骤安装缺少的前置条件和完整 skill，需要替换时仅更新已有的 nasa-ads；依次检查 ADS_API_TOKEN 和 ADS_DEV_KEY 且不显示其值，两者都不存在时引导我配置在线 ADS 请求所需的 token；确认 SKILL.md、agents/openai.yaml、scripts/ads_api.py、scripts/fulltext.py、scripts/literature_db.py、scripts/library_catalog.py、scripts/library_web.py、scripts/adslib.py、assets/library/index.html、assets/library/style.css、assets/library/app.js、references/research-writing.md、references/ads-cli.md、references/fulltext.md、references/literature-memory.md、references/digest-schema.md、references/libraries.md 和 references/http-fallback.md 均已安装，阅读已安装的 SKILL.md，分别检查四个 CLI 的版本，从已安装的 scripts/adslib.py 执行 install 注册 adslib 命令并在新终端验证 adslib --version，凭据可用时执行文档中的 API smoke test，使用文档中的诊断选项完成全文与文献库 smoke test，确认 Web 页面能打开，并报告安装路径、版本与验证结果。
 ```
 
-## 支持的宿主
-
-| 宿主 | 集成方式 | 安装后可用内容 |
-|---|---|---|
-| Claude Code | Marketplace plugin | 七个带命名空间的 slash commands，以及自然语言自动触发 |
-| Codex CLI / 桌面应用 | Marketplace plugin | 带 UI 元数据的可安装 NASA ADS skill |
-| Codex CLI / IDE 扩展 | 独立 skill | `$nasa-ads` 显式调用，以及匹配请求的自动触发 |
-| Gemini CLI | `GEMINI.md` 导入 | 项目级或用户级 NASA ADS 指令 |
-| 其他代理 | Markdown skill 目录 | 宿主支持复用指令和本地 shell 时加载共享 `SKILL.md` |
-
-## 功能
-
-| 能力 | 示例 |
-|---|---|
-| 文献检索 | 作者、标题、摘要、全文、bibcode、DOI、arXiv ID、ORCID、年份、期刊或目标名称 |
-| 论断核查 | 使用多组检索表达式、通过摘要初筛、阅读全文材料并交代证据覆盖 |
-| 全文阅读 | 开放发表版、作者稿、直接 arXiv HTML/PDF、ADS 扫描件、缓存、文本抽取和视觉回退 |
-| 文献记忆 | 版本感知 SQLite 记录、已验证论文对象、每个精确文章版本唯一的完整 schema-version-2 摘要、章节—facet 覆盖、原子结论、健康审计、可恢复备份，以及元数据/摘要/全文检索 |
-| 元数据 | 标题、作者、摘要、年份、期刊、DOI、标识符、被引数和阅读数 |
-| 引用导出 | BibTeX、带摘要 BibTeX、AASTeX、MNRAS、RIS、EndNote、IEEE、XML 等格式 |
-| ADS 文库 | 列出、查看、创建、更新、分享、集合运算、清空和删除 libraries |
-| 文献计量 | 基础统计、引用、h-index、g-index、i10-index、直方图和时间序列 |
-| 关联发现 | 引用建议、similar/useful 论文、出版社、arXiv 和数据归档链接 |
-
-Facet 根据每篇文章中可独立回答的研究问题与证据链动态生成。同一个数据库可以容纳 FRB、系外行星、宇宙学、理论、模拟、星表、仪器及其他研究领域，无需固定的领域本体。
-
-全文使用包含逐篇完整性检查。系统在使用论文正文、页面、图片、图注、表格、公式、附录或引文上下文前，会先在本地文献记忆中核对精确版本。缺失或不完整的版本会完成全文阅读或整篇视觉检查，形成覆盖全部重要科学维度的分层摘要，并在验证后持久入库。元数据和摘要可用于相关性初筛。数据库维护范围保持在当前任务实际使用的文章内。
-
-## 工作原理
-
-```mermaid
-flowchart LR
-    A["你的请求"] --> B["Claude Code / Codex / Gemini CLI"]
-    S["NASA ADS Skill"] --> B
-    B --> M["文献调研工作流"]
-    M --> P["ADS API CLI<br/>稳定只读调用"]
-    M --> F["全文 CLI<br/>获取、缓存、抽取"]
-    M --> L["文献记忆 CLI<br/>查找、索引、复用"]
-    T["ADS_API_TOKEN<br/>或 ADS_DEV_KEY"] --> P
-    P --> C["ADS Developer API"]
-    F --> X["出版社 / 作者稿 / arXiv / ADS 扫描件"]
-    C --> D["JSON 或引用文本"]
-    X --> R["文本 / PDF / 页面图片"]
-    R --> M
-    M --> K["分层摘要<br/>facets + 证据定位"]
-    R --> L
-    K --> L
-    L --> M
-    M --> E["带链接、便于阅读的结果"]
-    D --> E
-```
-
-## 安装前准备
-
-在全新电脑上先准备以下内容：
-
-1. **Git**：从 [git-scm.com/downloads](https://git-scm.com/downloads) 安装。
-2. **至少一个宿主**：
-   - [Claude Code 安装文档](https://code.claude.com/docs/en/setup)
-   - [Codex CLI 安装文档](https://developers.openai.com/codex/cli/)
-   - [Gemini CLI 安装文档](https://geminicli.com/docs/get-started/installation/)
-3. **ADS 账号和 API token**：稍后按[配置 ADS token](#配置-ads-token)完成。
-4. **Python 3.10 或更新版本**：完整的全文与文献记忆流程需要 Python，可从 [python.org/downloads](https://www.python.org/downloads/) 安装。三个自带 CLI 的核心路径都不需要第三方 Python 包。Python 不可用时，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，执行有限的 ADS 元数据/API 直接 HTTP 回退；该回退不提供全文准备和持久文献记忆。
-5. **可选 PDF 工具**：`pdftotext` 和 `pdfinfo` 可改善 PDF 文本处理，`pdftoppm` 可渲染扫描页。缺少这些工具时，具备相应能力的宿主仍可直接视觉阅读下载的 PDF 或页面图片。
-6. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`、`arxiv.org` 和流程选中的合法出版社或仓储来源。
-
-检查程序是否已经安装：
-
-```bash
-git --version
-python3 --version   # macOS、Linux 或 WSL
-python --version    # Windows；也可以使用 "py -3 --version"
-claude --version   # 使用 Claude Code 时检查
-codex --version    # 使用 Codex 时检查
-gemini --version   # 使用 Gemini CLI 时检查
-```
-
-如果所选宿主命令不存在，请先按照上面的官方安装文档完成安装或升级。
+</details>
 
 ## 安装
 
-在下面选择一个宿主。Claude Code 和 Codex 可以直接把公开 GitHub 仓库加入 marketplace；独立 Skill 和 Gemini 安装会保留本地源码 clone，便于以后更新。
+准备 [Git](https://git-scm.com/downloads/)、一个支持的 Agent 宿主，以及 [Python 3.10 或更新版本](https://www.python.org/downloads/)。完整文献库与 Web 功能需要 Python，核心功能使用标准库。可选 PDF 工具能改善文本抽取与页面渲染。[前置条件和可选工具说明](docs/installation.zh-CN.md#安装前准备)。
 
-### Claude Code Plugin
+按你正在使用的宿主选择安装入口：
 
-Claude Code 安装完成后，以下命令可用于 macOS、Linux、Windows PowerShell 和 Windows Command Prompt。
+| 当前宿主 | 安装说明 | 安装后如何调用 |
+| --- | --- | --- |
+| **Claude Code** | [Marketplace 插件](docs/installation.zh-CN.md#claude-code-plugin) | 自然语言或 `/nasa-ads:ads-search` |
+| **Codex CLI / 桌面应用** | [Marketplace 插件](docs/installation.zh-CN.md#codex-plugin) | 自然语言或 `$nasa-ads` |
+| **Codex CLI / IDE 扩展** | [独立 skill](docs/installation.zh-CN.md#codex-独立-skill) | 安装到 `~/.agents/skills/nasa-ads`，然后新建会话 |
+| **Gemini CLI** | [`GEMINI.md` 导入](docs/installation.zh-CN.md#gemini-cli) | 加载指令后使用自然语言 |
+| **其他助手** | [完整 Markdown skill 目录](docs/installation.zh-CN.md#通用-markdown-skill-宿主) | 使用宿主提供的 skill 加载方式 |
 
-1. 把 GitHub 仓库加入 Claude Code marketplace：
-
-```bash
-claude plugin marketplace add SukiYume/nasa-ads-skill
-```
-
-2. 从该 marketplace 安装 `nasa-ads`：
-
-```bash
-claude plugin install nasa-ads@nasa-ads-community
-```
-
-3. 检查安装结果：
-
-```bash
-claude plugin list
-```
-
-列表中应出现 `nasa-ads@nasa-ads-community`。
-
-4. 启动 Claude Code：
-
-```bash
-claude
-```
-
-如果在现有会话期间完成安装，请运行 `/reload-plugins`。Plugin 提供以下命令：
-
-```text
-/nasa-ads:ads-search <query>
-/nasa-ads:ads-bibtex <bibcodes>
-/nasa-ads:ads-library [subcommand]
-/nasa-ads:ads-metrics <bibcodes>
-/nasa-ads:ads-cite [subcommand]
-/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs>
-/nasa-ads:ads-memory <lookup, search, show, stats, or paper topics>
-```
-
-接着完成[配置 ADS token](#配置-ads-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
-
-### Codex Plugin
-
-Codex plugin 可用于 Codex CLI 和桌面应用中的 Codex。IDE 扩展请使用下一节的独立 skill。
-
-1. 把 GitHub 仓库加入 Codex marketplace：
-
-```bash
-codex plugin marketplace add SukiYume/nasa-ads-skill
-```
-
-2. 安装 plugin：
-
-```bash
-codex plugin add nasa-ads@nasa-ads-community
-```
-
-3. 确认 Codex 已识别：
-
-```bash
-codex plugin list
-```
-
-4. 新建一个 Codex 会话，让安装后的 skill 进入新会话的 skill 列表：
-
-```bash
-codex
-```
-
-可以用 `$nasa-ads` 显式调用、通过 `/skills` 查看，也可以直接描述天文文献任务。
-
-接着完成[配置 ADS token](#配置-ads-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
-
-### Codex 独立 Skill
-
-Codex 目前从 `~/.agents/skills` 发现用户级独立 skills。Codex CLI 和 IDE 扩展都可使用此路径。
-
-#### macOS、Linux 或 WSL
-
-把源码 clone 保存在固定的用户级路径，再把 skill 内容复制到 Codex 的发现目录：
-
-```bash
-mkdir -p "$HOME/.local/share"
-git clone --depth 1 \
-  https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.local/share/nasa-ads-skill"
-mkdir -p "$HOME/.agents/skills/nasa-ads"
-cp -R \
-  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
-  "$HOME/.agents/skills/nasa-ads/"
-```
-
-检查必需文件：
-
-```bash
-test -f "$HOME/.agents/skills/nasa-ads/SKILL.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/agents/openai.yaml" \
-  && test -f "$HOME/.agents/skills/nasa-ads/scripts/ads_api.py" \
-  && test -f "$HOME/.agents/skills/nasa-ads/scripts/fulltext.py" \
-  && test -f "$HOME/.agents/skills/nasa-ads/scripts/literature_db.py" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/ads-cli.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/fulltext.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/literature-memory.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/digest-schema.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/http-fallback.md" \
-  && test -f "$HOME/.agents/skills/nasa-ads/references/libraries.md" \
-  && echo "NASA ADS skill installed"
-```
-
-#### Windows PowerShell
-
-把源码 clone 保存在固定的用户级路径，再把 skill 内容复制到 Codex 的发现目录：
-
-```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
-$nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
-git clone --depth 1 `
-  https://github.com/SukiYume/nasa-ads-skill.git `
-  $nasaAdsSource
-New-Item -ItemType Directory -Force $nasaAdsSkill | Out-Null
-Copy-Item -Recurse -Force `
-  (Join-Path $nasaAdsSource 'plugins\nasa-ads\skills\nasa-ads\*') `
-  $nasaAdsSkill
-```
-
-检查必需文件：
-
-```powershell
-$nasaAdsSkillReady = `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\SKILL.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\agents\openai.yaml") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\ads_api.py") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\fulltext.py") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\scripts\literature_db.py") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\ads-cli.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\fulltext.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\literature-memory.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\digest-schema.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\http-fallback.md") -and `
-  (Test-Path "$HOME\.agents\skills\nasa-ads\references\libraries.md")
-$nasaAdsSkillReady
-```
-
-成功时会返回 `True`。
-
-新建 Codex 会话，通过 `/skills` 查看列表，或在提示词中输入 `$nasa-ads`。
-
-如果只想让当前仓库使用它，请把同一个 `nasa-ads` skill 目录复制到 `<repository>/.agents/skills/nasa-ads`。
-
-### Gemini CLI
-
-Gemini CLI 通过 `GEMINI.md` 加载指令文件。下面的用户级安装会让 NASA ADS 在所有 Gemini CLI 项目中可用。
-
-#### macOS、Linux 或 WSL
-
-```bash
-mkdir -p "$HOME/.gemini"
-git clone --depth 1 \
-  https://github.com/SukiYume/nasa-ads-skill.git \
-  "$HOME/.gemini/nasa-ads-skill"
-printf '\n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md\n' \
-  >> "$HOME/.gemini/GEMINI.md"
-```
-
-#### Windows PowerShell
-
-```powershell
-New-Item -ItemType Directory -Force "$HOME\.gemini" | Out-Null
-git clone --depth 1 `
-  https://github.com/SukiYume/nasa-ads-skill.git `
-  "$HOME\.gemini\nasa-ads-skill"
-Add-Content -Path "$HOME\.gemini\GEMINI.md" -Value `
-  "`n@./nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/SKILL.md"
-```
-
-启动 Gemini CLI：
-
-```bash
-gemini
-```
-
-然后运行：
-
-```text
-/memory reload
-/memory show
-```
-
-确认已加载内容中包含 `NASA ADS` 标题。本仓库自己的 [`GEMINI.md`](GEMINI.md) 展示了同样的项目级相对导入格式。
-
-### 通用 Markdown Skill 宿主
-
-1. 克隆仓库：
-
-```bash
-git clone https://github.com/SukiYume/nasa-ads-skill.git
-```
-
-2. 把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主文档指定的 skill 或 prompt 目录。
-3. 配置宿主加载其中的 `SKILL.md`。
-4. 确认宿主可以用 Python 3 运行自带 CLI，或能通过 `curl`/PowerShell 使用直接 HTTP 回退。
-5. 按下一节设置 ADS token。
-6. 运行[验证 API](#验证-api)中的公开论文测试。
-
-不同宿主使用的发现目录和调用语法可能不同。未采用上述 Claude Code、Codex 或 Gemini 约定时，请查阅该宿主的当前官方文档。
+[安装指南](docs/installation.zh-CN.md)提供 Windows 和 macOS/Linux/WSL 命令、完整文件检查与诊断步骤。已经安装的用户可以直接查看[更新说明](docs/installation.zh-CN.md#更新已有安装)。保留完整 skill 目录，确保脚本、参考说明和 Web 资源都可用。
 
 ## 配置 ADS Token
 
-每次调用 ADS Developer API 都需要个人 token。
+在线 ADS 请求需要从 [ADS 账号设置](https://ui.adsabs.harvard.edu/#user/settings/token)获取个人 token。优先使用 `ADS_API_TOKEN`，兼容变量为 `ADS_DEV_KEY`。本地文献库浏览、已存文章阅读和缓存引用可以离线使用。
 
-1. 打开 [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token)。
-2. 注册 ADS 账号或登录已有账号。
-3. 如果直达链接落在其他页面，请进入账号设置并选择 **API Token**。
-4. 选择 **Generate a new key**。
-5. 复制 token 并妥善保管。
+在准备启动 Agent 的终端中设置 token。下面的检查只报告是否已设置。
 
-建议使用 `ADS_API_TOKEN` 作为主要环境变量；`ADS_DEV_KEY` 可作为兼容回退。
-
-### macOS、Linux 或 WSL
-
-在当前终端设置 token：
-
-```bash
-export ADS_API_TOKEN='paste-your-token-here'
-```
-
-这个值会在终端关闭时失效。如果需要持久保存，可把同一行 `export` 加入当前 shell 的启动文件，常见文件包括 `~/.zshrc`、`~/.bashrc` 或 `~/.bash_profile`，然后打开新终端。
-
-检查变量是否存在，同时避免打印 token：
-
-```bash
-if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then
-  echo "ADS token is set"
-else
-  echo "ADS token is missing"
-fi
-```
-
-### Windows PowerShell
-
-在当前 PowerShell 会话中设置：
+**Windows PowerShell：**
 
 ```powershell
 $env:ADS_API_TOKEN = 'paste-your-token-here'
+if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) { 'ADS token is set' }
 ```
 
-设置持久的用户环境变量：
+**macOS、Linux 或 WSL：**
 
-```powershell
-[Environment]::SetEnvironmentVariable(
-  'ADS_API_TOKEN',
-  'paste-your-token-here',
-  'User'
-)
+```bash
+export ADS_API_TOKEN='paste-your-token-here'
+if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then echo "ADS token is set"; fi
 ```
 
-执行持久设置后，请打开新终端并重启宿主。检查变量是否存在，同时避免打印 token：
-
-```powershell
-if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) {
-  'ADS token is set'
-} else {
-  'ADS token is missing'
-}
-```
-
-请勿把 token 放入仓库、截图、共享日志、shell 转录或支持请求。发现泄露时，请在 ADS 设置中撤销并重新生成。
+这些设置在当前终端内生效。需要在后续会话继续使用时，按[持久配置说明](docs/installation.zh-CN.md#配置-ads-token)操作，再重新打开终端和 Agent。凭据应保存在共享文件和日志之外。Python 暂时不可用时，[直接 HTTP 回退](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md)可以完成受支持的远程 API 操作；全文准备、持久存储和 Web 浏览需要 Python。
 
 ## 验证 API
 
-下面使用一篇公开论文验证网络、身份认证和 ADS 响应格式。
+安装后，可以先向 Agent 发出一个简单请求：
 
-### 已安装的宿主
+> 使用 nasa-ads 检索 bibcode 2016PhRvL.116f1102A，返回标题、年份和 ADS 链接。
 
-设置持久 token 后重启宿主。在 Claude Code 中运行：
-
-```text
-/nasa-ads:ads-search bibcode:2016PhRvL.116f1102A
-```
-
-在 Codex、Gemini CLI 或其他宿主中发送：
-
-```text
-在 NASA ADS 中检索 bibcode 2016PhRvL.116f1102A，返回标题、年份和 bibcode。
-```
-
-结果应识别出 *Observation of Gravitational Waves from a Binary Black Hole Merger*，并包含 `2016PhRvL.116f1102A`。如果提示缺少 token，说明宿主没有继承环境变量；如果返回 HTTP 错误，请按[排错](#排错)处理。
-
-### 自带 Python CLI
-
-Codex 独立 skill 和 Gemini 安装会在下面列出的路径中创建源码 checkout。先进入与你的安装方式对应的目录。
-
-macOS、Linux 或 WSL：
-
-```bash
-cd "$HOME/.local/share/nasa-ads-skill"  # Codex 独立 skill
-# Gemini CLI 则使用：
-# cd "$HOME/.gemini/nasa-ads-skill"
-```
-
-然后运行：
-
-```bash
-python3 plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py search \
-  --query 'bibcode:2016PhRvL.116f1102A' \
-  --fields bibcode,title,year \
-  --rows 1
-```
-
-Windows PowerShell：
-
-```powershell
-Set-Location "$HOME\nasa-ads-skill-source"  # Codex 独立 skill
-# Gemini CLI 则使用：
-# Set-Location "$HOME\.gemini\nasa-ads-skill"
-```
-
-然后运行：
-
-```powershell
-python plugins\nasa-ads\skills\nasa-ads\scripts\ads_api.py search `
-  --query 'bibcode:2016PhRvL.116f1102A' `
-  --fields 'bibcode,title,year' `
-  --rows 1
-```
-
-如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。如果仓库 clone 在其他位置，请进入实际 checkout。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。
-
-### 全文 smoke test
-
-这篇公开 arXiv 论文有官方 HTML 版本，因此 smoke test 不依赖 PDF 辅助工具。环境中没有 ADS token 时也可以运行。
-
-macOS、Linux 或 WSL：
-
-```bash
-python3 plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py fetch \
-  arXiv:1901.04502 \
-  --source arxiv
-```
-
-Windows PowerShell：
-
-```powershell
-python plugins\nasa-ads\skills\nasa-ads\scripts\fulltext.py fetch `
-  'arXiv:1901.04502' `
-  --source arxiv
-```
-
-结果应报告 `status: fulltext`，选择 `https://arxiv.org/html/1901.04502`，并在用户缓存目录中给出确实存在的 `artifact_path`、`text_path` 和 `manifest_path`。官方 HTML 不可用时，脚本会自动尝试 `https://arxiv.org/pdf/<id>`。总结前可把返回的 `text_path` 传给 `fulltext.py outline <text_path>`，检查推断出的文章结构。
-
-在公式、图、表、页码或视觉阅读检查中明确需要 PDF 时，使用 `--format pdf`；`--format html` 只请求结构化 HTML。默认的 `--format auto` 保持 HTML 优先和自动回退流程。
-
-### 文献记忆 smoke test
-
-数据库 CLI 不需要 ADS token 就能验证 schema 和摘要契约。`template` 只输出 JSON，不会创建文献库。
-
-macOS、Linux 或 WSL：
-
-```bash
-python3 plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py --version
-python3 plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py template
-```
-
-Windows PowerShell：
-
-```powershell
-python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py --version
-python plugins\nasa-ads\skills\nasa-ads\scripts\literature_db.py template
-```
-
-两个平台上的 CLI 版本命令均应报告 `1.12.1`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。`init`、入库、元数据补充、备份和索引重建操作会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
-
-### 直接 HTTP 回退
-
-仅在 Python 3 无法运行自带 CLI，或所需端点尚未由 CLI 封装时使用。按 [`references/http-fallback.md`](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) 中的凭据预检、重定向规则、响应检查和对应平台示例操作。
+结果应包含 *Observation of Gravitational Waves from a Binary Black Hole Merger*（2016）。[验证指南](docs/installation.zh-CN.md#验证-api)还提供了保持个人文献库原有内容的 CLI 诊断、全文检查，以及预期版本输出。
 
 ## 开始使用
 
-所有受支持宿主都可以使用自然语言：
+说明科学问题和所需证据即可。Skill 会在这个任务中完成本地复用、新文献发现、阅读、总结与分类。
 
-- “搜索 ADS 中近期关于系外行星大气的同行评议论文。”
-- “查一下这个说法有没有天文文献提到，并给出检索词。”
-- “获取 `2016PhRvL.116f1102A` 的 BibTeX。”
-- “列出我的 ADS libraries。”
-- “显示这些 bibcodes 的 citation metrics。”
-- “查找与 `2016PhRvL.116f1102A` 相似的论文。”
-- “获取并阅读 `2019MNRAS.489..176M` 的全文，然后总结方法、结果和局限性。”
-- “在我的文献记忆中检索出现圆偏振符号反转的论文，并给出匹配结论和证据位置。”
-- “查询数据库中的 `2023ApJ...955..142Z`，检查活动性、等待时间、能量分布和合成频谱是否已经覆盖。”
-- “审计我的文献数据库；任何修复开始前先创建备份，并解释每条警告。”
-- “检索 2022 年以来关于快速射电暴重复暴的论文，并按主题总结。”
-- “检查这个论断是否出现在已有研究中，说明检索范围和限制。”
+| 你要完成的事情 | 请求示例 |
+| --- | --- |
+| **文献综述** | “综述 2022 年以来的重复 FRB 研究，按科学问题组织，说明分歧与研究空白。” |
+| **引言证据** | “为这段引言寻找奠基性和近期原始论文，逐条对应计划写出的论断。” |
+| **方法依据** | “查找这个周期检验的原始方法和验证研究，比较假设、试验因子及适用限制。” |
+| **讨论证据** | “查找支持或挑战这个解释的研究，比较样本选择与不确定性。” |
+| **阅读指定文章** | “阅读 arXiv:1901.04502，总结方法、发现与局限。” |
+| **核查文章细节** | “解释这篇论文图 3 的结果，并核对作者的结论。” |
+| **复用已有阅读** | “在本地文献库中查找圆偏振符号反转，给出相关结论和证据位置。” |
+| **导出引用** | “导出这些论文的 BibTeX，优先使用缓存的 ADS 官方条目。” |
+| **ADS 账号工具** | “列出我的 ADS libraries”，或“查看这些 bibcode 的引用指标。” |
 
-Claude Code 命令示例：
+直接说明研究问题即可，入库属于默认流程。粗检索整理候选题录与来源简述；选入内容评估的每篇论文进入精筛阅读集合，全部完成全文阅读与静默入库，包括后来未被最终综述采用的论文。查看一张图、一个表或某项结论也执行同样的整篇阅读流程，答复聚焦所问细节。已核验的完整版本会直接复用，本地证据充足时也可以离线完成综述。正常入库保持静默；访问缺口会明确说明，持续保存失败时会保留重试材料，并随已核实的科学答复说明入库缺口。
 
-```text
-/nasa-ads:ads-search dark matter year:2020-2024
-/nasa-ads:ads-bibtex 2016PhRvL.116f1102A 2017ApJ...848L..12A --format aastex
-/nasa-ads:ads-library create "My Reading List"
-/nasa-ads:ads-metrics 2016PhRvL.116f1102A
-/nasa-ads:ads-cite links 2016PhRvL.116f1102A
-/nasa-ads:ads-fulltext 2019MNRAS.489..176M arXiv:1602.03837
-/nasa-ads:ads-memory lookup 2023ApJ...955..142Z waiting-time circular-polarization
-/nasa-ads:ads-memory audit
+## 打开 Web 文献库
+
+完成安装中的 [adslib 命令注册](docs/installation.zh-CN.md#注册-adslib-命令)后，在任意目录执行：
+
+```bash
+adslib
 ```
 
-文献调研结果应当带链接、便于阅读，说明检索范围，区分发表版、预印本、视觉阅读和摘要限定证据，并报告哪些论文得到复用、核验、补充、新入库或版本刷新。数据库中不存在的论文会先完整阅读，并以结构验证通过的 `full` 摘要首次入库；扫描件采用整篇 `visual` 覆盖。Facet 根据文章中可独立复用的科学维度建立，每个主要已读章节都会映射到其科学 facet 或明确的章节角色。后续任务会把定向证据合并到精确版本唯一的已存摘要中。经过确认的修复会先创建备份，再用一条完整记录替换无效摘要。维护 CLI 提供只读审计、一致性备份、元数据补充和确定性索引重建。
+浏览器会自动打开文献库。已有对应服务时直接复用；需要启动新服务时，保持终端打开，按 `Ctrl+C` 结束。重启电脑后再次执行即可。端口冲突会自动选择可用端口，实际地址会打印在终端中。Web 使用本地资源和 Python 标准库，无需 Node.js 或 ADS token。
+
+<details>
+<summary><strong>已有安装：补做一次命令注册</strong> · 以下使用 Codex 独立 skill 路径</summary>
+
+**Windows PowerShell：**
+
+```powershell
+python "$HOME\.agents\skills\nasa-ads\scripts\adslib.py" install
+```
+
+**macOS、Linux 或 WSL：**
+
+```bash
+python3 "$HOME/.agents/skills/nasa-ads/scripts/adslib.py" install
+```
+
+完成后新开终端，运行 `adslib`。Claude 与 marketplace 插件使用实际安装目录，详见[安装指南](docs/installation.zh-CN.md#注册-adslib-命令)。
+
+</details>
+
+也可以直接对 Agent 说：
+
+> 使用已安装的 nasa-ads skill 打开我的个人 Web 文献库。
+
+页面支持组合主题、写作用途、年份和检索范围，阅读总结与科学发现，下载已存文章版本，并导出勾选论文或整组筛选结果的引用。页面链接保留检索与阅读位置。分类、总结和笔记由 Agent 更新。
+
+其他安装位置、键盘操作和自定义数据目录见 [Web 与文献库指南](docs/library.zh-CN.md#启动-web)。
+
+## 个人文献库
+
+文献库保存在当前电脑。安装 skill 会获得程序和 Web 资源，个人积累的论文与总结保存在独立目录中。新电脑最初会显示空库。
+
+```mermaid
+flowchart TB
+    Q["研究问题"] --> A["粗检索候选池"]
+    A --> P["精筛论文 · 文章内容调研"]
+    P --> L["检查本地完整版本"]
+    L -->|缺失或未完整阅读| R["全量阅读<br/>静默总结、分类与入库"]
+    L -->|完整版本可复用| U["按请求回答 · Web · BibTeX"]
+    R --> U
+```
+
+### 存储与复用
+
+| 平台 | 默认文献库目录 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\nasa-ads\literature` |
+| macOS / Linux / WSL | `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` |
+
+可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。文献任务与 Web 服务需要使用同一目录。页面中的文献库信息按钮会显示实际路径和数量。同一篇文章可以保存多个精确版本，因此文章数与全文总结数可能不同。
+
+科学主题使用层级目录，例如 `快速射电暴/传播效应/散射`。一篇文章可以同时属于多个主题，并用于综述、引言、方法、讨论和结果比较。标签与个人笔记用于后续查找，分类目录也可以保存简短的主题综述。
+
+### 阅读层级
+
+| 阅读层级 | 已存知识能够支持的内容 |
+| --- | --- |
+| **题录记录** | 根据现有书目信息识别文章、判断相关性 |
+| **摘要记录** | 根据来源摘要撰写的总结 |
+| **完整阅读 / 视觉阅读** | 精确文章版本中的详细结论、证据位置与阅读覆盖 |
+
+粗检索的题录和摘要保留各自的证据层级。进入精筛或指定内容调研的论文需要完整阅读，已有题录、摘要或下载文件仍需补齐全文总结。Agent 负责阅读并保存文章的全部科学维度，后续任务优先复用核验过的完整版本。全文无法取得时会保留明确的阅读缺口。
+
+> **在新电脑继续使用：** 先创建备份、转移备份目录，再恢复到新位置。[文献库指南](docs/library.zh-CN.md)提供[引用导出](docs/library.zh-CN.md#导出引用)、[备份与迁移](docs/library.zh-CN.md#迁移到新电脑)、[旧库升级](docs/library.zh-CN.md#升级旧版文献库)和[健康检查](docs/library.zh-CN.md#检查文献库状态)步骤。
 
 ## 排错
 
-| 现象 | 检查方法 |
-|---|---|
-| 找不到 `git`、`claude`、`codex` 或 `gemini` | 按[安装前准备](#安装前准备)中的官方链接安装或升级对应程序 |
-| Claude marketplace 或 plugin 不见了 | 运行 `claude plugin marketplace update nasa-ads-community`，必要时重装，然后执行 `/reload-plugins` |
-| Codex marketplace 或 plugin 不见了 | 运行 `codex plugin marketplace upgrade nasa-ads-community`，再运行 `codex plugin add nasa-ads@nasa-ads-community`，然后新建会话 |
-| `/skills` 中没有 Codex 独立 skill | 确认 `~/.agents/skills/nasa-ads/SKILL.md` 存在，然后新建会话 |
-| Gemini 没有加载指令 | 检查 `~/.gemini/GEMINI.md` 中的相对路径，再运行 `/memory reload` 和 `/memory show` |
-| Python CLI 无法启动 | 安装 Python 3.10 或更新版本，依次尝试 `python3`、`python` 或 `py -3`，并确认完整 skill 目录中包含 `scripts/ads_api.py`、`scripts/fulltext.py` 和 `scripts/literature_db.py` |
-| `401 Unauthorized` | 设置有效 token，打开新终端，并通过公开论文测试检查 `Bearer` header 路径 |
-| `403 Forbidden` | 检查 ADS 账号权限和 library 权限 |
-| `429 Too Many Requests` | 查看 `X-RateLimit-Remaining` 和 `X-RateLimit-Reset` 响应 header |
-| API 返回意外重定向 | 停止调用并更新已安装 skill 或 endpoint；不要跟随带认证信息的重定向 |
-| HTTP `200` 中包含 ADS 应用错误 | 将操作判定为失败，并报告返回的错误信息 |
-| 检索不到论文 | 删除非必要过滤，尝试同义词和拼写变体，并记录检索范围 |
-| 查询在 `&` 或空格处失效 | 使用会自动进行 URL 编码的自带 CLI；直接 HTTP 回退时需要编码 `q`、`fq` 和 `sort` |
-| arXiv HTML 返回 `404` | 让 `fulltext.py` 继续尝试官方 `/pdf/<id>`；需要时安装 `pdftotext` 或使用宿主 PDF 视觉能力 |
-| 全文状态为 `needs_visual_reading` | 用宿主 PDF 视觉工具打开选中的 PDF，或通过 `fulltext.py render --pages <range>` 分批渲染，每批不超过二十页 |
-| 全文状态为 `abstract_only` | 检查候选错误，报告访问限制，并把科学结论限定在摘要级证据范围内 |
-| 首次入库拒绝 `targeted` 摘要 | 完整阅读文章并提交 `full` 摘要；扫描件需要逐页检查并提交整篇 `visual` 覆盖 |
-| 已存论文返回 `targeted_reading` | 请求的 facet 尚未覆盖；检索本地全文，完整阅读相关章节，再用 `--merge` 加入新 facet |
-| 已存论文返回 `version_changed` | 比较刷新后 manifest 的正文内容指纹；科学正文变化时建立独立版本，仅 HTML/PDF 外壳变化时复用既有摘要 |
-| 只读命令报告数据库 schema 不匹配 | 使用兼容的更新前 CLI 创建完整备份，安装当前文件，显式运行 `literature_db.py init`，然后运行 `audit` |
-| 摘要检索找不到文章中的原句 | 使用 `literature_db.py search '<phrase>' --scope fulltext --mode phrase`；引用前对照存储的文章 |
-| SQLite 不支持 FTS5 | 数据库 CLI 会自动使用确定性的大小写不敏感词项匹配；此时不能使用高级 `--mode fts` 查询 |
-| `audit` 把最新 arXiv 条目列在 `arxiv_records_awaiting_ads_bibcode` 中 | 论文会继续使用 arXiv 元数据参与检索；ADS 分配 bibcode 后重新发现并运行 `enrich` |
-| 中文查询找不到已知 facet | 更新到当前发布版本；CJK 词项查询会自动使用子串匹配，并报告 `search_engine: substring` |
+| 现象 | 下一步 |
+| --- | --- |
+| 宿主找不到 skill | 按对应宿主的[安装与验证步骤](docs/installation.zh-CN.md#安装)检查，再新建会话 |
+| Python 无法启动 | 安装 Python 3.10 或更新版本，尝试 `python3`、`python` 或 Windows 的 `py -3` |
+| ADS 返回 `401` | 检查 token 是否已设置，更新环境变量后重启宿主 |
+| ADS 返回 `403` 或 `429` | `403` 检查账号和 library 权限；`429` 按返回的限流恢复时间重试 |
+| 找不到 `adslib` 命令 | 完成[一次性注册](docs/installation.zh-CN.md#注册-adslib-命令)，然后新开终端；旧终端或 IDE 可重启后再试 |
+| Web 页面连接失败 | 运行 `adslib`，保持新启动的服务运行，并打开它输出的准确地址 |
+| Web 数量不符合预期或显示空库 | 核对页面显示的目录、当前筛选和[数据迁移](docs/library.zh-CN.md#迁移到新电脑)情况 |
+| 论文显示待总结或待分类 | 让 Agent 完成相关来源总结与科学主题分类 |
+| 旧数据库报告 schema 不匹配 | 按[备份与升级步骤](docs/library.zh-CN.md#升级旧版文献库)处理 |
+| 全文暂时无法获取 | 保留现有题录或摘要证据，并在结果中说明访问缺口 |
+| 本地检索找不到原句 | 改为搜索已存全文，并参考[检索范围与状态检查](docs/library.zh-CN.md#检查文献库状态) |
 
-## 更新已有安装
+## 数据与进一步阅读
 
-1.11.0 引入数据库 schema 2。先用更新前已安装的 CLI 创建完整文献库备份，再更新 skill 或 plugin 文件并运行 `literature_db.py init`。这项一次性迁移会为每个文章版本保留当前最高修订，删除 digest 修订字段，并强制每个文章版本只存一条 digest。1.12.0 保持所有读取命令为只读，因此迁移前会先报告 schema 不匹配。迁移后运行 `literature_db.py audit`。
+ADS 凭据用于 ADS 请求。文章文件来自合法可访问的出版社、仓储、arXiv 或 ADS 来源。论文、总结和引用缓存保存在本地；所选 Agent 宿主会按自身的数据政策处理任务中读取的内容。
 
-Claude Code 或 Codex plugin 需要刷新 marketplace 和已经安装的 plugin：
-
-```bash
-claude plugin marketplace update nasa-ads-community
-claude plugin update nasa-ads@nasa-ads-community
-```
-
-```bash
-codex plugin marketplace upgrade nasa-ads-community
-codex plugin add nasa-ads@nasa-ads-community
-```
-
-Codex 独立 skill 或 Gemini CLI import 需要更新安装时选择的源码路径。下面的命令沿用本 README 中的示例路径。
-
-macOS、Linux 或 WSL 上的 Codex 独立 skill：
-
-```bash
-git -C "$HOME/.local/share/nasa-ads-skill" pull --ff-only
-cp -R \
-  "$HOME/.local/share/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads/." \
-  "$HOME/.agents/skills/nasa-ads/"
-```
-
-Windows PowerShell 上的 Codex 独立 skill：
-
-```powershell
-$nasaAdsSource = Join-Path $HOME 'nasa-ads-skill-source'
-$nasaAdsSkill = Join-Path $HOME '.agents\skills\nasa-ads'
-git -C $nasaAdsSource pull --ff-only
-Copy-Item -Recurse -Force `
-  (Join-Path $nasaAdsSource 'plugins\nasa-ads\skills\nasa-ads\*') `
-  $nasaAdsSkill
-```
-
-macOS、Linux 或 WSL 上的 Gemini CLI：
-
-```bash
-git -C "$HOME/.gemini/nasa-ads-skill" pull --ff-only
-```
-
-Windows PowerShell 上的 Gemini CLI：
-
-```powershell
-git -C "$HOME\.gemini\nasa-ads-skill" pull --ff-only
-```
-
-Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新建宿主会话。
-
-## 安全说明
-
-- 安装前检查这个公开仓库。
-- 把 `ADS_API_TOKEN` 和 `ADS_DEV_KEY` 放在版本控制之外。
-- 不要跟随带认证信息的 ADS API 重定向。
-- 向 arXiv、出版社、作者仓储或 Unpaywall 请求全文时不会携带 ADS authorization header。
-- 全文文件会保存在用户缓存目录；受限稿件和共享电脑缓存应遵守用户所在环境的访问策略。
-- 文献对象和摘要保留在用户数据目录中，不会上传到 ADS、arXiv、出版社或 embedding 服务。
-- 数据库 CLI 不提供删除命令。手工删除、清空、迁移或替换完整摘要前，应备份完整文献库并取得明确确认。
-- 删除/清空 ADS library、替换/删除 library 备注、修改分享权限或转移所有权前进行确认。
-- 把出版社和数据归档链接视为外部站点。
-- ADS 的 rate limit 由各 endpoint 独立控制，响应 headers 是当前依据。
-
-## 参考资料
-
-- [ADS API 概览](https://ui.adsabs.harvard.edu/help/api/)
-- [ADS OpenAPI 文档](https://ui.adsabs.harvard.edu/help/api/api-docs.html)
-- [ADS Developer API 示例](https://github.com/adsabs/adsabs-dev-api)
-- [Claude Code plugin 安装](https://code.claude.com/docs/en/discover-plugins)
-- [OpenAI plugin 文档](https://developers.openai.com/plugins/)
-- [Gemini CLI `GEMINI.md` 文档](https://geminicli.com/docs/cli/gemini-md/)
+- [安装、诊断与更新](docs/installation.zh-CN.md)
+- [Web、引用、备份与迁移](docs/library.zh-CN.md)
+- [Agent 工作流](plugins/nasa-ads/skills/nasa-ads/SKILL.md)与 [CLI 参考](plugins/nasa-ads/skills/nasa-ads/references/ads-cli.md)
+- [ADS API 文档](https://ui.adsabs.harvard.edu/help/api/)与 [ADS Libraries](plugins/nasa-ads/skills/nasa-ads/references/libraries.md)
+- [项目审查与验证记录](docs/review.md)
 
 ## License
 
@@ -647,8 +218,6 @@ Gemini CLI 更新后运行 `/memory reload`。Codex 或 Claude Code 更新后新
 
 ---
 
-<div align="center">
-
-NASA ADS Skill · 从全新系统到首次验证成功的文献检索
-
-</div>
+<p align="center">
+  <sub>NASA ADS Skill · 每一次检索，都成为可复用的文献积累。</sub>
+</p>

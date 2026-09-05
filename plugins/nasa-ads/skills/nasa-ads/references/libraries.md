@@ -11,7 +11,7 @@ Use direct HTTP for library operations:
 
 ## Safety Boundaries
 
-Keep read-only calls as the default. Confirm immediately before:
+Keep read-only calls as the default. Verify explicit authorization for:
 
 - deleting or emptying a library;
 - bulk removal or query-based removal;
@@ -19,7 +19,7 @@ Keep read-only calls as the default. Confirm immediately before:
 - replacing or deleting a document note;
 - transferring library ownership.
 
-A command argument identifies the requested action and does not replace this confirmation.
+An explicit user request for an exact action and scope supplies authorization. Prepare the exact target and effects before asking for any missing authorization. Preserve existing authorization across turns.
 
 Use the library ID returned by ADS. A library name is not an endpoint identifier.
 
@@ -32,15 +32,15 @@ Use the library ID returned by ADS. A library name is not an endpoint identifier
 | Create a library | `POST /biblib/libraries` | `name`, `description`, `public`, `bibcode` |
 | Add or remove papers | `POST /biblib/documents/<id>` | `bibcode` plus `action` |
 | Update metadata | `PUT /biblib/documents/<id>` | Include only changed fields |
-| Delete a library | `DELETE /biblib/documents/<id>` | Confirm immediately before the call |
+| Delete a library | `DELETE /biblib/documents/<id>` | Verify explicit authorization |
 | Add or remove by query | `POST /biblib/query/<id>` | `params` plus `action` |
 | Set operations | `POST /biblib/libraries/operations/<id>` | See the rules below |
 | View permissions | `GET /biblib/permissions/<id>` | Read-only |
 | Change permissions | `POST /biblib/permissions/<id>` | `email` plus changed permission flags |
 | Read a note | `GET /biblib/notes/<id>/<bibcode>` | Read-only |
-| Add or replace a note | `POST` or `PUT /biblib/notes/<id>/<bibcode>` | `content`; confirm before replacing |
-| Delete a note | `DELETE /biblib/notes/<id>/<bibcode>` | Confirm immediately before the call |
-| Transfer ownership | `POST /biblib/transfer/<id>` | `email`; confirm immediately before the call |
+| Add or replace a note | `POST` or `PUT /biblib/notes/<id>/<bibcode>` | `content`; verify authorization for replacement |
+| Delete a note | `DELETE /biblib/notes/<id>/<bibcode>` | Verify explicit authorization |
+| Transfer ownership | `POST /biblib/transfer/<id>` | `email`; verify explicit authorization |
 
 For `access_type`, use only the documented values `all`, `owner`, or `collaborator`.
 
@@ -64,7 +64,7 @@ Add or remove papers:
 }
 ```
 
-Use `"action": "remove"` only after applying the confirmation rule when the removal is bulk.
+Use `"action": "remove"` only after checking explicit authorization when the removal is bulk.
 
 Add or remove by query:
 
@@ -122,7 +122,7 @@ Set operations:
 
 - `union`, `intersection`, and `difference` create a result library; include a unique `name` when the user supplied one.
 - `copy` sets `libraries` to one destination library ID. ADS appends the primary library’s contents without emptying the destination.
-- `empty` omits `libraries` and requires immediate confirmation.
+- `empty` omits `libraries` and requires explicit authorization.
 
 ## Results
 

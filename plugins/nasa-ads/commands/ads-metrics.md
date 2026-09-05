@@ -27,11 +27,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" metrics \
 ```
 4. Read the actual response keys before formatting. ADS uses keys containing spaces, including `basic stats`, `basic stats refereed`, `citation stats`, `citation stats refereed`, `indicators`, and `indicators refereed`.
 
-5. Display key metrics:
-   - **Total papers / Refereed papers**
-   - **Total citations / Refereed citations**
-   - **h-index / g-index / i10-index**
-   - **Mean citations per paper**
-   - **Total reads**
-
-6. Present results in a clean markdown table. State which bibcodes form the metric set, and avoid labeling a subset h-index as an author-level h-index.
+5. Return the metrics relevant to the user's question and present comparisons in a table when useful. State which bibcodes form the metric set; an h-index computed for a subset describes that subset. Preserve missing-value and response errors.
