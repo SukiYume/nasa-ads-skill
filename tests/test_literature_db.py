@@ -314,11 +314,12 @@ class DigestValidationTests(unittest.TestCase):
 
     def test_non_scientific_section_rejects_facet_mappings(self):
         digest = sample_digest()
+        digest["reading"]["coverage"][0]["role"] = "references"
         digest["reading"]["coverage"][0]["facet_keys"] = [
             digest["facets"][0]["key"]
         ]
         with self.assertRaisesRegex(
-            literature_db.LiteratureError, "Only scientific sections"
+            literature_db.LiteratureError, "Scientific and technical sections"
         ):
             literature_db.validate_digest(digest)
 
@@ -575,7 +576,7 @@ class LibraryWorkflowTests(unittest.TestCase):
         )
         self.connection.close()
 
-        self.connection, self.fts5 = literature_db.connect_library(self.library)
+        self.connection, self.fts5 = literature_db.connect_library(self.library, allow_migrate=True)
 
         columns = {
             row["name"] for row in self.connection.execute("PRAGMA table_info(digests)")
@@ -632,7 +633,7 @@ class LibraryWorkflowTests(unittest.TestCase):
         for identifier in (
             "2023ApJ...955..142Z",
             "10.3847/1538-4357/aced0b",
-            "arXiv:2304.14665v3",
+            "arXiv:2304.14665",
         ):
             lookup = literature_db.lookup_one(
                 self.connection,

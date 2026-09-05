@@ -61,6 +61,13 @@ class ReleaseSyncTests(unittest.TestCase):
             skill / "scripts" / "ads_api.py",
             skill / "scripts" / "fulltext.py",
             skill / "scripts" / "literature_db.py",
+            skill / "scripts" / "library_catalog.py",
+            skill / "scripts" / "library_web.py",
+            skill / "scripts" / "adslib.py",
+            skill / "assets" / "library" / "index.html",
+            skill / "assets" / "library" / "style.css",
+            skill / "assets" / "library" / "app.js",
+            skill / "references" / "research-writing.md",
             skill / "references" / "ads-cli.md",
             skill / "references" / "fulltext.md",
             skill / "references" / "literature-memory.md",
@@ -103,6 +110,13 @@ class ReleaseSyncTests(unittest.TestCase):
             "scripts/ads_api.py",
             "scripts/fulltext.py",
             "scripts/literature_db.py",
+            "scripts/library_catalog.py",
+            "scripts/library_web.py",
+            "scripts/adslib.py",
+            "assets/library/index.html",
+            "assets/library/style.css",
+            "assets/library/app.js",
+            "references/research-writing.md",
             "references/ads-cli.md",
             "references/fulltext.md",
             "references/literature-memory.md",
@@ -119,54 +133,32 @@ class ReleaseSyncTests(unittest.TestCase):
                 with self.subTest(readme=readme_name, path=relative_path):
                     self.assertIn(relative_path, install_prompt)
 
-    def test_persistent_memory_is_the_default_skill_behavior(self):
-        skill_root = (
-            REPO_ROOT / "plugins" / "nasa-ads" / "skills" / "nasa-ads"
-        )
-        skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-        memory = (skill_root / "references" / "literature-memory.md").read_text(
-            encoding="utf-8"
-        )
-        openai = (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("Persistent literature memory is the default workflow.", skill)
-        self.assertIn("Persistent storage is the default behavior", memory)
-        self.assertIn("allow_implicit_invocation: true", openai)
-
     def test_bilingual_readmes_keep_the_same_heading_shape(self):
-        heading_shapes = []
-        for readme_name in ("README.md", "README.zh-CN.md"):
-            lines = (REPO_ROOT / readme_name).read_text(encoding="utf-8").splitlines()
-            heading_shapes.append(
-                [
-                    len(match.group(1))
-                    for line in lines
-                    if (match := re.match(r"^(#{2,3}) ", line))
-                ]
-            )
-        self.assertEqual(heading_shapes[0], heading_shapes[1])
+        for pair in (
+            ("README.md", "README.zh-CN.md"),
+            ("docs/installation.md", "docs/installation.zh-CN.md"),
+            ("docs/library.md", "docs/library.zh-CN.md"),
+        ):
+            heading_shapes = []
+            for name in pair:
+                lines = (REPO_ROOT / name).read_text(encoding="utf-8").splitlines()
+                heading_shapes.append(
+                    [
+                        len(match.group(1))
+                        for line in lines
+                        if (match := re.match(r"^(#{2,3}) ", line))
+                    ]
+                )
+            with self.subTest(documents=pair):
+                self.assertEqual(heading_shapes[0], heading_shapes[1])
 
     def test_readme_relative_links_and_internal_anchors(self):
-        for readme_name in ("README.md", "README.zh-CN.md"):
-            readme_path = REPO_ROOT / readme_name
-            text = readme_path.read_text(encoding="utf-8")
-            anchors = {
-                self.github_anchor(match.group(1))
-                for line in text.splitlines()
-                if (match := re.match(r"^#{1,6}\s+(.+?)\s*$", line))
-            }
-            for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
-                target = target.strip().strip("<>")
-                if target.startswith(("http://", "https://", "mailto:")):
-                    continue
-                path_part, separator, fragment = target.partition("#")
-                if not path_part:
-                    with self.subTest(readme=readme_name, anchor=fragment):
-                        self.assertIn(fragment, anchors)
-                    continue
-                with self.subTest(readme=readme_name, target=target):
-                    self.assertTrue((readme_path.parent / path_part).exists())
-                if separator and fragment and path_part == readme_name:
-                    self.assertIn(fragment, anchors)
+        for name in (
+            "README.md", "README.zh-CN.md",
+            "docs/installation.md", "docs/installation.zh-CN.md",
+            "docs/library.md", "docs/library.zh-CN.md",
+        ):
+            self.assert_markdown_links(REPO_ROOT / name)
 
     def test_skill_and_reference_relative_links_exist(self):
         skill_root = (
@@ -177,16 +169,27 @@ class ReleaseSyncTests(unittest.TestCase):
             *sorted((skill_root / "references").glob("*.md")),
         ]
         for markdown_file in markdown_files:
-            text = markdown_file.read_text(encoding="utf-8")
-            for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
-                target = target.strip().strip("<>")
-                if target.startswith(("http://", "https://", "mailto:")):
-                    continue
-                path_part = target.partition("#")[0]
-                if not path_part:
-                    continue
-                with self.subTest(file=markdown_file, target=target):
-                    self.assertTrue((markdown_file.parent / path_part).exists())
+            self.assert_markdown_links(markdown_file)
+
+    def assert_markdown_links(self, markdown_file: Path):
+        text = markdown_file.read_text(encoding="utf-8")
+        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
+            target = target.strip().strip("<>")
+            if target.startswith(("http://", "https://", "mailto:")):
+                continue
+            path_part, _, fragment = target.partition("#")
+            destination = (
+                markdown_file.parent / path_part if path_part else markdown_file
+            )
+            with self.subTest(file=markdown_file, target=target):
+                self.assertTrue(destination.exists(), f"Missing target: {destination}")
+                if fragment and destination.suffix.lower() == ".md":
+                    anchors = {
+                        self.github_anchor(match.group(1))
+                        for line in destination.read_text(encoding="utf-8").splitlines()
+                        if (match := re.match(r"^#{1,6}\s+(.+?)\s*$", line))
+                    }
+                    self.assertIn(fragment, anchors)
 
     def test_markdown_fences_are_balanced(self):
         for path in REPO_ROOT.rglob("*.md"):

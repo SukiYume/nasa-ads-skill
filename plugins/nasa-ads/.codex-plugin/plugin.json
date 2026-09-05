@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "1.12.1",
-  "description": "Research NASA ADS literature, read material papers in full, preserve searchable version-aware paper knowledge, reuse prior reading, check claims, export citations, manage libraries, and inspect metrics from Codex.",
+  "version": "1.14.1",
+  "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -25,8 +25,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "NASA ADS",
-    "shortDescription": "ADS literature, full text, and reusable knowledge",
-    "longDescription": "Reusable Codex skill bundle for NASA ADS research, lawful full-text reading, searchable version-aware paper memory, one complete section-mapped multi-topic digest per opened article version, database health checks, citation export, library management, metrics, and related-paper discovery.",
+    "shortDescription": "ADS research and a reusable personal literature library",
+    "longDescription": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations. Research preserves version-specific evidence and reusable article digests across manuscript projects.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
@@ -35,9 +35,9 @@
     ],
     "websiteURL": "https://github.com/SukiYume/nasa-ads-skill",
     "defaultPrompt": [
-      "Search NASA ADS for recent papers on exoplanet atmospheres.",
-      "Inspect one paper figure and preserve a complete digest for its exact article version.",
-      "Search my local literature memory for prior full-text findings on circular polarization."
+      "Research recent astronomy papers on this question and compare the evidence.",
+      "Explain this paper's figure and check the authors' conclusion.",
+      "Open my personal Web library with adslib and export BibTeX for a topic collection."
     ],
     "brandColor": "#0B3D91"
   }

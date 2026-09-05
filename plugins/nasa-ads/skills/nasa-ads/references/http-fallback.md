@@ -12,6 +12,8 @@ Read this file only when Python 3 cannot run the bundled CLI or a requested non-
 - Treat `401`, `403`, `404`, `429`, and server failures as API results. Changing HTTP clients does not correct them.
 - Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 
+When Python is available for a fallback endpoint, save returned paper metadata and use `literature_db.py capture --results <file>` with [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion). Include abstracts in metadata requests when available. Apply the shared [Core Invariants](../SKILL.md#core-invariants), including reading scope and the no-library-write exception. When Python is unavailable, preserve responses and authored summaries for later import and follow [failure routing](../SKILL.md#failure-routing) for unavailable persistence.
+
 ## Credential Preflight
 
 POSIX shell:

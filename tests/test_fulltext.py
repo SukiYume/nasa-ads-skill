@@ -307,6 +307,7 @@ class PdfAssessmentTests(unittest.TestCase):
             pdf = Path(temporary) / "paper.pdf"
             pdf.write_bytes(b"%PDF-1.7\n")
             with (
+                patch.object(fulltext, "pdf_page_count", return_value=(1, "test")),
                 patch.object(fulltext, "find_executable", return_value="pdftoppm"),
                 patch.object(
                     fulltext.subprocess,
@@ -635,6 +636,7 @@ class WorkflowTests(unittest.TestCase):
             manifest_path.write_text(
                 json.dumps(
                     {
+                        "status": "fulltext",
                         "selected": {
                             "artifact_path": str(artifact),
                             "text_path": str(text),
@@ -666,6 +668,7 @@ class WorkflowTests(unittest.TestCase):
             manifest_path.write_text(
                 json.dumps(
                     {
+                        "status": "fulltext",
                         "selected": {
                             "artifact_path": str(artifact),
                             "text_path": str(text),

@@ -65,7 +65,7 @@ def run_cli(args, response, *, environ=None, stdin_text=""):
     stderr = io.StringIO()
     opener = RecordingOpener(response)
     code = ads_api.run(
-        args,
+        ["--no-store", *args],
         environ=environ or {"ADS_API_TOKEN": "test-secret"},
         stdin=io.StringIO(stdin_text),
         stdout=stdout,

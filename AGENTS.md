@@ -14,6 +14,9 @@ Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex,
 - Bundled API CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/ads_api.py`
 - Bundled full-text CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/fulltext.py`
 - Bundled literature-memory CLI: `plugins/nasa-ads/skills/nasa-ads/scripts/literature_db.py`
+- Web command launcher and user setup: `plugins/nasa-ads/skills/nasa-ads/scripts/adslib.py`
+- Catalog and Web modules: `plugins/nasa-ads/skills/nasa-ads/scripts/library_catalog.py` and `library_web.py`
+- Local Web assets: `plugins/nasa-ads/skills/nasa-ads/assets/library/`
 - Conditional references: `plugins/nasa-ads/skills/nasa-ads/references/`
 - Gemini include file: `GEMINI.md`
 
@@ -31,7 +34,7 @@ Claude plugin commands are namespaced by plugin id:
 
 ## API Token
 
-Check environment variables `ADS_API_TOKEN` or `ADS_DEV_KEY` first. If neither is set, point the user to the token page, tell them to set one of those environment variables, and ask them to retry or provide a token for the current session. Never hardcode or log the token.
+For online ADS operations, check `ADS_API_TOKEN` first, then `ADS_DEV_KEY`. If neither is set, point the user to the token page and tell them to set one of those environment variables for the next request. Local library browsing, stored reading, organization, and cached citation export work without an ADS token. Never hardcode or log the token.
 
 Token page: https://ui.adsabs.harvard.edu/#user/settings/token
 
@@ -39,8 +42,12 @@ Use the bundled standard-library ADS CLI for search, big query, citation export,
 
 ## Documentation Contract
 
+- Keep the shared reading scope and silent-persistence contract in [SKILL.md](plugins/nasa-ads/skills/nasa-ads/SKILL.md#core-invariants). References and command entry points use that contract and document their own operations. Examples illustrate syntax; task-specific choices follow the user's research scope.
+- Include one-time `adslib` command registration in installation instructions and verify it against the installed skill. Preserve existing PATH entries and foreign commands.
 - Write README installation paths for a reader starting on a new computer with no repository-specific knowledge.
 - Keep `README.md` and `README.zh-CN.md` structurally aligned.
+- Keep the README focused on installation choices, first use, Web access, and troubleshooting. Put detailed platform commands in `docs/installation.md` and library operations in `docs/library.md`; maintain their `.zh-CN.md` counterparts with matching structure.
+- Keep `SKILL.md` task-oriented: route requests first, load references as needed, and scope completion checks to the selected task.
 - Keep the copyable one-sentence agent-install prompt directly after the overview; require CLI-file, token-safety, version, and smoke-test checks.
 - Use the current Codex standalone-skill location, `~/.agents/skills/<skill-name>`.
 - Give Windows PowerShell and macOS/Linux/WSL commands where filesystem syntax differs.
@@ -75,8 +82,8 @@ Before committing:
 1. Run `claude plugin validate . --strict`.
 2. Parse every JSON manifest.
 3. Run the Codex skill validator from `skill-creator` with UTF-8 mode on Windows.
-4. Run `python -m unittest discover -s tests -v` and compile all three bundled CLIs.
-5. Check README relative links and Markdown anchors.
+4. Run `python -m unittest discover -s tests -v` and compile all bundled Python modules.
+5. Check README and guide relative links, cross-file Markdown anchors, and bilingual heading structure.
 6. Test the documented Codex and Claude marketplace installs with disposable entries; record the pre-test state and remove only the exact test entries afterward.
 7. Run read-only ADS smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.
 8. Run `git diff --check` and inspect the complete diff.

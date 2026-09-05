@@ -2,6 +2,8 @@
 
 Load this reference when a task fetches or reads article content. Load [literature-memory.md](literature-memory.md) before opening content and load [digest-schema.md](digest-schema.md) when the exact version requires ingest.
 
+Apply the shared [reading scope](../SKILL.md#reading-scope) to determine complete reading and local reuse. This reference covers retrieval, source verification, and article reading.
+
 ## Bundled Full-Text CLI
 
 Resolve `scripts/fulltext.py` relative to `SKILL.md`. Use the working Python 3 command selected for the bundled CLIs.
@@ -26,9 +28,15 @@ Useful options:
 --timeout <seconds>
 --max-mib <MiB>
 --use-unpaywall
+--library-dir <directory>
+--no-store
 ```
 
 `--format auto` selects validated structured HTML within the best available version and falls back to PDF. Use `--format pdf` for equations, figures, tables, pagination, or visual review. Explicit format requests validate the response format.
+
+Fetch captures available article metadata and abstracts by default, including an abstract-only result. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`. A local persistence failure preserves prepared files and reports a failing exit status; apply the shared [failure routing](../SKILL.md#failure-routing).
+
+The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs explicit opt-outs. Article preparation still uses the download cache.
 
 After a text-bearing fetch, inventory the article structure:
 
@@ -54,6 +62,8 @@ https://arxiv.org/pdf/<arxiv-id>
 ```
 
 `https://arxiv.org/abs/<arxiv-id>` supplies metadata. Preserve explicit arXiv version suffixes such as `v2`.
+
+An explicit version selects matching metadata and article URLs. A failed exact-version lookup remains unresolved until that version is obtained. Stored versions are selected by authority and explicit version identity. An uncovered topic in a complete local record can be checked using its verified local artifact and durable manifest.
 
 Automatic ranking uses two dimensions:
 
@@ -115,9 +125,9 @@ For an exact version requiring complete ingest:
 5. Verify decisive numerical values, equations, figures, tables, and layout-sensitive evidence in the artifact.
 6. Separate measurements, interpretations, assumptions, cited background, and future work in the digest.
 7. Record exact article headings, evidence locators, selected version, and complete section-to-facet coverage.
-8. Follow `digest-schema.md` to validate and ingest the record before using article details.
+8. Follow [digest-schema.md](digest-schema.md) to validate and ingest the completed record.
 
-For a broad review, select the central, representative, contradictory, and method-defining material papers. State the selection rule and identify material papers that remained abstract-only.
+Verify the task's investigation set with [reading-check](literature-memory.md#local-lookup-and-reading) and apply the shared [handoff criteria](../SKILL.md#completion-and-handoff).
 
 ## Optional Local Helpers
 

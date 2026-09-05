@@ -20,13 +20,13 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "1.12.1"
+VERSION = "1.14.1"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -271,6 +271,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fetch.add_argument("--cache-dir", help="cache root; overrides the default")
     fetch.add_argument(
+        "--library-dir", help="personal library used for metadata capture"
+    )
+    fetch.add_argument(
+        "--no-store",
+        action="store_true",
+        help="prepare article files without capturing metadata in the personal library",
+    )
+    fetch.add_argument(
         "--refresh", action="store_true", help="ignore a valid cached manifest"
     )
     fetch.add_argument(
@@ -313,7 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="render timeout in seconds (default: 300)",
     )
     outline = subparsers.add_parser(
-        "outline", help="extract a reviewable section outline from prepared article text"
+        "outline",
+        help="extract a reviewable section outline from prepared article text",
     )
     outline.add_argument("text", help="prepared article text path")
     outline.add_argument(
@@ -477,11 +486,15 @@ def arxiv_id_from_value(value: str) -> str | None:
     candidate = value.strip()
     candidate = re.sub(r"^arxiv:\s*", "", candidate, flags=re.IGNORECASE)
     parsed = urlsplit(candidate)
-    if parsed.scheme and parsed.netloc.lower().endswith("arxiv.org"):
+    if parsed.scheme and (parsed.hostname or "").lower() in {
+        "arxiv.org",
+        "www.arxiv.org",
+        "export.arxiv.org",
+    }:
         match = re.match(r"^/(?:abs|html|pdf|src)/(.+?)(?:\.pdf)?$", parsed.path)
         if not match:
             return None
-        candidate = match.group(1)
+        candidate = unquote(match.group(1))
     candidate = candidate.strip().rstrip("/")
     if ARXIV_NEW_RE.fullmatch(candidate) or ARXIV_OLD_RE.fullmatch(candidate):
         return candidate
@@ -493,7 +506,7 @@ def doi_from_value(value: str) -> str | None:
     candidate = re.sub(r"^doi:\s*", "", candidate, flags=re.IGNORECASE)
     parsed = urlsplit(candidate)
     if parsed.scheme and parsed.netloc.lower() in {"doi.org", "dx.doi.org"}:
-        candidate = parsed.path.lstrip("/")
+        candidate = unquote(parsed.path.lstrip("/"))
     candidate = candidate.strip().rstrip(".")
     return candidate if DOI_RE.fullmatch(candidate) else None
 
@@ -505,7 +518,7 @@ def classify_identifier(identifier: str) -> tuple[str, str]:
     doi = doi_from_value(identifier)
     if doi:
         return "doi", doi
-    stripped = identifier.strip()
+    stripped = re.sub(r"^bibcode:\s*", "", identifier.strip(), flags=re.IGNORECASE)
     if not stripped or any(character.isspace() for character in stripped):
         raise FullTextError(f"Unsupported identifier: {identifier!r}", exit_code=2)
     return "bibcode", stripped
@@ -518,7 +531,7 @@ def validate_external_url(url: str) -> None:
     if not parsed.hostname or parsed.username or parsed.password:
         raise FullTextError(f"Invalid external full-text URL: {url}")
     hostname = parsed.hostname.rstrip(".").lower()
-    if hostname == "localhost" or hostname.endswith(".local"):
+    if hostname == "localhost" or hostname.endswith((".local", ".localhost")):
         raise FullTextError(f"Local external target is not allowed: {url}")
     try:
         address = ipaddress.ip_address(hostname)
@@ -708,10 +721,14 @@ def pdf_page_count(
                 return int(match.group(1)), "pdfinfo"
     try:
         from pypdf import PdfReader  # type: ignore[import-not-found]
-
-        return len(PdfReader(str(pdf_path)).pages), "pypdf"
-    except (ImportError, OSError, ValueError):
+        from pypdf.errors import PyPdfError  # type: ignore[import-not-found]
+    except ImportError:
         pass
+    else:
+        try:
+            return len(PdfReader(str(pdf_path)).pages), "pypdf"
+        except (OSError, ValueError, PyPdfError):
+            pass
     try:
         approximate = len(re.findall(rb"/Type\s*/Page\b", pdf_path.read_bytes()))
     except OSError:
@@ -752,13 +769,14 @@ def extract_pdf_text(
         return None, "pdftotext", detail or "pdftotext failed"
     try:
         from pypdf import PdfReader  # type: ignore[import-not-found]
+        from pypdf.errors import PyPdfError  # type: ignore[import-not-found]
     except ImportError:
         return None, None, "No PDF text extractor is installed."
     try:
         pages = PdfReader(str(pdf_path)).pages
         text = "\n\n".join((page.extract_text() or "") for page in pages)
         return normalize_text(text), "pypdf", None
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, PyPdfError) as exc:
         return None, "pypdf", str(exc)[:300]
 
 
@@ -802,7 +820,7 @@ def actual_format(downloaded: Downloaded) -> str:
     if stripped[:200].lower().startswith((b"<!doctype html", b"<html", b"<?xml")):
         return "html"
     if downloaded.content_type == "application/pdf":
-        return "pdf"
+        raise FullTextError("PDF response lacks the PDF file signature.")
     if downloaded.content_type in {"text/html", "application/xhtml+xml"}:
         return "html"
     raise FullTextError(
@@ -832,6 +850,12 @@ def materialize_candidate(
         max_bytes=max_bytes,
         opener=opener,
     )
+    pinned_arxiv = arxiv_id_from_value(candidate.url)
+    if pinned_arxiv and re.search(r"v\d+$", pinned_arxiv):
+        if arxiv_id_from_value(downloaded.final_url) != pinned_arxiv:
+            raise FullTextError(
+                "Downloaded arXiv URL does not preserve the requested version."
+            )
     selected_format = actual_format(downloaded)
     if required_format is not None and selected_format != required_format:
         raise FullTextError(
@@ -841,9 +865,7 @@ def materialize_candidate(
     stem = candidate_stem(candidate, selected_format)
     artifact_hash = sha256_bytes(downloaded.body)
     artifact_path = (
-        record_dir
-        / "artifacts"
-        / f"{stem}-{artifact_hash[:16]}.{selected_format}"
+        record_dir / "artifacts" / f"{stem}-{artifact_hash[:16]}.{selected_format}"
     ).resolve()
     common: dict[str, Any] = {
         "candidate": asdict(candidate),
@@ -880,6 +902,19 @@ def materialize_candidate(
         artifact_path, text_path, environ
     )
     status, statistics, warnings = assess_pdf_text(text, page_count, extractor)
+    if status == "fulltext" and expected_title:
+        expected = {
+            part
+            for part in re.findall(r"[a-z0-9]+", expected_title.casefold())
+            if len(part) >= 4
+        }
+        found = set(re.findall(r"[a-z0-9]+", (text or "")[:20000].casefold()))
+        if expected and len(expected & found) / len(expected) < 0.35:
+            raise FullTextError(
+                "PDF text does not match the target title; verify the article identity."
+            )
+    if status == "needs_visual_reading":
+        warnings.append("pdf_identity_requires_visual_check")
     statistics["page_counter"] = page_counter
     if extraction_error:
         warnings.append(f"pdf_extraction_error: {extraction_error}")
@@ -936,7 +971,7 @@ def arxiv_metadata_record(
 ) -> dict[str, Any] | None:
     base_id = re.sub(r"v\d+$", "", arxiv_id, flags=re.IGNORECASE)
     downloaded = fetch_external(
-        "https://export.arxiv.org/api/query?" + urlencode({"id_list": base_id}),
+        "https://export.arxiv.org/api/query?" + urlencode({"id_list": arxiv_id}),
         timeout=timeout,
         max_bytes=min(max_bytes, 5 * 1024 * 1024),
     )
@@ -958,10 +993,15 @@ def arxiv_metadata_record(
 
     entry_id = text_of(f"{atom}id") or ""
     returned_id = arxiv_id_from_value(entry_id)
-    if not returned_id or re.sub(
-        r"v\d+$", "", returned_id, flags=re.IGNORECASE
-    ) != base_id:
+    if (
+        not returned_id
+        or re.sub(r"v\d+$", "", returned_id, flags=re.IGNORECASE) != base_id
+    ):
         return None
+    if re.search(r"v\d+$", arxiv_id) and returned_id.casefold() != arxiv_id.casefold():
+        raise FullTextError(
+            "arXiv metadata does not match the explicitly requested version."
+        )
     title = text_of(f"{atom}title")
     abstract = text_of(f"{atom}summary")
     published = text_of(f"{atom}published")
@@ -976,7 +1016,7 @@ def arxiv_metadata_record(
         "author": authors,
         "abstract": abstract,
         "doi": [doi] if doi else [],
-        "identifier": [f"arXiv:{base_id}"],
+        "identifier": [f"arXiv:{returned_id}"],
         "property": ["ARTICLE", "EPRINT_OPENACCESS", "OPENACCESS"],
         "doctype": "eprint",
         "year": published[:4] if published and len(published) >= 4 else None,
@@ -1148,8 +1188,11 @@ def unpaywall_candidates(
 def deduplicate_candidates(candidates: Iterable[Candidate]) -> list[Candidate]:
     result: list[Candidate] = []
     seen: set[str] = set()
-    for candidate in sorted(candidates, key=lambda item: item.priority):
-        key = candidate.url.lower().rstrip("/")
+    authority = {"published": 0, "accepted": 1, "preprint": 2, "scan": 3, "unknown": 4}
+    for candidate in sorted(
+        candidates, key=lambda item: (authority.get(item.version, 4), item.priority)
+    ):
+        key = candidate.url.rstrip("/")
         if key in seen:
             continue
         seen.add(key)
@@ -1198,6 +1241,29 @@ def discover(
                 warnings.append("metadata_source: arxiv")
         except FullTextError as exc:
             warnings.append(f"arxiv_metadata_lookup_failed: {exc}")
+    elif identifier_type == "arxiv" and re.search(r"v\d+$", normalized_identifier):
+        publication_metadata = record
+        record = {**record, "abstract": None}
+        try:
+            exact_metadata = arxiv_metadata_record(
+                normalized_identifier, timeout=timeout, max_bytes=max_bytes
+            )
+            if exact_metadata:
+                record = {
+                    **publication_metadata,
+                    **exact_metadata,
+                    "bibcode": record.get("bibcode"),
+                    "doi": ordered_unique_strings(
+                        [
+                            *list_value(record.get("doi")),
+                            *list_value(exact_metadata.get("doi")),
+                        ]
+                    ),
+                }
+            else:
+                warnings.append("metadata_abstract_unverified_for_requested_version")
+        except FullTextError as exc:
+            warnings.append(f"arxiv_version_metadata_failed: {exc}")
 
     title = first_value(record.get("title")) if record else None
     abstract = record.get("abstract") if record else None
@@ -1262,11 +1328,15 @@ def discover(
         candidates = [
             candidate for candidate in candidates if candidate.source == source
         ]
-    if output_format != "auto":
+    if identifier_type == "arxiv" and re.search(r"v\d+$", normalized_identifier):
         candidates = [
             candidate
             for candidate in candidates
-            if candidate.format == output_format
+            if arxiv_id_from_value(candidate.url) == normalized_identifier
+        ]
+    if output_format != "auto":
+        candidates = [
+            candidate for candidate in candidates if candidate.format == output_format
         ]
     candidates = deduplicate_candidates(candidates)
     return {
@@ -1315,7 +1385,17 @@ def cached_result(manifest_path: Path) -> dict[str, Any] | None:
         or sha256_file(artifact_path) != artifact_hash.lower()
     ):
         return None
+    requested = arxiv_id_from_value(
+        str(payload.get("normalized_identifier") or payload.get("input") or "")
+    )
+    if requested and re.search(r"v\d+$", requested):
+        if arxiv_id_from_value(str(selected.get("final_url") or "")) != requested:
+            return None
     text_path = selected.get("text_path")
+    if payload.get("status") == "fulltext" and not text_path:
+        return None
+    if payload.get("status") not in {"fulltext", "needs_visual_reading"}:
+        return None
     if text_path:
         text_hash = selected.get("text_sha256")
         if not isinstance(text_hash, str) or not re.fullmatch(
@@ -1338,7 +1418,12 @@ def cached_result(manifest_path: Path) -> dict[str, Any] | None:
                 text = local_text_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 return None
-            if canonical_text_sha256(text) != content_hash.lower():
+            actual_content_hash = (
+                canonical_text_sha256(text)
+                if payload.get("status") == "fulltext"
+                else artifact_hash.lower()
+            )
+            if actual_content_hash != content_hash.lower():
                 return None
     payload["cache_hit"] = True
     return payload
@@ -1380,8 +1465,7 @@ def fetch_one(
     record_dir = (cache_root / cache_key(identifier)).resolve()
     format_variant = "" if output_format == "auto" else f"-{output_format}"
     request_variant = (
-        f"{source}{format_variant}-"
-        f"{'unpaywall' if use_unpaywall else 'resolver'}"
+        f"{source}{format_variant}-{'unpaywall' if use_unpaywall else 'resolver'}"
     )
     manifest_path = record_dir / f"manifest-{request_variant}.json"
     cached = cached_result(manifest_path)
@@ -1407,9 +1491,7 @@ def fetch_one(
                 candidate,
                 record_dir,
                 discovered.get("title"),
-                required_format=(
-                    None if output_format == "auto" else output_format
-                ),
+                required_format=(None if output_format == "auto" else output_format),
                 timeout=timeout,
                 max_bytes=max_bytes,
                 environ=environ,
@@ -1427,6 +1509,13 @@ def fetch_one(
             }
         )
         if result["status"] == "fulltext":
+            if visual_fallback is not None and manifest_selection_rank(
+                {"selected": visual_fallback, "status": visual_fallback["status"]}
+            ) < manifest_selection_rank(
+                {"selected": result, "status": result["status"]}
+            ):
+                selected = visual_fallback
+                break
             selected = result
             break
         if visual_fallback is None:
@@ -1520,9 +1609,18 @@ def render_pdf(
         else (pdf.parent / f"{pdf.stem}-pages").resolve()
     )
     destination.mkdir(parents=True, exist_ok=True)
-    prefix = destination / f"page-{first:04d}-{last:04d}"
+    page_count, _counter = pdf_page_count(pdf, environ)
+    if page_count is not None and last > page_count:
+        raise FullTextError("Requested page range exceeds the PDF page count.", 2)
+    prefix = (
+        destination / f"{sha256_file(pdf)[:16]}-{dpi}dpi-page-{first:04d}-{last:04d}"
+    )
     existing = sorted(destination.glob(f"{prefix.name}-*.png"))
-    if existing and not refresh:
+    if (
+        len(existing) == last - first + 1
+        and all(path.stat().st_size > 0 for path in existing)
+        and not refresh
+    ):
         return {
             "status": "cached",
             "pdf_path": str(pdf),
@@ -1554,7 +1652,7 @@ def render_pdf(
     except (OSError, subprocess.SubprocessError) as exc:
         raise FullTextError(f"PDF rendering failed: {exc}") from exc
     images = sorted(destination.glob(f"{prefix.name}-*.png"))
-    if completed.returncode != 0 or not images:
+    if completed.returncode != 0 or len(images) != last - first + 1:
         detail = " ".join((completed.stderr or completed.stdout).split())[:500]
         raise FullTextError(f"PDF rendering failed. {detail}".strip())
     return {
@@ -1594,6 +1692,41 @@ def execute(
                     environ=environ,
                     output_format=args.output_format,
                 )
+                if not args.no_store:
+                    import literature_db
+                    import library_catalog
+                    import sqlite3
+
+                    library_dir = (
+                        Path(args.library_dir).expanduser().resolve()
+                        if args.library_dir
+                        else literature_db.default_library_dir(environ)
+                    )
+                    connection = None
+                    try:
+                        connection, fts5 = literature_db.connect_library(library_dir)
+                        result["literature"] = library_catalog.capture_search(
+                            connection,
+                            fts5,
+                            {"response": {"numFound": 1, "docs": [result]}},
+                            query=identifier,
+                            parameters={
+                                "command": "fulltext",
+                                "source": args.source,
+                                "format": args.output_format,
+                            },
+                        )
+                    except (
+                        literature_db.LiteratureError,
+                        sqlite3.Error,
+                        OSError,
+                        ValueError,
+                    ) as exc:
+                        failed = True
+                        result["literature"] = {"status": "failed", "error": str(exc)}
+                    finally:
+                        if connection is not None:
+                            connection.close()
             except (
                 FullTextError,
                 ads_api.CliError,

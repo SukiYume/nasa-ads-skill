@@ -15,17 +15,23 @@ The CLI reads `ADS_API_TOKEN` and then `ADS_DEV_KEY`; it never accepts a token a
 ```text
 --timeout <1-300 seconds>
 --show-rate-limit
+--library-dir <directory>
+--no-store
 ```
 
 JSON endpoints print UTF-8 JSON. `export` prints citation text. Check the exit status and actual response shape before interpreting either.
+
+Search and big query capture every returned record by default. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the ADS response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
 
 ## Search
 
 Use this field set for literature research when every field is needed:
 
 ```text
-bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype,esources
+bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype,esources,volume,issue,page,eid,pubdate
 ```
+
+Choose fields, page size, and sorting for the task. This example requests a small citation-sorted page:
 
 ```bash
 python3 "<skill-dir>/scripts/ads_api.py" search \
@@ -36,6 +42,8 @@ python3 "<skill-dir>/scripts/ads_api.py" search \
 ```
 
 Repeat `--fq` for filters. Use `--start` for pagination and keep native ADS syntax inside `--query`.
+
+Repeat `--collection 'FRB/Propagation'` and `--role methods` to organize captured results. Roles accept `review`, `intro`, `methods`, `discussion`, and `comparison`. Stored searches add the complete metadata fields to custom `--fields`; `--no-store` preserves the requested field set. Search runs retain query parameters, total matches, returned records, and summary progress.
 
 Useful query forms:
 
@@ -74,6 +82,8 @@ python3 "<skill-dir>/scripts/ads_api.py" bigquery \
 Use `--bibcodes-file <path>` for a long list. Use `--start` when a batch exceeds 2,000 returned records.
 
 ## Citation Export
+
+For reusable BibTeX, use `literature_db.py citations <identifiers>` and add `--fetch` to cache official ADS entries. Offline export uses the cached entry or a clearly labeled entry generated from stored metadata. The ADS export command below supports the additional citation formats.
 
 ```bash
 python3 "<skill-dir>/scripts/ads_api.py" export \

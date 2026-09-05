@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Community-maintained Claude Code plugins for NASA ADS research workflows.",
-    "version": "1.12.1"
+    "version": "1.14.1"
   },
   "plugins": [
     {
       "name": "nasa-ads",
       "source": "./plugins/nasa-ads",
-      "description": "Research NASA ADS literature, read material papers in full, and preserve searchable version-aware paper knowledge.",
+      "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
       "author": {
         "name": "Echo"
       }

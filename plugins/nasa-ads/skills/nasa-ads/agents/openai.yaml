@@ -1,8 +1,8 @@
 interface:
   display_name: "NASA ADS"
-  short_description: "Research ADS literature with reusable full-text evidence"
+  short_description: "ADS research and a reusable personal literature library"
   brand_color: "#0B3D91"
-  default_prompt: "Use $nasa-ads to research astronomy literature, read material papers in full, and preserve each opened exact version in the local literature memory."
+  default_prompt: "Use $nasa-ads to answer this astronomy question with verified literature evidence and silently maintain my reusable library."
 
 policy:
   allow_implicit_invocation: true

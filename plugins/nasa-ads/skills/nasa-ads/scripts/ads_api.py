@@ -14,12 +14,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-VERSION = "1.12.1"
+VERSION = "1.14.1"
 API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
 TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
 DEFAULT_FIELDS = (
     "bibcode,title,author,abstract,year,pub,doi,identifier,"
-    "citation_count,read_count,property,doctype"
+    "citation_count,read_count,property,doctype,volume,issue,page,eid,pubdate"
 )
 DEFAULT_METRIC_TYPES = ("basic", "citations", "indicators")
 EXPORT_FORMATS = (
@@ -117,6 +117,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument(
+        "--library-dir", help="personal literature library used by search capture"
+    )
+    parser.add_argument(
+        "--no-store",
+        action="store_true",
+        help="run a metadata/API check without local search capture",
+    )
+    parser.add_argument(
         "--timeout",
         type=bounded_timeout,
         default=30.0,
@@ -141,6 +149,13 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--rows", type=rows_int, default=10)
     search.add_argument("--start", type=nonnegative_int, default=0)
     search.add_argument("--sort", help='sort expression, for example "date desc"')
+    search.add_argument("--collection", action="append", default=[])
+    search.add_argument(
+        "--role",
+        action="append",
+        choices=("review", "intro", "methods", "discussion", "comparison"),
+        default=[],
+    )
     search.add_argument(
         "--filter",
         "--fq",
@@ -158,7 +173,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="UTF-8 file containing one bibcode per line; use - for stdin",
     )
     bigquery.add_argument("-q", "--query", default="*:*", help="main ADS query")
-    bigquery.add_argument("--fields", "--fl", default="bibcode,title")
+    bigquery.add_argument("--fields", "--fl", default=DEFAULT_FIELDS)
+    bigquery.add_argument("--collection", action="append", default=[])
+    bigquery.add_argument(
+        "--role",
+        action="append",
+        choices=("review", "intro", "methods", "discussion", "comparison"),
+        default=[],
+    )
     bigquery.add_argument("--rows", type=rows_int, default=2000)
     bigquery.add_argument("--start", type=nonnegative_int, default=0)
     bigquery.add_argument("--sort")
@@ -373,7 +395,7 @@ def search_query(
 ) -> tuple[str, list[tuple[str, Any]], bytes | None, str | None]:
     query: list[tuple[str, Any]] = [
         ("q", args.query),
-        ("fl", args.fields),
+        ("fl", capture_fields(args)),
         ("rows", args.rows),
         ("start", args.start),
     ]
@@ -395,7 +417,7 @@ def bigquery_request(
 
     query: list[tuple[str, Any]] = [
         ("q", args.query),
-        ("fl", args.fields),
+        ("fl", capture_fields(args)),
         ("rows", args.rows),
         ("start", args.start),
         ("fq", "{!bitset}"),
@@ -483,6 +505,73 @@ def write_json(value: Any, stdout: TextIO) -> None:
     stdout.write("\n")
 
 
+def capture_fields(args: argparse.Namespace) -> str:
+    return (
+        args.fields
+        if args.no_store
+        else ",".join(
+            unique_nonempty([*args.fields.split(","), *DEFAULT_FIELDS.split(",")])
+        )
+    )
+
+
+def write_search_result(payload, args, stdout, environ, token):
+    if args.no_store:
+        write_json(payload, stdout)
+        return
+    if not isinstance(payload, dict):
+        raise CliError("ADS search returned an invalid response object.")
+    import literature_db
+    import library_catalog
+    import fulltext
+    from pathlib import Path
+    import sqlite3
+
+    library_dir = (
+        Path(args.library_dir).expanduser().resolve()
+        if args.library_dir
+        else literature_db.default_library_dir(environ)
+    )
+    connection = None
+    try:
+        connection, fts5 = literature_db.connect_library(library_dir)
+        capture = library_catalog.capture_search(
+            connection,
+            fts5,
+            payload,
+            query=args.query,
+            parameters={
+                "command": args.command,
+                "fields": capture_fields(args),
+                "start": args.start,
+                "rows": args.rows,
+                "sort": args.sort,
+                "filters": args.filter,
+            },
+            collections=args.collection,
+            roles=args.role,
+        )
+    except (
+        literature_db.LiteratureError,
+        fulltext.FullTextError,
+        sqlite3.Error,
+        OSError,
+        ValueError,
+    ) as exc:
+        detail = str(exc).replace(token, "[redacted]")
+        write_json(
+            {**payload, "literature": {"status": "failed", "error": detail}}, stdout
+        )
+        raise CliError(
+            "Search succeeded; literature capture failed. Save the response and retry capture. "
+            + detail
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    write_json({**payload, "literature": capture}, stdout)
+
+
 def execute(
     args: argparse.Namespace,
     token: str,
@@ -491,6 +580,7 @@ def execute(
     stdout: TextIO,
     stderr: TextIO,
     opener: Any = None,
+    environ: Mapping[str, str] | None = None,
 ) -> None:
     if args.command == "search":
         path, query, body, content_type = search_query(args)
@@ -504,7 +594,13 @@ def execute(
             timeout=args.timeout,
             opener=opener,
         )
-        write_json(decode_json_response(response, "search"), stdout)
+        write_search_result(
+            decode_json_response(response, "search"),
+            args,
+            stdout,
+            environ if environ is not None else os.environ,
+            token,
+        )
     elif args.command == "bigquery":
         path, query, body, content_type = bigquery_request(args, stdin)
         response = request_api(
@@ -517,7 +613,13 @@ def execute(
             timeout=args.timeout,
             opener=opener,
         )
-        write_json(decode_json_response(response, "big-query"), stdout)
+        write_search_result(
+            decode_json_response(response, "big-query"),
+            args,
+            stdout,
+            environ if environ is not None else os.environ,
+            token,
+        )
     elif args.command == "export":
         method, path, query, body, content_type = export_request(args)
         response = request_api(
@@ -612,6 +714,7 @@ def run(
             stdout=output_stream,
             stderr=error_stream,
             opener=opener,
+            environ=environ if environ is not None else os.environ,
         )
     except CliError as exc:
         error_stream.write(f"error: {exc}\n")
