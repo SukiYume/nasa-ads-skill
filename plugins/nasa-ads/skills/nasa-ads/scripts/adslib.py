@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Open the local literature library and install its user-level shell command."""
+"""Open and manage the local literature library. Default: open in the background."""
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import errno
+import hashlib
 import json
 import os
+import secrets
 import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 import literature_db
 import library_web
@@ -23,6 +28,190 @@ import library_web
 MARKER = "NASA ADS managed adslib launcher"
 PATH_START = "# >>> NASA ADS adslib PATH >>>"
 PATH_END = "# <<< NASA ADS adslib PATH <<<"
+
+
+@contextlib.contextmanager
+def service_lock(library_dir, port):
+    """Serialize shell invocations; the serving child never takes this lock."""
+    directory = runtime_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    key = hashlib.sha256(
+        f"{os.path.normcase(str(library_dir))}:{port}".encode()
+    ).hexdigest()
+    with (directory / f"{key}.lock").open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        deadline = time.monotonic() + 25
+        while True:
+            stream.seek(0)
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise ValueError(
+                        "Another service operation is in progress; retry shortly."
+                    )
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def runtime_dir() -> Path:
+    if os.environ.get("NASA_ADS_RUNTIME_DIR"):
+        return Path(os.environ["NASA_ADS_RUNTIME_DIR"]).expanduser().resolve()
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+    else:
+        base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    return base / "nasa-ads/runtime"
+
+
+def service_request(port, route, token=None):
+    request = Request(f"http://127.0.0.1:{port}{route}")
+    if token:
+        request.method = "POST"
+        request.add_header("Authorization", f"Bearer {token}")
+        request.data = b""
+    with build_opener(ProxyHandler({}), NoRedirect()).open(
+        request, timeout=3
+    ) as response:
+        return json.loads(response.read(1024 * 1024))
+
+
+def managed_services(library_dir):
+    results = []
+    for path in runtime_dir().glob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if Path(record["library_dir"]).resolve() != library_dir.resolve():
+                continue
+            port = record["port"]
+            if type(port) is not int or not 1 <= port <= 65535:
+                continue
+            live = service_request(port, "/api/service")
+            if (
+                live.get("instance") == record["instance"]
+                and Path(live["library_dir"]).resolve() == library_dir.resolve()
+            ):
+                results.append(record)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return results
+
+
+def find_service(library_dir, port):
+    records = managed_services(library_dir)
+    exact = [record for record in records if record["port"] == port]
+    candidates = exact or [
+        record for record in records if record["requested_port"] == port
+    ]
+    if len(candidates) > 1:
+        raise ValueError(
+            "Multiple services match; choose an actual --port: "
+            + ", ".join(str(record["port"]) for record in candidates)
+        )
+    if candidates:
+        return candidates[0]
+    return None
+
+
+def stop_service(record, stdout):
+    # Recheck the instance immediately before sending its private capability.
+    if (
+        service_request(record["port"], "/api/service").get("instance")
+        != record["instance"]
+    ):
+        raise ValueError("The service instance changed. Run adslib status again.")
+    service_request(record["port"], "/api/service/stop", record["token"])
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            live = service_request(record["port"], "/api/service")
+            if live.get("instance") != record["instance"]:
+                break
+        except (OSError, ValueError):
+            break
+        time.sleep(0.1)
+    else:
+        raise ValueError("Shutdown is still pending. Run adslib status again.")
+    stdout.write(f"Stopped library service on port {record['port']}.\n")
+
+
+def start_background(library_dir, port, *, browser, stdout):
+    directory = runtime_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    identity = secrets.token_hex(16)
+    ready = directory / f"{identity}.ready"
+    log = directory / f"{identity}.log"
+    command = [
+        sys.executable,
+        "-X",
+        "utf8",
+        str(Path(__file__).resolve()),
+        "--library-dir",
+        str(library_dir),
+        "--port",
+        str(port),
+        "--no-open",
+        "--ready-file",
+        str(ready),
+        "serve",
+    ]
+    options = (
+        {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    with log.open("wb") as stream:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=stream,
+            stderr=stream,
+            close_fds=True,
+            **options,
+        )
+    try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if ready.exists():
+                actual = json.loads(ready.read_text(encoding="utf-8"))["port"]
+                if running_library(actual, library_dir):
+                    url = f"http://127.0.0.1:{actual}"
+                    stdout.write(
+                        f"NASA ADS library: {url}\nLibrary: {library_dir}\nLog: {log}\n"
+                    )
+                    stdout.write(
+                        f'Stop with: adslib stop --port {actual} --library-dir "{library_dir}"\n'
+                    )
+                    if browser:
+                        open_browser(url, stdout)
+                    return 0
+            if process.poll() is not None:
+                break
+            time.sleep(0.1)
+        if process.poll() is None:
+            process.terminate()  # Only the child created by this invocation.
+            process.wait(timeout=5)
+        raise ValueError(f"Service startup failed. Read the log: {log}")
+    finally:
+        ready.unlink(missing_ok=True)
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -58,12 +247,14 @@ def open_browser(url: str, stdout) -> None:
         stdout.flush()
 
 
-def launch(library_dir: Path, port: int, *, browser: bool, stdout) -> int:
+def launch(
+    library_dir: Path, port: int, *, browser: bool, stdout, ready_file=None
+) -> int:
     """Reuse the matching service or host a new read-only library until Ctrl+C."""
     if not 0 <= port <= 65535:
         raise ValueError("Port must be between 0 and 65535.")
     library_dir = library_dir.expanduser().resolve()
-    existing = running_library(port, library_dir)
+    existing = find_service(library_dir, port)
     server = None
     if existing is None:
         try:
@@ -75,19 +266,47 @@ def launch(library_dir: Path, port: int, *, browser: bool, stdout) -> int:
             }:
                 raise
             # Another invocation may have completed its startup during the probe.
-            existing = running_library(port, library_dir)
+            existing = find_service(library_dir, port)
             if existing is None:
                 server = library_web.make_server(library_dir, 0)
-    active_port = server.server_port if server else port
+    active_port = server.server_port if server else existing["port"]
     url = f"http://127.0.0.1:{active_port}"
     stdout.write(f"NASA ADS library: {url}\nLibrary: {library_dir}\n")
     if server is None:
+        if ready_file:
+            atomic_write(Path(ready_file), json.dumps({"port": active_port}))
         stdout.write("Using the running library service.\n")
         stdout.flush()
         if browser:
             open_browser(url, stdout)
         return 0
-    stdout.write("Keep this terminal open. Press Ctrl+C to stop the library service.\n")
+    directory = runtime_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    server.control_token = secrets.token_hex(32)
+    server.control_instance = secrets.token_hex(16)
+    record_path = directory / f"{server.control_instance}.json"
+    record = {
+        "instance": server.control_instance,
+        "token": server.control_token,
+        "port": active_port,
+        "requested_port": port,
+        "pid": os.getpid(),
+        "library_dir": str(library_dir),
+        "version": literature_db.VERSION,
+    }
+    try:
+        with record_path.open("x", encoding="utf-8") as stream:
+            os.chmod(record_path, 0o600)
+            json.dump(record, stream)
+        if ready_file:
+            atomic_write(Path(ready_file), json.dumps({"port": active_port}))
+    except BaseException:
+        server.server_close()
+        record_path.unlink(missing_ok=True)
+        raise
+    stdout.write(
+        "Keep this terminal open. Press Ctrl+C or use adslib stop to stop the library service.\n"
+    )
     stdout.flush()
     try:
         if browser:
@@ -100,6 +319,7 @@ def launch(library_dir: Path, port: int, *, browser: bool, stdout) -> int:
         pass
     finally:
         server.server_close()
+        record_path.unlink(missing_ok=True)
     return 0
 
 
@@ -247,6 +467,7 @@ def install(
             f"An existing adslib command is on PATH: {existing}. Keep one active launcher location."
         )
     if windows:
+
         def quote(value):
             return '"' + str(value).replace("%", "%%") + '"'
 
@@ -283,7 +504,80 @@ def install(
     return 0
 
 
+def manage_service(args, library_dir, stdout):
+    record = find_service(library_dir, args.port)
+    if args.command == "status":
+        if record:
+            stdout.write(
+                f"Running: http://127.0.0.1:{record['port']}\nLibrary: {library_dir}\n"
+            )
+            stdout.write(
+                f"Version: {record['version']}\nPID: {record['pid']}\nControl: managed\n"
+            )
+            return 0
+        stdout.write(f"No managed service. Library: {library_dir}\n")
+        return 3
+    if args.command in {"stop", "restart"}:
+        if record:
+            stop_service(record, stdout)
+        elif args.command == "stop":
+            stdout.write("Library service is already stopped.\n")
+        if args.command == "stop":
+            return 0
+        record = None
+    if record:
+        if args.ready_file:
+            atomic_write(Path(args.ready_file), json.dumps({"port": record["port"]}))
+        stdout.write(
+            f"NASA ADS library: http://127.0.0.1:{record['port']}\nLibrary: {library_dir}\nUsing the running library service.\n"
+        )
+        if not args.no_open and args.command in {None, "open"}:
+            open_browser(f"http://127.0.0.1:{record['port']}", stdout)
+        return 0
+    if args.command in {None, "start", "open", "restart"}:
+        return start_background(
+            library_dir,
+            args.port,
+            browser=not args.no_open and args.command in {None, "open"},
+            stdout=stdout,
+        )
+    return launch(
+        library_dir,
+        args.port,
+        browser=False,
+        stdout=stdout,
+        ready_file=args.ready_file,
+    )
+
+
 def run(argv=None, *, environ=None, stdout=None, stderr=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    environ = environ if environ is not None else os.environ
+    stdout, stderr = stdout or sys.stdout, stderr or sys.stderr
+    # Bootstrap registration is documented through the installed Python script.
+    # Keep everyday service help focused on opening and managing the library.
+    if argv[:1] == ["install"]:
+        installer = argparse.ArgumentParser(
+            prog="python adslib.py install",
+            description="Register the installed script as the user-level adslib command.",
+        )
+        installer.add_argument(
+            "--bin-dir", type=Path, help="custom user command directory"
+        )
+        installer.add_argument(
+            "--no-path", action="store_true", help="preserve shell PATH settings"
+        )
+        args = installer.parse_args(argv[1:])
+        try:
+            return install(
+                environ=environ,
+                stdout=stdout,
+                bin_dir=args.bin_dir,
+                update_path=not args.no_path,
+            )
+        except (OSError, ValueError) as exc:
+            stderr.write(f"error: {exc}\n")
+            return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--version", action="version", version=f"adslib {literature_db.VERSION}"
@@ -293,38 +587,44 @@ def run(argv=None, *, environ=None, stdout=None, stderr=None) -> int:
         help="personal library directory; defaults to NASA_ADS_LITERATURE_DIR or the user library",
     )
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--ready-file", help=argparse.SUPPRESS)
     parser.add_argument(
         "--no-open",
         action="store_true",
         help="print the URL and serve without opening a browser",
     )
     subparsers = parser.add_subparsers(dest="command")
-    installer = subparsers.add_parser(
-        "install", help="register the adslib command for this user"
-    )
-    installer.add_argument("--bin-dir", type=Path, help="custom user command directory")
-    installer.add_argument(
-        "--no-path",
-        action="store_true",
-        help="write the launcher and keep shell PATH settings unchanged",
-    )
+    for name, help_text in (
+        ("start", "start a background service"),
+        ("open", "open the library, starting a background service if needed"),
+        ("status", "show the matching service status"),
+        ("stop", "gracefully stop the matching service"),
+        ("restart", "restart the matching service in the background"),
+        ("serve", "run in the foreground until Ctrl+C or adslib stop"),
+    ):
+        command = subparsers.add_parser(name, help=help_text)
+        command.add_argument("--library-dir", default=argparse.SUPPRESS)
+        command.add_argument("--port", type=int, default=argparse.SUPPRESS)
+        command.add_argument(
+            "--no-open", action="store_true", default=argparse.SUPPRESS
+        )
     args = parser.parse_args(argv)
-    environ = environ if environ is not None else os.environ
-    stdout, stderr = stdout or sys.stdout, stderr or sys.stderr
     try:
-        if args.command == "install":
-            return install(
-                environ=environ,
-                stdout=stdout,
-                bin_dir=args.bin_dir,
-                update_path=not args.no_path,
-            )
         library_dir = (
             Path(args.library_dir)
             if args.library_dir
             else literature_db.default_library_dir(environ)
         )
-        return launch(library_dir, args.port, browser=not args.no_open, stdout=stdout)
+        library_dir = library_dir.expanduser().resolve()
+        if not 0 <= args.port <= 65535:
+            raise ValueError("Port must be between 0 and 65535.")
+        lock = (
+            contextlib.nullcontext()
+            if args.command in {"serve", "status"}
+            else service_lock(library_dir, args.port)
+        )
+        with lock:
+            return manage_service(args, library_dir, stdout)
     except (OSError, ValueError, literature_db.LiteratureError) as exc:
         stderr.write(f"error: {exc}\n")
         return 1

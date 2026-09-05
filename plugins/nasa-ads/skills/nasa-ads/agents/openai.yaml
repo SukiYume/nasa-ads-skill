@@ -1,6 +1,6 @@
 interface:
   display_name: "NASA ADS"
-  short_description: "ADS research and a reusable personal literature library"
+  short_description: "ADS research, personal literature storage, and local Web"
   brand_color: "#0B3D91"
   default_prompt: "Use $nasa-ads to answer this astronomy question with verified literature evidence and silently maintain my reusable library."
 

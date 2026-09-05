@@ -6,6 +6,8 @@ import json
 import re
 import socket
 import sqlite3
+import secrets
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -72,6 +74,30 @@ def make_server(library_dir: Path, port: int = 8765) -> ThreadingHTTPServer:
                 status,
             )
 
+        def do_POST(self):
+            if self.path != "/api/service/stop":
+                self.send_json(
+                    {"error": "Library writes are unavailable over HTTP."}, 501
+                )
+                return
+            token = getattr(self.server, "control_token", "")
+            if (
+                self.headers.get("Host") != f"127.0.0.1:{self.server.server_port}"
+                or self.headers.get("Origin") is not None
+                or self.headers.get("Sec-Fetch-Site") is not None
+                or not token
+                or not secrets.compare_digest(
+                    self.headers.get("Authorization", "").encode("utf-8"),
+                    f"Bearer {token}".encode("utf-8"),
+                )
+            ):
+                self.send_json(
+                    {"error": "Authenticated local service control required."}, 403
+                )
+                return
+            self.send_json({"status": "stopping"})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+
         def do_GET(self):
             authority = f"127.0.0.1:{self.server.server_port}"
             allowed = {authority, f"localhost:{self.server.server_port}"}
@@ -86,6 +112,14 @@ def make_server(library_dir: Path, port: int = 8765) -> ThreadingHTTPServer:
                 self.send_json({"error": "Cross-site access is disabled."}, 403)
                 return
             url = urlsplit(self.path)
+            if url.path == "/api/service":
+                self.send_json(
+                    {
+                        "instance": getattr(self.server, "control_instance", None),
+                        "library_dir": str(library_dir.resolve()),
+                    }
+                )
+                return
             files = {
                 "/": ("index.html", "text/html"),
                 "/app.js": ("app.js", "text/javascript"),

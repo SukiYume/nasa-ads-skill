@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "nasa-ads",
-      "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
+      "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse and manage the local Web service with adslib, and export citations.",
       "source": {
         "source": "local",
         "path": "./plugins/nasa-ads"

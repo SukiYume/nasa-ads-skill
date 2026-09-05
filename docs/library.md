@@ -38,7 +38,21 @@ Complete [one-time adslib registration](installation.md#register-the-adslib-comm
 adslib
 ```
 
-The command opens the browser and reuses an existing NASA ADS service for the same data directory, or starts a new service. Keep the terminal open for a new service; `Ctrl+C` stops it. A conflicting port gets an available alternative. Use `adslib --port 8766` for a preferred port or `adslib --library-dir "<directory>"` for another library. `--no-open` serves and prints the URL without launching a browser.
+`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no ADS token.
+
+| Command | Action |
+| --- | --- |
+| `adslib` / `adslib open` | Open the library; start it in the background when needed |
+| `adslib start` | Start in the background without opening a browser |
+| `adslib status` | Show the URL, library directory, version and process ID |
+| `adslib stop` | Stop the service gracefully |
+| `adslib restart` | Restart in the background |
+| `adslib serve` | Run in the foreground; stop with `Ctrl+C` |
+| `adslib --help` / `adslib --version` | Show help or version |
+
+Use `--library-dir "<directory>"` and `--port 8766` to select a service, for example `adslib stop --port 8766`. Options work before or after the service subcommand. `--no-open` suppresses browser launch. Closing the browser leaves the service running.
+
+Service control applies to instances registered by `adslib`. Each instance has a private local shutdown capability; the CLI verifies its identity before stopping it. `status` returns exit code 0 for a running service and 3 when none is registered; errors return 1 and invalid arguments return 2. Repeated `stop` succeeds when already stopped. Startup prints a log path. Runtime records and logs live in `%LOCALAPPDATA%/nasa-ads/runtime` on Windows or `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime` on macOS/Linux/WSL; `NASA_ADS_RUNTIME_DIR` overrides this directory. The same user and runtime directory must be used for service control. The literature database stays unchanged during service management.
 
 You can also run the installed launcher directly before registering the command:
 

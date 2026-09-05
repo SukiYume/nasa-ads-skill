@@ -1,6 +1,6 @@
 {
   "name": "nasa-ads",
-  "version": "1.14.1",
+  "version": "1.15.0",
   "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
   "author": {
     "name": "Echo",
