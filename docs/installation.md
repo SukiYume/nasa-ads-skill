@@ -271,7 +271,7 @@ The exact discovery directory and invocation syntax depend on the host. Consult 
 
 ## Register the adslib Command
 
-Complete this step once after installing the skill on each computer. Then `adslib` opens Web from any directory. Host plugin commands install the resources; this step registers the terminal command. The README's one-sentence installation prompt includes registration.
+Skill installation includes this one-time registration step on each computer. Run the installed Python script directly for manual setup or path repair. Then `adslib` opens Web from any directory. Host plugin commands install the resources; this step registers the terminal command. The README's one-sentence installation prompt includes registration.
 
 You can ask the agent to complete it:
 
@@ -300,7 +300,7 @@ adslib --version
 adslib
 ```
 
-The version should be `1.14.1`. The browser opens automatically; keep the terminal open while a new service runs, and press `Ctrl+C` to stop it. A matching existing service is reused and the command returns. If the command is missing, restart the terminal app or IDE to load its new PATH, or invoke the installed `adslib.py` directly. Run `install` again after moving the skill, upgrading to a new plugin cache directory, or changing Python.
+The version should be `1.15.0`. The browser opens automatically and the service runs in the background. Use `adslib status`, `adslib stop`, and `adslib restart` to manage it; `adslib serve` runs in the foreground until `Ctrl+C`. See the [command reference](library.md). If the command is missing, restart the terminal app or IDE to load its new PATH, or invoke the installed `adslib.py` directly. Run `install` again after moving the skill, upgrading to a new plugin cache directory, or changing Python.
 
 ## Configure the ADS Token
 
@@ -416,7 +416,7 @@ python "$nasaAdsSkill/scripts/ads_api.py" --no-store search `
   --rows 1
 ```
 
-Use `py -3` in place of `python` when that is how Python is registered. All four version commands should report `1.14.1`. The JSON response should contain the bibcode `2016PhRvL.116f1102A`. The `--no-store` diagnostic preserves the current library contents.
+Use `py -3` in place of `python` when that is how Python is registered. All four version commands should report `1.15.0`. The JSON response should contain the bibcode `2016PhRvL.116f1102A`. The `--no-store` diagnostic preserves the current library contents.
 
 ### Full-text smoke test
 
@@ -462,7 +462,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-The CLI version command on either platform should report `1.14.1`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. Normal search, full-text fetch, and explicit library writes create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
+The CLI version command on either platform should report `1.15.0`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. Normal search, full-text fetch, and explicit library writes create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
 
 ### Direct HTTP fallback
 

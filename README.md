@@ -7,7 +7,7 @@
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 [![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.14.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.15.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -120,7 +120,19 @@ After [registering adslib during installation](docs/installation.md#register-the
 adslib
 ```
 
-The browser opens your library automatically. A matching running service is reused; a newly started service stays in the terminal until `Ctrl+C`. Keep that terminal open and run the command again after restarting the computer. A conflicting port gets an available alternative, and the terminal prints the actual URL. Web uses local assets and the Python standard library, with no Node.js or ADS token requirement.
+`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no ADS token.
+
+| Command | Action |
+| --- | --- |
+| `adslib` / `adslib open` | Open the library; start it in the background when needed |
+| `adslib start` | Start in the background without opening a browser |
+| `adslib status` | Show the URL, library directory, version and process ID |
+| `adslib stop` | Stop the service gracefully |
+| `adslib restart` | Restart in the background |
+| `adslib serve` | Run in the foreground; stop with `Ctrl+C` |
+| `adslib --help` / `adslib --version` | Show help or version |
+
+Use `--library-dir "<directory>"` and `--port 8766` to select a service, for example `adslib stop --port 8766`. Options work before or after the service subcommand. `--no-open` suppresses browser launch. Closing the browser leaves the service running.
 
 <details>
 <summary><strong>Existing installation: register the command once</strong> · These examples use the Codex standalone path</summary>

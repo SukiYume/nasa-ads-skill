@@ -27,7 +27,7 @@ Use the persistent literature database for: $ARGUMENTS
    - summary and classification completion: `check --run-id <id>`; plain `check` for whole-library maintenance
    - search history: `runs`
    - reading completion for the investigation set: `reading-check <identifiers>` or `reading-check --identifiers-file <list.txt>`
-   - local Web reader: run the registered `adslib` command or bundled `scripts/adslib.py`; follow the Web launch procedure and verify the active service
+   - local Web reader: run the registered `adslib` command or bundled `scripts/adslib.py`; use `open`, `start`, `status`, `stop`, `restart`, or `serve` for the requested operation and verify the active service
    - register the Web command during installation or explicit setup: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/adslib.py" install`
    - offline citations: `citations <identifiers>`; add `--fetch` for official ADS entries
    - cache an unedited ADS export: `import-citations --bibtex <ads-export.bib>`

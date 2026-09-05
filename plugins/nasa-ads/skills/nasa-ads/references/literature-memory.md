@@ -131,12 +131,12 @@ adslib
 python3 "<skill-dir>/scripts/adslib.py"
 ```
 
-The launcher opens the default browser and reuses a running NASA ADS service only when its active library directory matches. A conflicting service gets a separate available port. `--library-dir <path>` selects a library, `--port <number>` chooses the preferred port, and `--no-open` serves without browser launch. A newly started service stays in the terminal until Ctrl+C; reopening an existing service returns immediately. Keep a new service alive in the host terminal, or use a supported persistent process facility when the agent manages it. On Windows, any background launch uses a hidden window. Verify `/api/stats` and the page before reporting the URL.
+The launcher defaults to `open`: it opens the browser and starts or reuses a managed background service. `start` starts in the background without opening a browser; `status` prints the URL, library, version and PID; `stop` shuts down the matching instance; `restart` starts a replacement in the background; `serve` runs in the foreground until Ctrl+C. Use the same `--library-dir <path>` and preferred `--port <number>` for subsequent commands. An occupied port gets an available alternative, which is recorded for discovery. `--no-open` suppresses browser launch. Windows background processes use hidden windows. The CLI handles background process creation and authenticated shutdown. Verify `status`, `/api/stats`, and the page before reporting the URL. Status returns 3 when no managed instance is running; repeated stop succeeds. Startup prints a log path. Runtime state is separate from the literature database; preserve the same user and runtime-directory environment for control.
 
-For manual service management, the original command remains available. It prints a URL and serves until Ctrl+C; open the printed URL yourself and select an available port:
+For foreground service operation, use:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" serve --port 8765
+python3 "<skill-dir>/scripts/adslib.py" serve --port 8765
 ```
 
 The Web server uses the Python standard library and bundled assets. Local browsing needs no ADS token. An absent database displays an empty library without creating files; `init` is needed when upgrading an existing incompatible schema. Installing the skill provides its code. To reuse a personal library on another computer, transfer a CLI backup and restore it to a new destination, which rewrites managed article paths. Use the default destination or the same `NASA_ADS_LITERATURE_DIR` for subsequent searches and Web browsing. Stop and restart the server when changing its library directory.

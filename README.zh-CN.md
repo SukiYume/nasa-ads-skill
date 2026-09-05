@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.14.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.15.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -120,7 +120,19 @@ if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then echo "ADS token is set"; fi
 adslib
 ```
 
-浏览器会自动打开文献库。已有对应服务时直接复用；需要启动新服务时，保持终端打开，按 `Ctrl+C` 结束。重启电脑后再次执行即可。端口冲突会自动选择可用端口，实际地址会打印在终端中。Web 使用本地资源和 Python 标准库，无需 Node.js 或 ADS token。
+`adslib` 自动打开浏览器，并启动或复用后台服务。可以直接关闭终端，重启电脑后再次执行即可。端口冲突时自动选择可用端口，后续命令根据相同的文献库和优先端口找到该服务。Web 使用本地资源和 Python 标准库，无需 ADS token。
+
+| 命令 | 功能 |
+| --- | --- |
+| `adslib` / `adslib open` | 打开文献库，按需在后台启动服务 |
+| `adslib start` | 后台启动服务，保持浏览器状态 |
+| `adslib status` | 查看地址、文献库目录、版本和进程号 |
+| `adslib stop` | 正常停止服务 |
+| `adslib restart` | 在后台重启服务 |
+| `adslib serve` | 前台运行，按 `Ctrl+C` 停止 |
+| `adslib --help` / `adslib --version` | 查看帮助或版本 |
+
+使用 `--library-dir "<目录>"` 和 `--port 8766` 选择服务，例如 `adslib stop --port 8766`。参数可放在服务子命令前后。`--no-open` 用于关闭自动打开浏览器的行为。关闭浏览器后服务继续运行。
 
 <details>
 <summary><strong>已有安装：补做一次命令注册</strong> · 以下使用 Codex 独立 skill 路径</summary>

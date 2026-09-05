@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
   "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
-  "version": "1.14.1",
+  "version": "1.15.0",
   "homepage": "https://github.com/SukiYume/nasa-ads-skill",
   "repository": "https://github.com/SukiYume/nasa-ads-skill",
   "license": "MIT",

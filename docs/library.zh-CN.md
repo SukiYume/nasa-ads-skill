@@ -38,7 +38,21 @@ Claude 独立 skill 使用 `~/.claude/skills/nasa-ads`，源码安装使用 `<�
 adslib
 ```
 
-命令会自动打开浏览器，复用相同数据目录的已有 NASA ADS 服务，或启动一个新服务。新服务运行时保持终端打开，按 `Ctrl+C` 停止。端口冲突时自动选择可用端口。可用 `adslib --port 8766` 指定优先端口，或用 `adslib --library-dir "<目录>"` 浏览另一文献库。`--no-open` 适用于只启动服务并读取地址的环境。
+`adslib` 自动打开浏览器，并启动或复用后台服务。可以直接关闭终端，重启电脑后再次执行即可。端口冲突时自动选择可用端口，后续命令根据相同的文献库和优先端口找到该服务。Web 使用本地资源和 Python 标准库，无需 ADS token。
+
+| 命令 | 功能 |
+| --- | --- |
+| `adslib` / `adslib open` | 打开文献库，按需在后台启动服务 |
+| `adslib start` | 后台启动服务，保持浏览器状态 |
+| `adslib status` | 查看地址、文献库目录、版本和进程号 |
+| `adslib stop` | 正常停止服务 |
+| `adslib restart` | 在后台重启服务 |
+| `adslib serve` | 前台运行，按 `Ctrl+C` 停止 |
+| `adslib --help` / `adslib --version` | 查看帮助或版本 |
+
+使用 `--library-dir "<目录>"` 和 `--port 8766` 选择服务，例如 `adslib stop --port 8766`。参数可放在服务子命令前后。`--no-open` 用于关闭自动打开浏览器的行为。关闭浏览器后服务继续运行。
+
+服务管理作用于 `adslib` 注册的实例。每个实例使用独立的本地控制凭据，停止前会校验实例身份。`status` 在运行时返回退出码 0，无已注册服务时返回 3；操作失败返回 1，参数错误返回 2。重复执行 `stop` 会正常结束。启动时会打印日志路径。Windows 的运行记录和日志位于 `%LOCALAPPDATA%/nasa-ads/runtime`，macOS/Linux/WSL 位于 `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime`；可通过 `NASA_ADS_RUNTIME_DIR` 自定义。管理命令需使用相同用户和运行记录目录。启停服务保持文献数据库内容不变。
 
 未注册命令时，可以直接运行已安装的启动器：
 

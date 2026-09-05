@@ -10,10 +10,13 @@ import sys
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import Request
 
 from test_literature_db import SCRIPTS_DIR
 import adslib
@@ -25,6 +28,11 @@ class LauncherTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="ads library 测试 ")
         self.root = Path(self.temporary.name)
         self.library = self.root / "library"
+        self.environment_patch = patch.dict(
+            os.environ, {"NASA_ADS_RUNTIME_DIR": str(self.root / "runtime")}
+        )
+        self.environment_patch.start()
+        self.addCleanup(self.environment_patch.stop)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -40,6 +48,20 @@ class LauncherTests(unittest.TestCase):
 
     def test_existing_matching_server_opens_without_starting_another(self):
         server = self.start_server(self.library)
+        server.control_instance = "test-instance"
+        directory = adslib.runtime_dir()
+        directory.mkdir()
+        (directory / "test.json").write_text(
+            json.dumps(
+                {
+                    "instance": "test-instance",
+                    "port": server.server_port,
+                    "requested_port": server.server_port,
+                    "library_dir": str(self.library),
+                }
+            ),
+            encoding="utf-8",
+        )
         with (
             patch.object(adslib, "open_browser") as browser,
             patch.object(library_web, "make_server") as create,
@@ -129,6 +151,7 @@ class LauncherTests(unittest.TestCase):
                 "--port",
                 "0",
                 "--no-open",
+                "serve",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -318,6 +341,111 @@ class LauncherTests(unittest.TestCase):
         with patch.object(library_web, "make_server") as create:
             self.assertEqual(adslib.run(["--port", "65536"], stderr=io.StringIO()), 1)
         create.assert_not_called()
+
+    def cli(self, *args, expected=0):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-X",
+                "utf8",
+                "-S",
+                str(SCRIPTS_DIR / "adslib.py"),
+                "--library-dir",
+                str(self.library),
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=25,
+        )
+        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        return result.stdout
+
+    def test_background_lifecycle_and_authenticated_stop(self):
+        self.cli("status", "--port", "0", expected=3)
+        self.cli("--port", "0", "--no-open")
+        try:
+            record = adslib.find_service(self.library, 0)
+            self.assertIsNotNone(record)
+            port = record["port"]
+            self.assertIn(str(port), self.cli("status", "--port", "0"))
+            self.cli("--port", "0", "start", "--no-open")
+            self.assertEqual(len(adslib.managed_services(self.library)), 1)
+            for headers in (
+                {},
+                {"Authorization": "Bearer incorrect"},
+                {
+                    "Authorization": f"Bearer {record['token']}",
+                    "Origin": "http://evil.invalid",
+                },
+            ):
+                request = Request(
+                    f"http://127.0.0.1:{port}/api/service/stop",
+                    data=b"",
+                    headers=headers,
+                )
+                with self.assertRaises(HTTPError) as rejected:
+                    urlopen(request, timeout=3)
+                self.assertEqual(rejected.exception.code, 403)
+            stats = adslib.running_library(port, self.library)
+            self.assertNotIn(record["token"], json.dumps(stats))
+            self.cli("restart", "--port", "0", "--no-open")
+            replacement = adslib.find_service(self.library, 0)
+            self.assertNotEqual(replacement["instance"], record["instance"])
+            self.assertFalse(self.library.exists())
+        finally:
+            self.cli("stop", "--port", "0")
+        self.cli("status", "--port", "0", expected=3)
+        self.cli("stop", "--port", "0")
+        self.assertEqual(list(adslib.runtime_dir().glob("*.json")), [])
+
+    def test_unmanaged_service_is_left_running(self):
+        server = self.start_server(self.library)
+        self.cli("status", "--port", str(server.server_port), expected=3)
+        self.cli("stop", "--port", str(server.server_port))
+        self.assertIsNotNone(adslib.running_library(server.server_port, self.library))
+
+    def test_background_collision_remains_discoverable_and_wrong_library_is_safe(self):
+        occupied = self.start_server(self.root / "other")
+        port = str(occupied.server_port)
+        self.cli("start", "--port", port, "--no-open")
+        try:
+            record = adslib.find_service(self.library, int(port))
+            self.assertNotEqual(record["port"], int(port))
+            self.cli(
+                "stop",
+                "--library-dir",
+                str(self.root / "unrelated"),
+                "--port",
+                str(record["port"]),
+            )
+            self.assertIsNotNone(adslib.find_service(self.library, int(port)))
+            self.cli("restart", "--port", port, "--no-open")
+            self.assertIsNotNone(adslib.find_service(self.library, int(port)))
+        finally:
+            self.cli("stop", "--port", port)
+        self.assertIsNotNone(adslib.running_library(int(port), self.root / "other"))
+
+    def test_stale_and_malformed_records_are_ignored(self):
+        directory = adslib.runtime_dir()
+        directory.mkdir()
+        (directory / "bad.json").write_text("{", encoding="utf-8")
+        (directory / "stale.json").write_text(
+            json.dumps({"library_dir": str(self.library), "port": 0}), encoding="utf-8"
+        )
+        self.assertEqual(adslib.managed_services(self.library), [])
+
+    def test_simultaneous_starts_reuse_one_service(self):
+        try:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                results = list(
+                    pool.map(lambda _: self.cli("start", "--port", "0"), range(3))
+                )
+            self.assertEqual(len(results), 3)
+            self.assertEqual(len(adslib.managed_services(self.library)), 1)
+        finally:
+            self.cli("stop", "--port", "0")
 
 
 if __name__ == "__main__":
