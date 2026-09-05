@@ -22,7 +22,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 DATABASE_SCHEMA_VERSION = 3
 DIGEST_SCHEMA_VERSION = 2
 READING_STATUSES = {"full", "targeted", "visual"}

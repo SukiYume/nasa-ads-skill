@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"

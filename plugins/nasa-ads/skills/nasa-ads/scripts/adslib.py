@@ -450,13 +450,18 @@ def install(
     windows = os.name == "nt"
     script = Path(__file__).resolve()
     if bin_dir is None:
-        if windows:
-            local = Path(environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
-            bin_dir = local / "nasa-ads/bin"
-        else:
-            bin_dir = Path(environ.get("HOME") or Path.home()) / ".local/bin"
+        bin_dir = Path(environ.get("HOME") or Path.home()) / ".local/bin"
     bin_dir = bin_dir.expanduser().resolve()
     target = bin_dir / ("adslib.cmd" if windows else "adslib")
+    bash_target = bin_dir / "adslib" if windows else None
+    if (
+        bash_target
+        and bash_target.exists()
+        and MARKER not in bash_target.read_text(encoding="utf-8")[:256]
+    ):
+        raise ValueError(
+            f"An existing command owns {bash_target}. Choose another --bin-dir."
+        )
     if target.exists() and MARKER not in target.read_text(encoding="utf-8")[:256]:
         raise ValueError(
             f"An existing command owns {target}. Choose another --bin-dir."
@@ -467,26 +472,40 @@ def install(
             f"An existing adslib command is on PATH: {existing}. Keep one active launcher location."
         )
     if windows:
+        bootstrap = bin_dir / "adslib-bootstrap.ps1"
+        if (
+            bootstrap.exists()
+            and MARKER not in bootstrap.read_text(encoding="utf-8-sig")[:256]
+        ):
+            raise ValueError(
+                f"An existing file owns {bootstrap}. Choose another --bin-dir."
+            )
 
-        def quote(value):
-            return '"' + str(value).replace("%", "%%") + '"'
+        def ps_quote(value):
+            return "'" + str(value).replace("'", "''") + "'"
 
-        # Decode Unicode installation paths as UTF-8 and restore the caller's
-        # console code page and command exit status after Python returns.
+        # A BOM preserves Unicode paths in Windows PowerShell 5.1. The ASCII
+        # batch entrypoint never changes the caller's console code page.
+        atomic_write(
+            bootstrap,
+            "\ufeff"
+            + f"# {MARKER}\n& {ps_quote(sys.executable)} -X utf8 {ps_quote(script)} @args\nexit $LASTEXITCODE\n",
+        )
         content = (
             f"@echo off\r\nrem {MARKER}\r\n"
             "setlocal EnableExtensions DisableDelayedExpansion\r\n"
-            'set "_NASA_ADS_CP="\r\n'
-            'for /f "tokens=2 delims=:" %%G in (\'chcp\') do set "_NASA_ADS_CP=%%G"\r\n'
-            "chcp 65001 >nul\r\n"
-            f"{quote(sys.executable)} -X utf8 {quote(script)} %*\r\n"
-            'set "_NASA_ADS_EXIT=%ERRORLEVEL%"\r\n'
-            "if defined _NASA_ADS_CP chcp %_NASA_ADS_CP% >nul\r\n"
-            "exit /b %_NASA_ADS_EXIT%\r\n"
+            '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy RemoteSigned -File "%~dp0adslib-bootstrap.ps1" %*\r\n'
+            "exit /b %ERRORLEVEL%\r\n"
         )
     else:
         content = f'#!/bin/sh\n# {MARKER}\nexec {shlex.quote(sys.executable)} -X utf8 {shlex.quote(str(script))} "$@"\n'
     atomic_write(target, content, executable=not windows)
+    if bash_target:
+        atomic_write(
+            bash_target,
+            f'#!/bin/sh\n# {MARKER}\nexec {shlex.quote(Path(sys.executable).as_posix())} -X utf8 {shlex.quote(script.as_posix())} "$@"\n',
+            executable=True,
+        )
     changed = []
     if update_path:
         if windows:
