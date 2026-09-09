@@ -300,7 +300,7 @@ adslib --version
 adslib
 ```
 
-版本应为 `1.15.1`。浏览器自动打开，服务在后台运行。使用 `adslib status`、`adslib stop` 和 `adslib restart` 管理服务；`adslib serve` 在前台运行，按 `Ctrl+C` 停止。完整命令见[文献库指南](library.zh-CN.md)。找不到命令时重启终端应用或 IDE，使其读取新的 PATH；也可直接执行已安装的 `adslib.py`。移动 skill、升级到新的插件缓存目录或更换 Python 后，再运行一次 `install` 更新命令指向。
+版本应为 `1.15.2`。浏览器自动打开，服务在后台运行。使用 `adslib status`、`adslib stop` 和 `adslib restart` 管理服务；`adslib serve` 在前台运行，按 `Ctrl+C` 停止。完整命令见[文献库指南](library.zh-CN.md)。找不到命令时重启终端应用或 IDE，使其读取新的 PATH；也可直接执行已安装的 `adslib.py`。移动 skill、升级到新的插件缓存目录或更换 Python 后，再运行一次 `install` 更新命令指向。
 
 ## 配置 ADS Token
 
@@ -416,7 +416,7 @@ python "$nasaAdsSkill/scripts/ads_api.py" --no-store search `
   --rows 1
 ```
 
-如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。四个版本命令均应报告 `1.15.1`。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。`--no-store` 诊断会保留文献库当前内容。
+如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。四个版本命令均应报告 `1.15.2`。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。`--no-store` 诊断会保留文献库当前内容。
 
 ### 全文 smoke test
 
@@ -462,7 +462,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-两个平台上的 CLI 版本命令均应报告 `1.15.1`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。正常检索、全文获取和显式文献库写入会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
+两个平台上的 CLI 版本命令均应报告 `1.15.2`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。正常检索、全文获取和显式文献库写入会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
 
 ### 直接 HTTP 回退
 

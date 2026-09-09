@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.15.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.15.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)

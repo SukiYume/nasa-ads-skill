@@ -8,7 +8,7 @@ Persistent tasks follow the complete digest and ingest procedure below. For an e
 
 The library stores metadata records, abstract summaries, and complete article digests at distinct evidence levels. A complete article digest represents a completed reading of one exact article version. It contains verified artifact provenance plus a schema-version-2 digest. A complete digest covers every material scientific dimension found in the article and traces its claims to real article locations. Search-only records follow [literature-memory.md](literature-memory.md).
 
-Digest depth follows the paper's evidence structure. Scientifically narrow articles can contain one principal question and one facet. Broad articles usually produce more facets and findings because their observables, samples, analyses, parameter regimes, result families, or inferential steps differ. The schema uses structural coverage and evidence traceability as its completion test.
+Digest depth follows the paper's evidence structure. Scientifically narrow articles can contain one principal question and one facet. Broad articles usually produce more facets and findings because their observables, samples, analyses, parameter regimes, result families, or inferential steps differ. CLI validation checks declared coverage and record structure; the agent verifies the scientific content against the article.
 
 The digest captures material dimensions across the paper so future work can retrieve them independently. Its depth and structure follow the article's evidence; the current research question guides the user-facing synthesis.
 
@@ -22,7 +22,7 @@ The digest captures material dimensions across the paper so future work can retr
 6. `facets`: independently reusable scientific dimensions.
 7. `findings`: atomic measurements, constraints, nondetections, interpretations, comparisons, methods, or limitations within each facet.
 8. `global_limitations`: paper-wide selection effects, assumptions, and unresolved alternatives when present.
-9. `data_products`: tables, catalogs, code, software, and availability information.
+9. `data_products`: reusable tables, catalogs, data, code, software, and their access information as reported by the article. Preserve supplied URLs or persistent identifiers and material access conditions. A supplied link records provenance; describe it as currently accessible only after checking it. This field can remain empty when the article identifies no reusable product.
 10. `reading`: reading status, sections, pages, visual ranges, unread sections, notes, and exact section coverage.
 
 Generate the current skeleton:
@@ -48,6 +48,8 @@ reading
 ```
 
 The validator rejects unknown keys within structured records. This catches misspelled schema fields before storage.
+
+Write the digest so it remains meaningful across research projects. The overview and significance describe the paper's own contributions and limitations. Store manuscript placement, comparisons with the user's work, and task-specific relevance through [roles and notes](literature-memory.md#classification-and-manuscript-uses).
 
 ## Facet Decomposition
 
@@ -99,9 +101,13 @@ notes
 
 Use real article headings. Roles are `scientific`, `methods`, `context`, `limitations`, `data-products`, `references`, and `administrative`. Scientific sections list every facet they support. Methods, context, limitations, and data-product sections can also support facets. Each facet maps to at least one substantive section. References and administrative sections use an empty `facet_keys` list. Every section outside the scientific role includes a concise disposition note. Include the bibliography under `references` and record appendices or supplementary material according to their content.
 
+Build coverage from the completed reading and the content retained in the digest. Associate a section with the facets it actually supports; disposition notes identify its contribution or explain why no independent finding is needed. Automation can assemble records from authored mappings. Assign scientific roles, facet associations, and reading status through content review.
+
 The structural minimum for a complete digest consists of one research question, one facet, one finding in each facet, a real locator for every finding, complete section coverage, and an empty unread-section list. Additional content follows the article itself. `global_limitations` can remain empty when the article supplies no defensible paper-wide limitation.
 
 ## Validation and Ingest
+
+Before validation, compare the digest with the article's substantive sections and availability statements. Account for material findings, methods, limitations, and reusable products in their corresponding layers, and check evidence locators and coverage associations. Resolve omissions within the investigation set. This content review complements the CLI's structural and integrity checks.
 
 Write the digest to a task-specific JSON file and validate it:
 
