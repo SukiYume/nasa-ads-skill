@@ -6,7 +6,7 @@ Load this reference for reviews and manuscript introduction, methods, or discuss
 
 State the scientific question, population or physical regime, time range, required evidence, and intended manuscript section. Search existing summaries, facets, methods, entities, and findings first. Reuse verified local versions and cached citations. Search ADS for missing coverage, newly published work, updated versions, and citation relationships.
 
-Choose the candidate pool and refined investigation set using those criteria. Track selections and exclusions so the scope of the synthesis and any unfinished reading remain traceable. Source briefs, complete digests, and scientific interpretation retain their respective evidence levels.
+Choose the candidate pool and refined investigation set using those criteria. Apply [screening before capture](literature-memory.md#screening-before-capture) to exploratory results. Track selections and exclusions so the scope of the synthesis and any unfinished reading remain traceable. Source briefs, complete digests, and scientific interpretation retain their respective evidence levels.
 
 ## Review
 

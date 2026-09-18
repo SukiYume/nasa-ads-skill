@@ -7,7 +7,7 @@
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 [![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.15.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.15.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -110,7 +110,7 @@ Describe the scientific question and the kind of evidence you need. The skill ha
 | **Citations** | “Export BibTeX for these papers using cached official ADS entries where available.” |
 | **ADS account tools** | “List my ADS libraries” or “Show citation metrics for these bibcodes.” |
 
-Describe the research question; storage is part of the default workflow. Coarse discovery organizes candidate records and source briefs. Every paper selected for content assessment enters the refined reading set and receives full reading and silent ingest, including papers later excluded from the synthesis. A question about one figure, table, or conclusion follows the same paper-wide workflow; the answer addresses the requested detail. Verified complete versions are reused, and adequate local evidence can support an offline review. Successful library work stays silent. Access gaps are reported; a persistent storage failure preserves retry materials and is disclosed alongside the verified scientific answer.
+Describe the research question; storage is part of the default workflow. Coarse discovery screens titles, abstracts, and source types before storing retained candidates and their source briefs. Obvious off-topic matches stay outside the library. Every paper selected for content assessment enters the refined reading set and receives full reading and silent ingest, including papers later excluded from the synthesis. A question about one figure, table, or conclusion follows the same paper-wide workflow; the answer addresses the requested detail. Verified complete versions are reused, and adequate local evidence can support an offline review. Successful library work stays silent. Access gaps are reported; a persistent storage failure preserves retry materials and is disclosed alongside the verified scientific answer.
 
 ## Open the Web Library
 

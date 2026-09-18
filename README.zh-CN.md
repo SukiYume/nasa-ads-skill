@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.15.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.15.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -110,7 +110,7 @@ if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then echo "ADS token is set"; fi
 | **导出引用** | “导出这些论文的 BibTeX，优先使用缓存的 ADS 官方条目。” |
 | **ADS 账号工具** | “列出我的 ADS libraries”，或“查看这些 bibcode 的引用指标。” |
 
-直接说明研究问题即可，入库属于默认流程。粗检索整理候选题录与来源简述；选入内容评估的每篇论文进入精筛阅读集合，全部完成全文阅读与静默入库，包括后来未被最终综述采用的论文。查看一张图、一个表或某项结论也执行同样的整篇阅读流程，答复聚焦所问细节。已核验的完整版本会直接复用，本地证据充足时也可以离线完成综述。正常入库保持静默；访问缺口会明确说明，持续保存失败时会保留重试材料，并随已核实的科学答复说明入库缺口。
+直接说明研究问题即可，入库属于默认流程。粗检索先核对标题、摘要与来源类型，将保留的候选题录及来源简述入库，明显无关的命中在入库前排除；选入内容评估的每篇论文进入精筛阅读集合，全部完成全文阅读与静默入库，包括后来未被最终综述采用的论文。查看一张图、一个表或某项结论也执行同样的整篇阅读流程，答复聚焦所问细节。已核验的完整版本会直接复用，本地证据充足时也可以离线完成综述。正常入库保持静默；访问缺口会明确说明，持续保存失败时会保留重试材料，并随已核实的科学答复说明入库缺口。
 
 ## 打开 Web 文献库
 

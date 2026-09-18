@@ -21,7 +21,7 @@ The CLI reads `ADS_API_TOKEN` and then `ADS_DEV_KEY`; it never accepts a token a
 
 JSON endpoints print UTF-8 JSON. `export` prints citation text. Check the exit status and actual response shape before interpreting either.
 
-Search and big query capture every returned record by default. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the ADS response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
+Search and big query capture every returned record by default. Exploratory discovery uses `--no-store` and [screening before capture](literature-memory.md#screening-before-capture); exact metadata retrieval for already selected identifiers can use default capture. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the ADS response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
 
 ## Search
 
@@ -31,12 +31,12 @@ Use this field set for literature research when every field is needed:
 bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype,esources,volume,issue,page,eid,pubdate
 ```
 
-Choose fields, page size, and sorting for the task. This example requests a small citation-sorted page:
+Choose fields, page size, and sorting for the task. This example previews a small citation-sorted page for relevance screening:
 
 ```bash
-python3 "<skill-dir>/scripts/ads_api.py" search \
+python3 "<skill-dir>/scripts/ads_api.py" --no-store search \
   --query 'title:"gravitational waves"' \
-  --fields 'bibcode,title,author,year,pub,doi,identifier,citation_count' \
+  --fields 'bibcode,title,author,abstract,year,pub,doi,identifier,doctype,volume,issue,page,eid,pubdate,citation_count' \
   --rows 10 \
   --sort 'citation_count desc'
 ```

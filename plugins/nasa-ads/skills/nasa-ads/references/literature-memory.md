@@ -17,6 +17,18 @@ The root contains `literature.sqlite3` and a verified `objects/` tree. Keep both
 
 An abstract summary and a complete article digest have separate source identities. Changed abstracts retain earlier snapshots and summaries. Changed article content receives a new exact-version digest. A pending record never claims completed reading.
 
+## Screening Before Capture
+
+Exploratory searches use `ads_api.py --no-store search` with identity fields, title, abstract, and document type. Use the research metadata field set in [ADS CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library. Naked object numbers and wildcard terms can match reference lists, grant numbers, or unrelated identifiers. Prefer `title:` and `abs:` fields for object-name discovery and verify the actual subject. Preserve relevant counterevidence and alternative models; uncertain relevance remains an explicit candidate state. Label datasets, meeting abstracts, news, and proposals with their actual source type.
+
+Retain the accepted original records in `response.docs` of a saved ADS response. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
+
+```bash
+python3 "<skill-dir>/scripts/literature_db.py" capture --results "<screened-response.json>" --query "<query; page; criteria; returned/retained counts>"
+```
+
+Inspect the returned `run_id` and complete that run below. An empty retained set needs no capture. Exact metadata lookup for already selected identifiers can use default automatic capture. Previewing with `--no-store` defers persistence until screening; an explicit user request for no library writes applies to the entire task and also disables this later capture.
+
 ## Automatic Capture and Summary Completion
 
 `ads_api.py search` and `bigquery` capture their returned records automatically. The request includes the metadata fields needed for reuse. The JSON response retains the ADS response and adds `literature.run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. `fulltext.py fetch` also captures its available metadata and exposes the same completion information. Preparation and capture leave scientific authorship to the agent.
