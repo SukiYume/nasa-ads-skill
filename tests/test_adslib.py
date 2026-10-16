@@ -137,7 +137,7 @@ class LauncherTests(unittest.TestCase):
         environment = {
             key: value
             for key, value in os.environ.items()
-            if key not in {"ADS_API_TOKEN", "ADS_DEV_KEY"}
+            if key != "ADS_API_TOKEN"
         }
         process = subprocess.Popen(
             [

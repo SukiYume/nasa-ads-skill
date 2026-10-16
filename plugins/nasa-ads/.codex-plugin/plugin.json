@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "1.15.3",
-  "description": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
+  "version": "2.0.0",
+  "description": "Search SciX (formerly NASA ADS), investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -12,6 +12,7 @@
   "keywords": [
     "nasa",
     "ads",
+    "scix",
     "astronomy",
     "astrophysics",
     "research",
@@ -25,8 +26,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "NASA ADS",
-    "shortDescription": "ADS research and a reusable personal literature library",
-    "longDescription": "Search NASA ADS, investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations. Research preserves version-specific evidence and reusable article digests across manuscript projects.",
+    "shortDescription": "SciX research and a reusable personal literature library",
+    "longDescription": "Search SciX (formerly NASA ADS), investigate article content, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations. Research preserves version-specific evidence and reusable article digests across manuscript projects.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [

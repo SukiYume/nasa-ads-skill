@@ -8,7 +8,7 @@ Apply the shared [reading scope](../SKILL.md#reading-scope) to determine complet
 
 Resolve `scripts/fulltext.py` relative to `SKILL.md`. Use the working Python 3 command selected for the bundled CLIs.
 
-Fetch ADS bibcodes, DOIs, arXiv IDs, or arXiv URLs:
+Fetch bibcodes, DOIs, arXiv IDs, or arXiv URLs:
 
 ```bash
 python3 "<skill-dir>/scripts/fulltext.py" fetch \
@@ -16,7 +16,7 @@ python3 "<skill-dir>/scripts/fulltext.py" fetch \
   arXiv:1602.03837
 ```
 
-ADS bibcodes require `ADS_API_TOKEN` or `ADS_DEV_KEY`. Direct arXiv identifiers use public arXiv metadata and article services without an ADS token.
+Bibcodes require `ADS_API_TOKEN`. Direct arXiv identifiers use public arXiv metadata and article services without a SciX token.
 
 Useful options:
 
@@ -54,7 +54,7 @@ The default cache root is `%LOCALAPPDATA%\nasa-ads\fulltext` on Windows and `${X
 
 ## Source Discovery and Ranking
 
-ADS metadata and resolver records supply identity and candidate discovery. Normalized arXiv IDs produce official article paths directly:
+SciX metadata and resolver records supply identity and candidate discovery. Normalized arXiv IDs produce official article paths directly:
 
 ```text
 https://arxiv.org/html/<arxiv-id>
@@ -72,7 +72,7 @@ Automatic ranking uses two dimensions:
 
 The CLI validates every downloaded candidate. Validation covers content type, size, safe HTTPS redirects, access or challenge pages, landing-page strength, title identity, and PDF extraction. Resolver links remain candidates until validation succeeds.
 
-ADS bearer credentials travel only to `api.adsabs.harvard.edu`. External article requests carry no ADS authorization header. Retrieval uses lawful public access and bounded redirects.
+SciX bearer credentials travel only to `api.scixplorer.org`. External article requests carry no SciX authorization header. Retrieval uses lawful public access and bounded redirects.
 
 ## Manifest Results
 

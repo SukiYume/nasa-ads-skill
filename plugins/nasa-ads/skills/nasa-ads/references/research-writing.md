@@ -4,13 +4,13 @@ Load this reference for reviews and manuscript introduction, methods, or discuss
 
 ## Start with the Research Question
 
-State the scientific question, population or physical regime, time range, required evidence, and intended manuscript section. Search existing summaries, facets, methods, entities, and findings first. Reuse verified local versions and cached citations. Search ADS for missing coverage, newly published work, updated versions, and citation relationships.
+State the scientific question, population or physical regime, time range, required evidence, and intended manuscript section. Search existing summaries, facets, methods, entities, and findings first. Reuse verified local versions and cached citations. Search SciX for missing coverage, newly published work, updated versions, and citation relationships.
 
 Choose the candidate pool and refined investigation set using those criteria. Apply [screening before capture](literature-memory.md#screening-before-capture) to exploratory results. Track selections and exclusions so the scope of the synthesis and any unfinished reading remain traceable. Source briefs, complete digests, and scientific interpretation retain their respective evidence levels.
 
 ## Review
 
-Choose query families covering the terminology, physical mechanisms, observations, methods, and competing explanations relevant to the review. Record queries, filters, dates, pagination, screening rules, and the searched source. Use `runs` when checking ADS retrieval counts and summary completion.
+Choose query families covering the terminology, physical mechanisms, observations, methods, and competing explanations relevant to the review. Record queries, filters, dates, pagination, screening rules, and the searched source. Use `runs` when checking SciX retrieval counts and summary completion.
 
 Include foundational, representative, contradictory, and method-defining work within the requested scope. Compare questions, samples, data, methods, findings, uncertainties, limitations, and exact versions; an evidence matrix can help organize substantial comparisons. Group the synthesis around scientific questions and explain agreement, disagreement, and coverage gaps with traceable evidence. A comprehensive or systematic review requires an explicit coverage and screening protocol.
 

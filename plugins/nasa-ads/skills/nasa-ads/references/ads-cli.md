@@ -1,6 +1,6 @@
-# Bundled ADS API CLI
+# Bundled SciX API CLI
 
-Load this reference before using `scripts/ads_api.py`. It documents the stable ADS operations exposed by the bundled CLI. Research design, full-text reading, evidence judgment, and synthesis remain in `SKILL.md`.
+Load this reference before using `scripts/ads_api.py`. It documents the stable SciX operations exposed by the bundled CLI against `https://api.scixplorer.org/v1`. Research design, full-text reading, evidence judgment, and synthesis remain in `SKILL.md`.
 
 ## Launch
 
@@ -10,7 +10,7 @@ Resolve the script relative to `SKILL.md`, then try `python3`, `python`, and `py
 python3 "<skill-dir>/scripts/ads_api.py" --help
 ```
 
-The CLI reads `ADS_API_TOKEN` and then `ADS_DEV_KEY`; it never accepts a token argument. Put global options before the subcommand:
+The CLI reads `ADS_API_TOKEN`; it never accepts a token argument. Put global options before the subcommand:
 
 ```text
 --timeout <1-300 seconds>
@@ -21,15 +21,17 @@ The CLI reads `ADS_API_TOKEN` and then `ADS_DEV_KEY`; it never accepts a token a
 
 JSON endpoints print UTF-8 JSON. `export` prints citation text. Check the exit status and actual response shape before interpreting either.
 
-Search and big query capture every returned record by default. Exploratory discovery uses `--no-store` and [screening before capture](literature-memory.md#screening-before-capture); exact metadata retrieval for already selected identifiers can use default capture. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the ADS response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
+Search and big query capture every returned record by default. Exploratory discovery uses `--no-store` and [screening before capture](literature-memory.md#screening-before-capture); exact metadata retrieval for already selected identifiers can use default capture. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the SciX response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
 
 ## Search
 
 Use this field set for literature research when every field is needed:
 
 ```text
-bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype,esources,volume,issue,page,eid,pubdate
+bibcode,title,author,abstract,year,pub,doi,identifier,citation_count,read_count,property,doctype,esources,volume,issue,page,eid,pubdate,uat,has
 ```
+
+`uat` returns curated Unified Astronomy Thesaurus subjects and `has` lists the content SciX indexes for the record, such as `body`, `data`, or `reference`. Stored searches save both on the paper; the Web reader shows UAT subjects and indexed body or data holdings.
 
 Choose fields, page size, and sorting for the task. This example previews a small citation-sorted page for relevance screening:
 
@@ -41,7 +43,7 @@ python3 "<skill-dir>/scripts/ads_api.py" --no-store search \
   --sort 'citation_count desc'
 ```
 
-Repeat `--fq` for filters. Use `--start` for pagination and keep native ADS syntax inside `--query`.
+Repeat `--fq` for filters. Use `--start` for pagination and keep native SciX syntax inside `--query`.
 
 Repeat `--collection 'FRB/Propagation'` and `--role methods` to organize captured results. Roles accept `review`, `intro`, `methods`, `discussion`, and `comparison`. Stored searches add the complete metadata fields to custom `--fields`; `--no-store` preserves the requested field set. Search runs retain query parameters, total matches, returned records, and summary progress.
 
@@ -66,6 +68,21 @@ useful(bibcode:2016PhRvL.116f1102A)          useful papers
 similar(bibcode:2016PhRvL.116f1102A)         similar papers
 ```
 
+### Subject and Holdings Filters
+
+SciX spans astrophysics, Earth science, planetary science, heliophysics, and biological and physical sciences. Combine these fielded forms with the query or `--fq`:
+
+```text
+uat:"black hole physics"                     curated UAT subject
+collection:astronomy                         astrophysics collection
+collection:planetary                         also earthscience, heliophysics
+planetary_feature:"Jezero"                   named planetary surface feature
+has:body                                     SciX indexes the full text
+has:data                                     linked data products exist
+```
+
+`has:body` marks indexed text for `full:` searches; lawful article access still follows [full-text retrieval](fulltext.md). Example parameters illustrate syntax; choose subjects and collections from the research scope.
+
 An `undefined field object` response usually means an unfielded object-name query was parsed as a field. Retry with `title:`, `abs:`, or `full:`. If only `id` is returned, request the needed values through `--fields`.
 
 ## Batch Metadata
@@ -83,7 +100,7 @@ Use `--bibcodes-file <path>` for a long list. Use `--start` when a batch exceeds
 
 ## Citation Export
 
-For reusable BibTeX, use `literature_db.py citations <identifiers>` and add `--fetch` to cache official ADS entries. Offline export uses the cached entry or a clearly labeled entry generated from stored metadata. The ADS export command below supports the additional citation formats.
+For reusable BibTeX, use `literature_db.py citations <identifiers>` and add `--fetch` to cache official SciX entries. Offline export uses the cached entry or a clearly labeled entry generated from stored metadata. The SciX export command below supports the additional citation formats.
 
 ```bash
 python3 "<skill-dir>/scripts/ads_api.py" export \
@@ -140,4 +157,4 @@ Common resolver types include `esource`, `data`, `citations`, `references`, and 
 
 ## Unsupported Operations
 
-The CLI does not expose ADS Libraries. Load `references/libraries.md` for those calls. For another unsupported endpoint or a current documented option that the CLI does not expose, load `references/http-fallback.md`. Do not use direct HTTP to bypass a supported CLI error.
+The CLI does not expose SciX Libraries. Load `references/libraries.md` for those calls. For another unsupported endpoint or a current documented option that the CLI does not expose, load `references/http-fallback.md`. Do not use direct HTTP to bypass a supported CLI error.

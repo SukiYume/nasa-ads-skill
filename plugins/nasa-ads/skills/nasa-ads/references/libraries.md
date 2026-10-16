@@ -1,9 +1,9 @@
-# ADS Libraries
+# SciX Libraries
 
 Use direct HTTP for library operations:
 
-- Resolve `ADS_API_TOKEN`, then `ADS_DEV_KEY`; stop with the token-settings link from `SKILL.md` if both are absent.
-- Send the token only as `Authorization: Bearer <token>` to `https://api.adsabs.harvard.edu/v1`.
+- Resolve `ADS_API_TOKEN`; stop with the token-settings link from `SKILL.md` if it is absent.
+- Send the token only as `Authorization: Bearer <token>` to `https://api.scixplorer.org/v1`.
 - Reject redirects for authenticated requests.
 - Use an available system client, URL-encode query parameters, send documented JSON bodies, and check the HTTP response before interpreting it.
 - Never print the token, use verbose HTTP tracing, or change semantics after an API failure.
@@ -21,7 +21,7 @@ Keep read-only calls as the default. Verify explicit authorization for:
 
 An explicit user request for an exact action and scope supplies authorization. Prepare the exact target and effects before asking for any missing authorization. Preserve existing authorization across turns.
 
-Use the library ID returned by ADS. A library name is not an endpoint identifier.
+Use the library ID returned by SciX. A library name is not an endpoint identifier.
 
 ## Operations
 
@@ -121,9 +121,9 @@ Set operations:
 ```
 
 - `union`, `intersection`, and `difference` create a result library; include a unique `name` when the user supplied one.
-- `copy` sets `libraries` to one destination library ID. ADS appends the primary library’s contents without emptying the destination.
+- `copy` sets `libraries` to one destination library ID. SciX appends the primary library’s contents without emptying the destination.
 - `empty` omits `libraries` and requires explicit authorization.
 
 ## Results
 
-For reads, present library metadata and requested documents or permissions. For mutations, identify the exact operation ADS accepted and any returned library ID. Never imply success from the request alone; verify the response.
+For reads, present library metadata and requested documents or permissions. For mutations, identify the exact operation SciX accepted and any returned library ID. Never imply success from the request alone; verify the response.

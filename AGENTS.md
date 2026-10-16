@@ -1,6 +1,6 @@
 # NASA ADS Skill Repository
 
-Repository for a packaged NASA ADS skill/plugin that targets Claude Code, Codex, and Gemini-compatible Markdown skill loading.
+Repository for a packaged NASA ADS skill/plugin, backed by SciX (the successor to NASA ADS), that targets Claude Code, Codex, and Gemini-compatible Markdown skill loading.
 
 ## Packaging Layout
 
@@ -34,11 +34,13 @@ Claude plugin commands are namespaced by plugin id:
 
 ## API Token
 
-For online ADS operations, check `ADS_API_TOKEN` first, then `ADS_DEV_KEY`. If neither is set, point the user to the token page and tell them to set one of those environment variables for the next request. Local library browsing, stored reading, organization, and cached citation export work without an ADS token. Never hardcode or log the token.
+For online SciX operations, read `ADS_API_TOKEN`. If it is unset, point the user to the token page and tell them to set it for the next request. Local library browsing, stored reading, organization, and cached citation export work without a SciX token. Never hardcode or log the token.
 
-Token page: https://ui.adsabs.harvard.edu/#user/settings/token
+Token page: https://scixplorer.org/user/settings/token
 
-Use the bundled standard-library ADS CLI for search, big query, citation export, metrics, citation-helper, and resolver calls. Use the bundled full-text CLI for deterministic lawful retrieval and preparation. Use the bundled literature-memory CLI for version-aware storage, lookup, structured digests, and local search. Keep article reading, visual interpretation, digest authorship, query design, evidence assessment, result synthesis, and all destructive library confirmations in Markdown.
+API base: https://api.scixplorer.org/v1
+
+Use the bundled standard-library SciX CLI for search, big query, citation export, metrics, citation-helper, and resolver calls. Use the bundled full-text CLI for deterministic lawful retrieval and preparation. Use the bundled literature-memory CLI for version-aware storage, lookup, structured digests, and local search. Keep article reading, visual interpretation, digest authorship, query design, evidence assessment, result synthesis, and all destructive library confirmations in Markdown.
 
 ## Documentation Contract
 
@@ -85,5 +87,5 @@ Before committing:
 4. Run `python -m unittest discover -s tests -v` and compile all bundled Python modules.
 5. Check README and guide relative links, cross-file Markdown anchors, and bilingual heading structure.
 6. Test the documented Codex and Claude marketplace installs with disposable entries; record the pre-test state and remove only the exact test entries afterward.
-7. Run read-only ADS smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.
+7. Run read-only SciX smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.
 8. Run `git diff --check` and inspect the complete diff.

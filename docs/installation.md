@@ -2,7 +2,7 @@
 
 [Back to README](../README.md#install) · [简体中文](installation.zh-CN.md)
 
-Choose your host, finish its installation steps, configure a token for online ADS access, and verify the result. Each host section contains its own commands. Existing users can go directly to [updates](#updating-an-existing-install).
+Choose your host, finish its installation steps, configure a token for online SciX access, and verify the result. Each host section contains its own commands. Existing users can go directly to [updates](#updating-an-existing-install).
 
 - [Prerequisites](#before-you-install)
 - [Claude Code plugin](#claude-code-plugin)
@@ -11,7 +11,7 @@ Choose your host, finish its installation steps, configure a token for online AD
 - [Gemini CLI](#gemini-cli)
 - [Other hosts](#generic-markdown-skill-host)
 - [Register adslib](#register-the-adslib-command)
-- [ADS token](#configure-the-ads-token)
+- [SciX token](#configure-the-scix-token)
 - [Installation and API verification](#verify-the-api)
 - [Updates](#updating-an-existing-install)
 
@@ -24,10 +24,10 @@ Prepare these items on the new computer:
    - [Claude Code setup](https://code.claude.com/docs/en/setup)
    - [Codex CLI setup](https://developers.openai.com/codex/cli/)
    - [Gemini CLI installation](https://geminicli.com/docs/get-started/installation/)
-3. **An ADS account and API token** for online ADS requests, created in [Configure the ADS token](#configure-the-ads-token). Local library browsing and cached citation export work without a token.
-4. **Python 3.10 or newer**, available from [python.org/downloads](https://www.python.org/downloads/), is required for the complete full-text and literature-memory workflow. The four bundled CLIs need no third-party Python package on their core path. `curl` on macOS/Linux/WSL or PowerShell on Windows provides a limited ADS metadata/API fallback when Python is unavailable; it does not provide full-text preparation or persistent literature memory.
+3. **A SciX account and API token** for online SciX requests, created in [Configure the SciX token](#configure-the-scix-token). Existing NASA ADS accounts sign in to SciX with the same credentials. Local library browsing and cached citation export work without a token.
+4. **Python 3.10 or newer**, available from [python.org/downloads](https://www.python.org/downloads/), is required for the complete full-text and literature-memory workflow. The four bundled CLIs need no third-party Python package on their core path. `curl` on macOS/Linux/WSL or PowerShell on Windows provides a limited SciX metadata/API fallback when Python is unavailable; it does not provide full-text preparation or persistent literature memory.
 5. **Optional PDF helpers**: `pdftotext` and `pdfinfo` improve PDF text handling; `pdftoppm` renders scanned pages. A capable host can visually read a downloaded PDF or rendered pages when these helpers are absent.
-6. **Outbound HTTPS access** to `api.adsabs.harvard.edu`, `arxiv.org`, and any selected lawful publisher or repository source.
+6. **Outbound HTTPS access** to `api.scixplorer.org`, `arxiv.org`, and any selected lawful publisher or repository source.
 
 Check the installed commands:
 
@@ -88,7 +88,7 @@ Run `/reload-plugins` if the installation happened during an existing session. T
 /nasa-ads:ads-memory <search, collections, serve, citations, pending, or paper topics>
 ```
 
-Continue with [Register adslib](#register-the-adslib-command) and [Configure the ADS token](#configure-the-ads-token), then run the public-paper test in [Verify the API](#verify-the-api).
+Continue with [Register adslib](#register-the-adslib-command) and [Configure the SciX token](#configure-the-scix-token), then run the public-paper test in [Verify the API](#verify-the-api).
 
 ### Codex Plugin
 
@@ -120,7 +120,7 @@ codex
 
 Invoke it explicitly with `$nasa-ads`, open `/skills`, or describe an astronomy-literature task in plain language.
 
-Continue with [Register adslib](#register-the-adslib-command) and [Configure the ADS token](#configure-the-ads-token), then run the public-paper test in [Verify the API](#verify-the-api).
+Continue with [Register adslib](#register-the-adslib-command) and [Configure the SciX token](#configure-the-scix-token), then run the public-paper test in [Verify the API](#verify-the-api).
 
 ### Codex Standalone Skill
 
@@ -251,7 +251,7 @@ Then run:
 /memory show
 ```
 
-Confirm that the loaded memory contains the `NASA ADS` heading. The repository’s own [`GEMINI.md`](../GEMINI.md) demonstrates the same relative-import format for a project-level setup.
+Confirm that the loaded memory contains the `SciX Literature Agent Workflow` heading. The repository’s own [`GEMINI.md`](../GEMINI.md) demonstrates the same relative-import format for a project-level setup.
 
 ### Generic Markdown-Skill Host
 
@@ -264,7 +264,7 @@ git clone https://github.com/SukiYume/nasa-ads-skill.git
 2. Copy the complete `plugins/nasa-ads/skills/nasa-ads/` folder into the host’s documented skill or prompt directory.
 3. Configure the host to load `SKILL.md`.
 4. Confirm that the host can run the bundled CLI with Python 3, or can use `curl`/PowerShell for direct HTTP fallback.
-5. Set the ADS token for online ADS requests as described below.
+5. Set the SciX token for online SciX requests as described below.
 6. Run the public-paper smoke test in [Verify the API](#verify-the-api).
 
 The exact discovery directory and invocation syntax depend on the host. Consult that host’s current documentation when it does not use the Claude Code, Codex, or Gemini conventions above.
@@ -300,19 +300,19 @@ adslib --version
 adslib
 ```
 
-The version should be `1.15.3`. The browser opens automatically and the service runs in the background. Use `adslib status`, `adslib stop`, and `adslib restart` to manage it; `adslib serve` runs in the foreground until `Ctrl+C`. See the [command reference](library.md). If the command is missing, restart the terminal app or IDE to load its new PATH, or invoke the installed `adslib.py` directly. Run `install` again after moving the skill, upgrading to a new plugin cache directory, or changing Python.
+The version should be `2.0.0`. The browser opens automatically and the service runs in the background. Use `adslib status`, `adslib stop`, and `adslib restart` to manage it; `adslib serve` runs in the foreground until `Ctrl+C`. See the [command reference](library.md). If the command is missing, restart the terminal app or IDE to load its new PATH, or invoke the installed `adslib.py` directly. Run `install` again after moving the skill, upgrading to a new plugin cache directory, or changing Python.
 
-## Configure the ADS Token
+## Configure the SciX Token
 
-Every ADS Developer API request requires a personal token.
+Every SciX API request requires a personal token. A token created on NASA ADS works on SciX unchanged.
 
-1. Open [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token).
-2. Register for ADS or sign in.
+1. Open [SciX token settings](https://scixplorer.org/user/settings/token).
+2. Register for SciX or sign in; NASA ADS credentials carry over.
 3. Open account settings and select **API Token** if the direct link lands elsewhere.
-4. Select **Generate a new key**.
+4. Generate a new token.
 5. Copy the token and keep it private.
 
-Use `ADS_API_TOKEN` as the primary environment variable. `ADS_DEV_KEY` remains available as a compatibility fallback.
+Store it in the `ADS_API_TOKEN` environment variable.
 
 ### macOS, Linux, or WSL
 
@@ -327,10 +327,10 @@ This value lasts until that terminal closes. For persistent use, add the same `e
 Verify presence without printing the token:
 
 ```bash
-if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then
-  echo "ADS token is set"
+if [ -n "${ADS_API_TOKEN:-}" ]; then
+  echo "SciX token is set"
 else
-  echo "ADS token is missing"
+  echo "SciX token is missing"
 fi
 ```
 
@@ -355,18 +355,18 @@ Set a persistent user environment variable:
 Open a new terminal and restart the host after the persistent command. Verify presence without printing the token:
 
 ```powershell
-if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) {
-  'ADS token is set'
+if ($env:ADS_API_TOKEN) {
+  'SciX token is set'
 } else {
-  'ADS token is missing'
+  'SciX token is missing'
 }
 ```
 
-Keep the token out of repositories, screenshots, shared logs, shell transcripts, and support messages. Revoke and regenerate it from ADS settings if exposure occurs.
+Keep the token out of repositories, screenshots, shared logs, shell transcripts, and support messages. Revoke and regenerate it from SciX settings if exposure occurs.
 
 ## Verify the API
 
-Use a known public paper to verify network access, authentication, and the ADS response shape.
+Use a known public paper to verify network access, authentication, and the SciX response shape.
 
 ### Installed host
 
@@ -379,7 +379,7 @@ Restart the host after setting a persistent token. In Claude Code, run:
 In Codex, Gemini CLI, or another host, send:
 
 ```text
-Search NASA ADS for bibcode 2016PhRvL.116f1102A and return its title, year, and bibcode.
+Search SciX for bibcode 2016PhRvL.116f1102A and return its title, year, and bibcode.
 ```
 
 The result should identify *Observation of Gravitational Waves from a Binary Black Hole Merger* and include `2016PhRvL.116f1102A`. A missing-token message means the environment variable was not inherited by the host; an HTTP error should be handled with [Troubleshooting](../README.md#troubleshooting).
@@ -416,11 +416,11 @@ python "$nasaAdsSkill/scripts/ads_api.py" --no-store search `
   --rows 1
 ```
 
-Use `py -3` in place of `python` when that is how Python is registered. All four version commands should report `1.15.3`. The JSON response should contain the bibcode `2016PhRvL.116f1102A`. The `--no-store` diagnostic preserves the current library contents.
+Use `py -3` in place of `python` when that is how Python is registered. All four version commands should report `2.0.0`. The JSON response should contain the bibcode `2016PhRvL.116f1102A`. The `--no-store` diagnostic preserves the current library contents.
 
 ### Full-text smoke test
 
-This public arXiv paper has an official HTML version, so the smoke test needs no PDF helper. It also works without an ADS token when no token is present.
+This public arXiv paper has an official HTML version, so the smoke test needs no PDF helper. It also works without a SciX token when no token is present.
 
 macOS, Linux, or WSL:
 
@@ -444,7 +444,7 @@ Use `--format pdf` when you explicitly need the PDF for equation, figure, table,
 
 ### Literature-memory smoke test
 
-The database CLI can verify its schema and digest contract without an ADS token. `template` prints JSON and does not create a library.
+The database CLI can verify its schema and digest contract without a SciX token. `template` prints JSON and does not create a library.
 
 macOS, Linux, or WSL:
 
@@ -462,7 +462,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-The CLI version command on either platform should report `1.15.3`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. Normal search, full-text fetch, and explicit library writes create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
+The CLI version command on either platform should report `2.0.0`. The schema-version-2 template should contain `overview`, `facets`, `findings`, `global_limitations`, and `reading.coverage`. Normal search, full-text fetch, and explicit library writes create or update the live library under `%LOCALAPPDATA%\nasa-ads\literature` on Windows or `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Read commands return an empty result for a missing library and create no files. Set `NASA_ADS_LITERATURE_DIR` to choose another location.
 
 ### Direct HTTP fallback
 
@@ -470,7 +470,7 @@ Use this only when Python 3 cannot run the bundled CLI or an endpoint is not exp
 
 ## Updating an Existing Install
 
-Update the installation using the same method and source directory chosen during setup. If an existing database reports a schema mismatch, follow the [database upgrade procedure](library.md#upgrade-an-older-library).
+Update the installation using the same method and source directory chosen during setup. Version 2.0.0 reads the token only from `ADS_API_TOKEN`; move an existing `ADS_DEV_KEY` value into it as described in [Configure the SciX token](#configure-the-scix-token). After updating from 1.x, [refresh SciX metadata](library.md#refresh-scix-metadata) once. If an existing database reports a schema mismatch, follow the [database upgrade procedure](library.md#upgrade-an-older-library).
 
 For a Claude Code or Codex plugin, refresh the marketplace and installed plugin:
 

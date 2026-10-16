@@ -87,7 +87,7 @@ class ReleaseSyncTests(unittest.TestCase):
         for user_heading in (
             "## Overview",
             "## Install",
-            "## Configure the ADS Token",
+            "## Configure the SciX Token",
             "## Troubleshooting",
         ):
             self.assertIn(user_heading, readme)

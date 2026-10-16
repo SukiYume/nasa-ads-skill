@@ -1,5 +1,5 @@
 ---
-description: "Find suggested citations, related papers, or links to full text and data for ADS bibcodes"
+description: "Find suggested citations, related papers, or links to full text and data for SciX bibcodes"
 argument-hint: "[suggest <bibcodes...> | links <bibcode> | similar <bibcode>]"
 allowed-tools:
   - Bash
@@ -7,7 +7,7 @@ allowed-tools:
   - Write
 ---
 
-# NASA ADS Citation Helper & Resolver
+# SciX Citation Helper & Resolver
 
 Find related papers and external resource links.
 
@@ -53,4 +53,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" search \
   --rows 10
 ```
 
-3. Check the CLI exit status before parsing and present results with ADS links.
+3. Check the CLI exit status before parsing and present results with SciX links.

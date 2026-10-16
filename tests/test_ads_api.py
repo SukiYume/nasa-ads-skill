@@ -76,17 +76,14 @@ def run_cli(args, response, *, environ=None, stdin_text=""):
 
 
 class TokenTests(unittest.TestCase):
-    def test_primary_token_takes_precedence(self):
-        token = ads_api.resolve_token(
-            {"ADS_API_TOKEN": "primary", "ADS_DEV_KEY": "fallback"}
+    def test_token_is_stripped(self):
+        self.assertEqual(
+            ads_api.resolve_token({"ADS_API_TOKEN": " secret "}), "secret"
         )
-        self.assertEqual(token, "primary")
 
-    def test_legacy_token_is_used_as_fallback(self):
-        token = ads_api.resolve_token(
-            {"ADS_API_TOKEN": "  ", "ADS_DEV_KEY": " fallback "}
-        )
-        self.assertEqual(token, "fallback")
+    def test_retired_dev_key_is_not_read(self):
+        with self.assertRaises(ads_api.CliError):
+            ads_api.resolve_token({"ADS_DEV_KEY": "old"})
 
     def test_missing_token_returns_exit_two_without_request(self):
         stdout = io.StringIO()
@@ -99,7 +96,8 @@ class TokenTests(unittest.TestCase):
         )
         self.assertEqual(code, 2)
         self.assertEqual(stdout.getvalue(), "")
-        self.assertIn("Set ADS_API_TOKEN or ADS_DEV_KEY", stderr.getvalue())
+        self.assertIn("Set ADS_API_TOKEN", stderr.getvalue())
+        self.assertIn("https://scixplorer.org/user/settings/token", stderr.getvalue())
 
 
 class ArgumentTests(unittest.TestCase):
@@ -140,6 +138,7 @@ class RequestTests(unittest.TestCase):
         request = opener.requests[0]
         parsed = urlsplit(request.full_url)
         query = parse_qs(parsed.query)
+        self.assertEqual(parsed.netloc, "api.scixplorer.org")
         self.assertEqual(parsed.path, "/v1/search/query")
         self.assertEqual(query["q"], ['title:"A&B waves"'])
         self.assertEqual(query["fq"], ["property:refereed", "database:astronomy"])
