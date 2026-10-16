@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent, searchable, evidence-aware literature memory for NASA ADS."""
+"""Persistent, searchable, evidence-aware literature memory for SciX records."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "1.15.3"
+VERSION = "2.0.0"
 DATABASE_SCHEMA_VERSION = 3
 DIGEST_SCHEMA_VERSION = 2
 READING_STATUSES = {"full", "targeted", "visual"}
@@ -1648,6 +1648,234 @@ def paper_ids_for_aliases(
     return paper_ids
 
 
+def require_compatible_stored_digests(
+    target: sqlite3.Row | None, source: sqlite3.Row | None
+) -> None:
+    if target is not None and source is not None:
+        if json.loads(source["digest_json"]) != json.loads(target["digest_json"]):
+            raise LiteratureError(
+                "Automatic paper merge found different stored digests for "
+                f"duplicate full-text versions {source['version_id']} "
+                f"and {target['version_id']}. "
+                "Reconcile both stored digests explicitly before retrying.",
+                2,
+            )
+
+
+def merge_duplicate_versions(
+    connection: sqlite3.Connection, target: int, source: int
+) -> None:
+    """Preserve reading data before removing a duplicate article version."""
+    target_digest = stored_digest_row(connection, target)
+    source_digest = stored_digest_row(connection, source)
+    require_compatible_stored_digests(target_digest, source_digest)
+    if source_digest is not None and target_digest is None:
+        connection.execute(
+            "UPDATE digests SET version_id = ? WHERE id = ?",
+            (target, source_digest["id"]),
+        )
+    connection.execute(
+        "UPDATE OR IGNORE artifacts SET version_id = ? WHERE version_id = ?",
+        (target, source),
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO version_labels(version_id, arxiv_id) "
+        "SELECT ?, arxiv_id FROM version_labels WHERE version_id = ?",
+        (target, source),
+    )
+
+
+def merge_papers(connection: sqlite3.Connection, paper_ids: Iterable[int]) -> int:
+    """Combine records that one SciX manifest identifies as the same work.
+
+    A preprint captured before its publication was indexed and the published
+    record stored separately become one paper once SciX links their
+    identifiers. The survivor keeps read versions; published metadata wins.
+    Runs inside the caller's transaction and returns the surviving paper id.
+    """
+    rows = [
+        connection.execute("SELECT * FROM papers WHERE id = ?", (paper_id,)).fetchone()
+        for paper_id in sorted(set(paper_ids))
+    ]
+
+    def survivor_rank(row: sqlite3.Row) -> tuple[bool, bool, int]:
+        has_versions = connection.execute(
+            "SELECT 1 FROM versions WHERE paper_id = ? LIMIT 1", (row["id"],)
+        ).fetchone()
+        return (has_versions is None, row["doctype"] == "eprint", row["id"])
+
+    survivor, *others = sorted(rows, key=survivor_rank)
+    published = next(
+        (row for row in sorted(rows, key=lambda row: row["id"]) if row["doctype"] != "eprint"),
+        survivor,
+    )
+    target = survivor["id"]
+    fts_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'"
+    ).fetchone()
+    metadata = json.loads(survivor["metadata_json"])
+    for row in others:
+        source = row["id"]
+        for field, value in json.loads(row["metadata_json"]).items():
+            if isinstance(value, list):
+                metadata[field] = ordered_unique_casefolded_strings(
+                    [*fulltext.list_value(metadata.get(field)), *value]
+                )
+            elif row["id"] == published["id"] or metadata.get(field) is None:
+                metadata[field] = value if value is not None else metadata.get(field)
+        connection.execute(
+            "UPDATE identifiers SET paper_id = ? WHERE paper_id = ?", (target, source)
+        )
+        for version in connection.execute(
+            "SELECT id, version_kind, content_sha256 FROM versions WHERE paper_id = ?",
+            (source,),
+        ).fetchall():
+            duplicate = connection.execute(
+                "SELECT id FROM versions WHERE paper_id = ? AND version_kind = ? "
+                "AND content_sha256 = ?",
+                (target, version["version_kind"], version["content_sha256"]),
+            ).fetchone()
+            if duplicate is not None:
+                merge_duplicate_versions(connection, duplicate["id"], version["id"])
+                connection.execute(
+                    "DELETE FROM search_documents WHERE version_id = ?", (version["id"],)
+                )
+                if fts_table:
+                    connection.execute(
+                        "DELETE FROM search_fts WHERE version_id = ?",
+                        (str(version["id"]),),
+                    )
+                connection.execute("DELETE FROM versions WHERE id = ?", (version["id"],))
+            else:
+                connection.execute(
+                    "UPDATE versions SET paper_id = ? WHERE id = ?",
+                    (target, version["id"]),
+                )
+        connection.execute(
+            "UPDATE search_documents SET paper_id = ? WHERE paper_id = ?",
+            (target, source),
+        )
+        if fts_table:
+            connection.execute(
+                "UPDATE search_fts SET paper_id = ? WHERE paper_id = ?",
+                (str(target), str(source)),
+            )
+        connection.execute(
+            "UPDATE OR IGNORE search_hits SET paper_id = ? WHERE paper_id = ?",
+            (target, source),
+        )
+        connection.execute("DELETE FROM search_hits WHERE paper_id = ?", (source,))
+        for brief in connection.execute(
+            "SELECT * FROM briefs WHERE paper_id = ?", (source,)
+        ).fetchall():
+            kept = connection.execute(
+                "SELECT * FROM briefs WHERE paper_id = ? AND source_hash = ?",
+                (target, brief["source_hash"]),
+            ).fetchone()
+            if kept is None:
+                connection.execute(
+                    "UPDATE briefs SET paper_id = ? WHERE id = ?", (target, brief["id"])
+                )
+                continue
+            if not kept["summary"] and brief["summary"]:
+                connection.execute(
+                    "UPDATE briefs SET summary = ?, keywords_json = ? WHERE id = ?",
+                    (brief["summary"], brief["keywords_json"], kept["id"]),
+                )
+            connection.execute(
+                "UPDATE search_hits SET brief_id = ? WHERE brief_id = ?",
+                (kept["id"], brief["id"]),
+            )
+            connection.execute("DELETE FROM briefs WHERE id = ?", (brief["id"],))
+        for table, column in (
+            ("paper_collections", "collection_path"),
+            ("paper_tags", "tag"),
+            ("paper_roles", "role"),
+        ):
+            connection.execute(
+                f"INSERT OR IGNORE INTO {table}(paper_id, {column}) "
+                f"SELECT ?, {column} FROM {table} WHERE paper_id = ?",
+                (target, source),
+            )
+        connection.execute(
+            "UPDATE OR IGNORE paper_notes SET paper_id = ? WHERE paper_id = ?",
+            (target, source),
+        )
+        citation = connection.execute(
+            "SELECT citekey FROM citations WHERE paper_id = ?", (source,)
+        ).fetchone()
+        if citation and citation["citekey"] == published["bibcode"]:
+            connection.execute("DELETE FROM citations WHERE paper_id = ?", (target,))
+            connection.execute(
+                "UPDATE citations SET paper_id = ? WHERE paper_id = ?", (target, source)
+            )
+        connection.execute("DELETE FROM papers WHERE id = ?", (source,))
+    connection.execute(
+        """
+        UPDATE papers
+        SET bibcode = ?, title = ?, authors_json = ?, abstract = ?, year = ?,
+            pub = ?, doctype = ?, metadata_json = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            published["bibcode"] or survivor["bibcode"],
+            published["title"],
+            published["authors_json"],
+            str(published["abstract"] or "").strip() and published["abstract"]
+            or survivor["abstract"],
+            published["year"] if published["year"] is not None else survivor["year"],
+            published["pub"] or survivor["pub"],
+            published["doctype"] or survivor["doctype"],
+            json_text(metadata),
+            fulltext.utc_now(),
+            target,
+        ),
+    )
+    return target
+
+
+def reindex_paper_documents(
+    connection: sqlite3.Connection, fts5: bool, paper_id: int
+) -> int:
+    rows = connection.execute(
+        """
+        SELECT v.id AS version_id, v.text_path, d.id AS digest_id, d.digest_json
+        FROM versions v
+        JOIN digests d ON d.version_id = v.id
+        WHERE v.paper_id = ?
+        ORDER BY v.id
+        """,
+        (paper_id,),
+    ).fetchall()
+    for row in rows:
+        full_text_value = ""
+        if row["text_path"] and Path(row["text_path"]).is_file():
+            full_text_value = Path(row["text_path"]).read_text(
+                encoding="utf-8", errors="replace"
+            )
+        document = build_search_document(
+            connection,
+            paper_id,
+            int(row["version_id"]),
+            int(row["digest_id"]),
+            json.loads(row["digest_json"]),
+            full_text_value,
+        )
+        replace_search_document(connection, document, fts5)
+    return len(rows)
+
+
+def resolve_paper_identity(
+    connection: sqlite3.Connection,
+    aliases: Sequence[tuple[str, str, str]],
+) -> set[int]:
+    """Resolve aliases inside the caller's transaction and search-index update."""
+    matches = paper_ids_for_aliases(connection, aliases)
+    if len(matches) > 1:
+        matches = {merge_papers(connection, matches)}
+    return matches
+
+
 def manifest_version_kind(manifest: Mapping[str, Any]) -> str:
     selected = require_mapping(manifest.get("selected"), "manifest.selected")
     candidate = selected.get("candidate")
@@ -1677,9 +1905,7 @@ def upsert_paper(
 ) -> int:
     matches = paper_ids_for_aliases(connection, aliases)
     if len(matches) > 1:
-        raise LiteratureError(
-            "Identifiers in the manifest already belong to different papers."
-        )
+        matches = {merge_papers(connection, matches)}
     now = fulltext.utc_now()
     title = require_string(manifest.get("title"), "manifest.title")
     authors = manifest.get("author") if isinstance(manifest.get("author"), list) else []
@@ -1703,6 +1929,12 @@ def upsert_paper(
         "citation_count": manifest.get("citation_count"),
         "read_count": manifest.get("read_count"),
         **{
+            field: ordered_unique_casefolded_strings(
+                fulltext.list_value(manifest.get(field))
+            )
+            for field in ("uat", "has")
+        },
+        **{
             field: manifest.get(field)
             for field in ("volume", "issue", "page", "eid", "pubdate")
         },
@@ -1714,7 +1946,15 @@ def upsert_paper(
         ).fetchone()
         existing_authors = json.loads(existing["authors_json"])
         existing_metadata = json.loads(existing["metadata_json"])
-        upgrade = (
+        # SciX lists a replaced bibcode, such as a preprint or .tmp. record,
+        # among the alternates of the current record.
+        superseded = (
+            bibcode is not None
+            and existing["bibcode"] not in (None, bibcode)
+            and existing["bibcode"]
+            in fulltext.list_value(manifest.get("alternate_bibcode"))
+        )
+        upgrade = superseded or (
             existing["doctype"] == "eprint" and manifest.get("doctype") == "article"
         )
         bibcode = (
@@ -1758,8 +1998,14 @@ def upsert_paper(
         for field in ("citation_count", "read_count"):
             if metadata[field] is None:
                 metadata[field] = existing_metadata.get(field)
+        for field in ("uat", "has"):
+            metadata[field] = metadata[field] or existing_metadata.get(field, [])
         for field in ("volume", "issue", "page", "eid", "pubdate"):
-            metadata[field] = existing_metadata.get(field) or metadata[field]
+            metadata[field] = (
+                metadata[field] or existing_metadata.get(field)
+                if upgrade
+                else existing_metadata.get(field) or metadata[field]
+            )
         connection.execute(
             """
             UPDATE papers
@@ -2082,7 +2328,10 @@ def build_search_document(
         "SELECT kind, value FROM identifiers WHERE paper_id = ? ORDER BY kind, value",
         (paper_id,),
     ).fetchall()
-    topics: list[str] = list(digest["keywords"])
+    topics: list[str] = [
+        *digest["keywords"],
+        *json.loads(paper["metadata_json"]).get("uat", []),
+    ]
     facet_parts: list[str] = []
     finding_parts: list[str] = []
     limitations: list[str] = list(digest["global_limitations"])
@@ -2157,6 +2406,66 @@ def replace_search_document(
         )
 
 
+def prepare_ingest_digest(
+    connection: sqlite3.Connection,
+    paper_ids: set[int],
+    version_kind: str,
+    content_sha256: str,
+    digest: dict[str, Any],
+    *,
+    merge: bool,
+    replace_digest: bool,
+) -> dict[str, Any]:
+    """Check stored readings without changing paper identities or evidence."""
+    readings: dict[tuple[str, str], sqlite3.Row] = {}
+    for paper_id in sorted(paper_ids):
+        for row in connection.execute(
+            "SELECT d.*, v.version_kind, v.content_sha256 FROM versions v "
+            "JOIN digests d ON d.version_id = v.id WHERE v.paper_id = ?",
+            (paper_id,),
+        ):
+            key = (row["version_kind"], row["content_sha256"])
+            require_compatible_stored_digests(readings.get(key), row)
+            readings[key] = row
+    stored = readings.get((version_kind, content_sha256))
+    if digest["reading"]["status"] == "targeted" and not stored_digest_is_complete(stored):
+        raise LiteratureError(
+            "A targeted digest requires a complete full or whole-document visual "
+            "digest for this exact article version.",
+            2,
+        )
+    if replace_digest:
+        if not paper_ids:
+            raise LiteratureError(
+                "--replace-digest requires an existing paper and stored digest.", 2
+            )
+        if digest["reading"]["status"] not in {"full", "visual"}:
+            raise LiteratureError(
+                "--replace-digest requires a complete full or whole-document "
+                "visual digest.",
+                2,
+            )
+        if stored is None:
+            raise LiteratureError(
+                "--replace-digest requires an existing stored digest for "
+                "this exact article version.",
+                2,
+            )
+    elif stored is not None:
+        stored_payload = json.loads(stored["digest_json"])
+        if merge:
+            return merge_digests(stored_payload, digest)
+        if stable_digest(stored_payload) != stable_digest(digest):
+            raise LiteratureError(
+                "This article version already has a different digest. Use "
+                "--merge for additive evidence or --replace-digest for a "
+                "verified complete replacement. Both operations update the "
+                "single stored digest in place.",
+                2,
+            )
+    return digest
+
+
 def ingest_record(
     connection: sqlite3.Connection,
     fts5: bool,
@@ -2170,111 +2479,36 @@ def ingest_record(
     digest = validate_digest(digest)
     aliases = validate_ingest_metadata(manifest)
     content_sha256 = validate_ingest_manifest(manifest, digest)
-    matching_papers = paper_ids_for_aliases(connection, aliases)
-    if len(matching_papers) > 1:
-        raise LiteratureError(
-            "Identifiers in the manifest already belong to different papers."
-        )
-    paper_exists = bool(matching_papers)
-    existing_paper_id = next(iter(matching_papers)) if paper_exists else None
-    current_exact_version_id = None
-    stored_exact_digest = None
-    if existing_paper_id is not None:
-        current_exact_version_id = existing_version_id(
-            connection,
-            existing_paper_id,
-            manifest_version_kind(manifest),
-            content_sha256,
-        )
-        if current_exact_version_id is not None:
-            stored_exact_digest = stored_digest_row(
-                connection, current_exact_version_id
-            )
-    if digest["reading"]["status"] == "targeted" and not stored_digest_is_complete(
-        stored_exact_digest
-    ):
-        raise LiteratureError(
-            "A targeted digest requires a complete full or whole-document visual "
-            "digest for this exact article version.",
-            2,
-        )
-    if replace_digest and not paper_exists:
-        raise LiteratureError(
-            "--replace-digest requires an existing paper and stored digest.", 2
-        )
-    if replace_digest and digest["reading"]["status"] not in {"full", "visual"}:
-        raise LiteratureError(
-            "--replace-digest requires a complete full or whole-document "
-            "visual digest.",
-            2,
-        )
-    if replace_digest:
-        version_id = current_exact_version_id
-        if version_id is None or stored_exact_digest is None:
-            raise LiteratureError(
-                "--replace-digest requires an existing stored digest for "
-                "this exact article version.",
-                2,
-            )
-    incoming_digest = json.loads(json.dumps(digest))
-    preflight_digest_id = None
-    if stored_exact_digest is not None and not replace_digest:
-        preflight_digest_id = int(stored_exact_digest["id"])
-        stored_payload = json.loads(stored_exact_digest["digest_json"])
-        if merge:
-            digest = merge_digests(stored_payload, incoming_digest)
-        elif stable_digest(stored_payload) != stable_digest(digest):
-            raise LiteratureError(
-                "This article version already has a different digest. Use "
-                "--merge for additive evidence or --replace-digest for a "
-                "verified complete replacement. Both operations update the "
-                "single stored digest in place.",
-                2,
-            )
+    prepare_ingest_digest(
+        connection,
+        paper_ids_for_aliases(connection, aliases),
+        manifest_version_kind(manifest),
+        content_sha256,
+        digest,
+        merge=merge,
+        replace_digest=replace_digest,
+    )
     stored = store_objects(library_dir, manifest)
     try:
         connection.execute("BEGIN IMMEDIATE")
+        matching_papers = resolve_paper_identity(connection, aliases)
+        digest = prepare_ingest_digest(
+            connection,
+            matching_papers,
+            manifest_version_kind(manifest),
+            stored["content_sha256"],
+            digest,
+            merge=merge,
+            replace_digest=replace_digest,
+        )
         paper_id = upsert_paper(connection, manifest, aliases)
         version_id, version_created = upsert_version(
             connection, paper_id, manifest, stored
         )
-        stored_row = stored_digest_row(connection, version_id)
-        if stored_row:
-            stored_payload = json.loads(stored_row["digest_json"])
-            preflight_matches = (
-                preflight_digest_id is not None
-                and int(stored_row["id"]) == preflight_digest_id
-                and stored_row["digest_hash"] == stored_exact_digest["digest_hash"]
-            )
-            if not replace_digest and not preflight_matches:
-                if merge:
-                    digest = merge_digests(stored_payload, incoming_digest)
-                elif stable_digest(stored_payload) != stable_digest(digest):
-                    raise LiteratureError(
-                        "This article version already has a different digest. "
-                        "Use --merge for additive evidence or --replace-digest for "
-                        "a verified complete replacement. Both operations update "
-                        "the single stored digest in place.",
-                        2,
-                    )
-        elif replace_digest:
-            raise LiteratureError(
-                "--replace-digest requires an existing stored digest for "
-                "this exact article version.",
-                2,
-            )
         digest_id, digest_changed, digest_created = insert_digest(
             connection, version_id, digest
         )
-        document = build_search_document(
-            connection,
-            paper_id,
-            version_id,
-            digest_id,
-            digest,
-            stored["full_text"],
-        )
-        replace_search_document(connection, document, fts5)
+        reindex_paper_documents(connection, fts5, paper_id)
         stored_paper = connection.execute(
             "SELECT canonical_key FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
@@ -2321,46 +2555,18 @@ def enrich_paper_metadata(
     manifest: dict[str, Any],
 ) -> dict[str, Any]:
     aliases = validate_paper_metadata(manifest)
-    matching = paper_ids_for_aliases(connection, aliases)
-    if not matching:
-        raise LiteratureError(
-            "Metadata enrichment requires an existing paper identifier.", 2
-        )
-    if len(matching) > 1:
-        raise LiteratureError(
-            "Metadata identifiers already belong to different papers.", 2
-        )
-    expected_paper_id = next(iter(matching))
     try:
         connection.execute("BEGIN IMMEDIATE")
+        matching = resolve_paper_identity(connection, aliases)
+        if not matching:
+            raise LiteratureError(
+                "Metadata enrichment requires an existing paper identifier.", 2
+            )
+        expected_paper_id = next(iter(matching))
         paper_id = upsert_paper(connection, manifest, aliases)
         if paper_id != expected_paper_id:
             raise LiteratureError("Metadata enrichment changed paper identity.")
-        rows = connection.execute(
-            """
-            SELECT v.id AS version_id, v.text_path, d.id AS digest_id, d.digest_json
-            FROM versions v
-            JOIN digests d ON d.version_id = v.id
-            WHERE v.paper_id = ?
-            ORDER BY v.id
-            """,
-            (paper_id,),
-        ).fetchall()
-        for row in rows:
-            full_text_value = ""
-            if row["text_path"] and Path(row["text_path"]).is_file():
-                full_text_value = Path(row["text_path"]).read_text(
-                    encoding="utf-8", errors="replace"
-                )
-            document = build_search_document(
-                connection,
-                paper_id,
-                int(row["version_id"]),
-                int(row["digest_id"]),
-                json.loads(row["digest_json"]),
-                full_text_value,
-            )
-            replace_search_document(connection, document, fts5)
+        versions_reindexed = reindex_paper_documents(connection, fts5, paper_id)
         paper = connection.execute(
             "SELECT * FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
@@ -2377,7 +2583,7 @@ def enrich_paper_metadata(
         "authors": len(json.loads(paper["authors_json"])),
         "abstract": bool(str(paper["abstract"] or "").strip()),
         "year": paper["year"],
-        "versions_reindexed": len(rows),
+        "versions_reindexed": versions_reindexed,
     }
 
 

@@ -1,11 +1,11 @@
 ---
-description: "Get citation metrics (h-index, citations, reads) for one or more ADS bibcodes"
+description: "Get citation metrics (h-index, citations, reads) for one or more SciX bibcodes"
 argument-hint: "<bibcode1> [bibcode2] ..."
 allowed-tools:
   - Bash
 ---
 
-# NASA ADS Metrics
+# SciX Metrics
 
 Retrieve citation metrics and bibliometric indicators for papers.
 
@@ -25,6 +25,6 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" metrics \
   2016PhRvL.116f1102A \
   2017ApJ...848L..12A
 ```
-4. Read the actual response keys before formatting. ADS uses keys containing spaces, including `basic stats`, `basic stats refereed`, `citation stats`, `citation stats refereed`, `indicators`, and `indicators refereed`.
+4. Read the actual response keys before formatting. SciX uses keys containing spaces, including `basic stats`, `basic stats refereed`, `citation stats`, `citation stats refereed`, `indicators`, and `indicators refereed`.
 
 5. Return the metrics relevant to the user's question and present comparisons in a table when useful. State which bibcodes form the metric set; an h-index computed for a subset describes that subset. Preserve missing-value and response errors.

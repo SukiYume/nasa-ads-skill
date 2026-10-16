@@ -1,5 +1,5 @@
 ---
-description: "Fetch and read lawful full text for ADS bibcodes, DOIs, or arXiv IDs"
+description: "Fetch and read lawful full text for SciX bibcodes, DOIs, or arXiv IDs"
 argument-hint: "<bibcode, DOI, or arXiv ID...>"
 allowed-tools:
   - Bash
@@ -7,7 +7,7 @@ allowed-tools:
   - Write
 ---
 
-# NASA ADS Full Text
+# SciX Full Text
 
 Fetch and read article full text for: $ARGUMENTS
 

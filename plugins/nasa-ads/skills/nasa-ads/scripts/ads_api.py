@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thin, dependency-free command-line client for stable NASA ADS API calls."""
+"""Thin, dependency-free command-line client for stable SciX API calls."""
 
 from __future__ import annotations
 
@@ -14,12 +14,15 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-VERSION = "1.15.3"
-API_BASE_URL = "https://api.adsabs.harvard.edu/v1"
-TOKEN_URL = "https://ui.adsabs.harvard.edu/#user/settings/token"
+VERSION = "2.0.0"
+API_BASE_URL = "https://api.scixplorer.org/v1"
+TOKEN_URL = "https://scixplorer.org/user/settings/token"
+TOKEN_ENV = "ADS_API_TOKEN"
+ABSTRACT_URL = "https://scixplorer.org/abs/{}/abstract"
 DEFAULT_FIELDS = (
     "bibcode,title,author,abstract,year,pub,doi,identifier,"
-    "citation_count,read_count,property,doctype,volume,issue,page,eid,pubdate"
+    "citation_count,read_count,property,doctype,volume,issue,page,eid,pubdate,"
+    "uat,has"
 )
 DEFAULT_METRIC_TYPES = ("basic", "citations", "indicators")
 EXPORT_FORMATS = (
@@ -66,7 +69,7 @@ class ApiResponse:
 
 
 class RejectRedirectHandler(HTTPRedirectHandler):
-    """Keep ADS credentials on the configured API origin."""
+    """Keep SciX credentials on the configured API origin."""
 
     def redirect_request(
         self,
@@ -111,7 +114,7 @@ def bounded_timeout(value: str) -> float:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Call stable, read-only NASA ADS API workflows. Research decisions "
+            "Call stable, read-only SciX API workflows. Research decisions "
             "and result synthesis remain in the nasa-ads skill instructions."
         )
     )
@@ -133,13 +136,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--show-rate-limit",
         action="store_true",
-        help="write ADS rate-limit response headers to stderr",
+        help="write SciX rate-limit response headers to stderr",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    search = subparsers.add_parser("search", help="search ADS literature")
-    search.add_argument("-q", "--query", required=True, help="native ADS query")
+    search = subparsers.add_parser("search", help="search SciX literature")
+    search.add_argument("-q", "--query", required=True, help="native SciX query")
     search.add_argument(
         "--fields",
         "--fl",
@@ -165,14 +168,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     bigquery = subparsers.add_parser(
-        "bigquery", help="look up many ADS bibcodes through the big-query endpoint"
+        "bigquery", help="look up many bibcodes through the big-query endpoint"
     )
     bigquery.add_argument("bibcodes", nargs="*", help="bibcodes to look up")
     bigquery.add_argument(
         "--bibcodes-file",
         help="UTF-8 file containing one bibcode per line; use - for stdin",
     )
-    bigquery.add_argument("-q", "--query", default="*:*", help="main ADS query")
+    bigquery.add_argument("-q", "--query", default="*:*", help="main SciX query")
     bigquery.add_argument("--fields", "--fl", default=DEFAULT_FIELDS)
     bigquery.add_argument("--collection", action="append", default=[])
     bigquery.add_argument(
@@ -200,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="bibtex",
         help="citation format (default: bibtex)",
     )
-    export.add_argument("--sort", help="ADS export sort expression")
+    export.add_argument("--sort", help="SciX export sort expression")
 
     metrics = subparsers.add_parser("metrics", help="retrieve aggregate metrics")
     metrics.add_argument("bibcodes", nargs="+")
@@ -239,14 +242,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def abstract_url(bibcode: str) -> str:
+    return ABSTRACT_URL.format(quote(bibcode, safe=""))
+
+
+def token_if_available(environ: Mapping[str, str]) -> str | None:
+    return environ.get(TOKEN_ENV, "").strip() or None
+
+
 def resolve_token(environ: Mapping[str, str]) -> str:
-    primary = environ.get("ADS_API_TOKEN", "").strip()
-    fallback = environ.get("ADS_DEV_KEY", "").strip()
-    token = primary or fallback
+    token = token_if_available(environ)
     if not token:
         raise CliError(
-            "Set ADS_API_TOKEN or ADS_DEV_KEY, then retry. "
-            f"Create a token at {TOKEN_URL}",
+            f"Set {TOKEN_ENV}, then retry. Create a token at {TOKEN_URL}",
             exit_code=2,
         )
     return token
@@ -320,7 +328,7 @@ def application_error_text(body: bytes, token: str) -> str:
     ]
     detail = ": ".join(str(part) for part in parts if part)
     detail = " ".join(detail.split()).replace(token, "[redacted]")
-    return detail[:800] or "ADS returned an unspecified application error."
+    return detail[:800] or "SciX returned an unspecified application error."
 
 
 def format_rate_limit(headers: Mapping[str, str]) -> str:
@@ -366,7 +374,7 @@ def request_api(
             response_body = response.read()
             detail = application_error_text(response_body, token)
             if detail:
-                raise CliError(f"ADS API returned an application error. {detail}")
+                raise CliError(f"SciX API returned an application error. {detail}")
             return ApiResponse(
                 body=response_body, headers=dict(response.headers.items())
             )
@@ -374,12 +382,12 @@ def request_api(
         response_body = exc.read()
         if 300 <= exc.code < 400:
             raise CliError(
-                f"ADS API returned HTTP {exc.code} {exc.reason}; "
+                f"SciX API returned HTTP {exc.code} {exc.reason}; "
                 "the redirect was not followed."
             ) from exc
         detail = concise_response_text(response_body, token)
         rate_limit = format_rate_limit(exc.headers or {})
-        message = f"ADS API returned HTTP {exc.code} {exc.reason}."
+        message = f"SciX API returned HTTP {exc.code} {exc.reason}."
         if detail:
             message = f"{message} {detail}"
         if rate_limit:
@@ -387,7 +395,7 @@ def request_api(
         raise CliError(message) from exc
     except (URLError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
-        raise CliError(f"Unable to reach the ADS API: {reason}") from exc
+        raise CliError(f"Unable to reach the SciX API: {reason}") from exc
 
 
 def search_query(
@@ -497,7 +505,7 @@ def decode_json_response(response: ApiResponse, label: str) -> Any:
     try:
         return json.loads(response.body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CliError(f"ADS returned an invalid {label} response.") from exc
+        raise CliError(f"SciX returned an invalid {label} response.") from exc
 
 
 def write_json(value: Any, stdout: TextIO) -> None:
@@ -520,7 +528,7 @@ def write_search_result(payload, args, stdout, environ, token):
         write_json(payload, stdout)
         return
     if not isinstance(payload, dict):
-        raise CliError("ADS search returned an invalid response object.")
+        raise CliError("SciX search returned an invalid response object.")
     import literature_db
     import library_catalog
     import fulltext
@@ -637,13 +645,13 @@ def execute(
             if not isinstance(payload, dict) or not isinstance(
                 payload.get("export"), str
             ):
-                raise CliError("ADS citation export response lacks an export field.")
+                raise CliError("SciX citation export response lacks an export field.")
             export_text = payload["export"]
         else:
             try:
                 export_text = response.body.decode("utf-8")
             except UnicodeDecodeError as exc:
-                raise CliError("ADS returned an invalid citation export.") from exc
+                raise CliError("SciX returned an invalid citation export.") from exc
         stdout.write(export_text)
         if not export_text.endswith("\n"):
             stdout.write("\n")

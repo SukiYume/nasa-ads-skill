@@ -4,11 +4,11 @@ Read this file only when Python 3 cannot run the bundled CLI or a requested non-
 
 ## Safety
 
-- Read `ADS_API_TOKEN`, then `ADS_DEV_KEY`.
-- Send the token only in `Authorization: Bearer <token>` to `https://api.adsabs.harvard.edu/v1`.
+- Read `ADS_API_TOKEN`.
+- Send the token only in `Authorization: Bearer <token>` to `https://api.scixplorer.org/v1`.
 - Reject redirects for authenticated requests.
 - Never print the token or place it in a URL, source file, or verbose HTTP trace.
-- Use the current ADS documentation for an unsupported endpoint’s method and body.
+- Use the current [SciX API documentation](https://scixplorer.org/scixhelp/api/) for an unsupported endpoint’s method and body.
 - Treat `401`, `403`, `404`, `429`, and server failures as API results. Changing HTTP clients does not correct them.
 - Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 
@@ -19,9 +19,8 @@ When Python is available for a fallback endpoint, apply [screening before captur
 POSIX shell:
 
 ```bash
-NASA_ADS_TOKEN="${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}"
-if [ -z "$NASA_ADS_TOKEN" ]; then
-  echo "Set ADS_API_TOKEN or ADS_DEV_KEY, then retry." >&2
+if [ -z "${ADS_API_TOKEN:-}" ]; then
+  echo "Set ADS_API_TOKEN, then retry." >&2
   exit 2
 fi
 ```
@@ -29,14 +28,8 @@ fi
 PowerShell:
 
 ```powershell
-$nasaAdsToken = if ($env:ADS_API_TOKEN) {
-  $env:ADS_API_TOKEN
-} else {
-  $env:ADS_DEV_KEY
-}
-
-if (-not $nasaAdsToken) {
-  throw 'Set ADS_API_TOKEN or ADS_DEV_KEY, then retry.'
+if (-not $env:ADS_API_TOKEN) {
+  throw 'Set ADS_API_TOKEN, then retry.'
 }
 ```
 
@@ -45,8 +38,8 @@ if (-not $nasaAdsToken) {
 Use `curl -fsS`. Add `-G` and `--data-urlencode` for every query parameter. Avoid `-v`, `-L`, and `--location`.
 
 ```bash
-curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
-  -H "Authorization: Bearer $NASA_ADS_TOKEN" \
+curl -fsSG 'https://api.scixplorer.org/v1/search/query' \
+  -H "Authorization: Bearer $ADS_API_TOKEN" \
   --data-urlencode 'q=title:"gravitational waves"' \
   --data-urlencode 'fl=bibcode,title,author,year,pub,doi,identifier,citation_count' \
   --data-urlencode 'rows=10' \
@@ -56,8 +49,8 @@ curl -fsSG 'https://api.adsabs.harvard.edu/v1/search/query' \
 For a JSON request, add `Content-Type: application/json`, set the documented method, and pass a valid JSON body:
 
 ```bash
-curl -fsS 'https://api.adsabs.harvard.edu/v1/<documented-path>' \
-  -H "Authorization: Bearer $NASA_ADS_TOKEN" \
+curl -fsS 'https://api.scixplorer.org/v1/<documented-path>' \
+  -H "Authorization: Bearer $ADS_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -X POST \
   -d '<documented-json-body>'
@@ -68,33 +61,33 @@ curl -fsS 'https://api.adsabs.harvard.edu/v1/<documented-path>' \
 Encode every query parameter separately:
 
 ```powershell
-$nasaAdsQuery = [uri]::EscapeDataString('title:"gravitational waves"')
-$nasaAdsFields = [uri]::EscapeDataString(
+$scixQuery = [uri]::EscapeDataString('title:"gravitational waves"')
+$scixFields = [uri]::EscapeDataString(
   'bibcode,title,author,year,pub,doi,identifier,citation_count'
 )
-$nasaAdsSort = [uri]::EscapeDataString('citation_count desc')
-$nasaAdsUri = "https://api.adsabs.harvard.edu/v1/search/query?q=$nasaAdsQuery&fl=$nasaAdsFields&rows=10&sort=$nasaAdsSort"
+$scixSort = [uri]::EscapeDataString('citation_count desc')
+$scixUri = "https://api.scixplorer.org/v1/search/query?q=$scixQuery&fl=$scixFields&rows=10&sort=$scixSort"
 
 Invoke-RestMethod `
   -Method Get `
-  -Uri $nasaAdsUri `
-  -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
+  -Uri $scixUri `
+  -Headers @{ Authorization = "Bearer $env:ADS_API_TOKEN" } `
   -MaximumRedirection 0
 ```
 
 For a JSON request, construct an object and convert it with sufficient depth:
 
 ```powershell
-$nasaAdsBody = @{
+$scixBody = @{
   documented_field = @('documented-value')
 } | ConvertTo-Json -Depth 8
 
 Invoke-RestMethod `
   -Method Post `
-  -Uri 'https://api.adsabs.harvard.edu/v1/<documented-path>' `
-  -Headers @{ Authorization = "Bearer $nasaAdsToken" } `
+  -Uri 'https://api.scixplorer.org/v1/<documented-path>' `
+  -Headers @{ Authorization = "Bearer $env:ADS_API_TOKEN" } `
   -ContentType 'application/json' `
-  -Body $nasaAdsBody `
+  -Body $scixBody `
   -MaximumRedirection 0
 ```
 

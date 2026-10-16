@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover, fetch, cache, and prepare lawful full text for NASA ADS records."""
+"""Discover, fetch, cache, and prepare lawful full text for SciX records."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "1.15.3"
+VERSION = "2.0.0"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -200,7 +200,7 @@ class ReadableHTMLParser(HTMLParser):
 
 
 class SafeRedirectHandler(HTTPRedirectHandler):
-    """Follow bounded HTTPS redirects without carrying ADS credentials."""
+    """Follow bounded HTTPS redirects without carrying SciX credentials."""
 
     def __init__(self, max_redirects: int = 5) -> None:
         super().__init__()
@@ -254,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument(
         "identifiers",
         nargs="+",
-        help="ADS bibcode, DOI, arXiv ID, or arXiv URL",
+        help="bibcode, DOI, arXiv ID, or arXiv URL",
     )
     fetch.add_argument(
         "--source",
@@ -938,11 +938,6 @@ def materialize_candidate(
     return common
 
 
-def ads_token_if_available(environ: Mapping[str, str]) -> str | None:
-    token = environ.get("ADS_API_TOKEN", "").strip()
-    return token or environ.get("ADS_DEV_KEY", "").strip() or None
-
-
 def ads_search_record(query: str, token: str, timeout: float) -> dict[str, Any] | None:
     response = ads_api.request_api(
         "GET",
@@ -953,7 +948,7 @@ def ads_search_record(query: str, token: str, timeout: float) -> dict[str, Any] 
             (
                 "fl",
                 "bibcode,title,author,abstract,doi,identifier,property,esources,"
-                "doctype,year,pub,citation_count,read_count",
+                "doctype,year,pub,citation_count,read_count,uat,has",
             ),
             ("rows", 1),
         ],
@@ -1211,19 +1206,19 @@ def discover(
     output_format: str = "auto",
 ) -> dict[str, Any]:
     identifier_type, normalized_identifier = classify_identifier(identifier)
-    token = ads_token_if_available(environ)
+    token = ads_api.token_if_available(environ)
     record: dict[str, Any] | None = None
     warnings: list[str] = []
     if identifier_type == "bibcode":
         if not token:
             raise FullTextError(
-                "Set ADS_API_TOKEN or ADS_DEV_KEY to resolve an ADS bibcode. "
+                f"Set {ads_api.TOKEN_ENV} to resolve a bibcode. "
                 f"Create a token at {ads_api.TOKEN_URL}",
                 exit_code=2,
             )
         record = ads_search_record(f"bibcode:{normalized_identifier}", token, timeout)
         if record is None:
-            raise FullTextError(f"ADS did not return bibcode {normalized_identifier}.")
+            raise FullTextError(f"SciX did not return bibcode {normalized_identifier}.")
     elif token:
         query_name = "arxiv" if identifier_type == "arxiv" else "doi"
         try:
@@ -1355,6 +1350,8 @@ def discover(
         "pub": record.get("pub") if record else None,
         "citation_count": record.get("citation_count") if record else None,
         "read_count": record.get("read_count") if record else None,
+        "uat": list_value(record.get("uat")) if record else [],
+        "has": list_value(record.get("has")) if record else [],
         "requested_format": output_format,
         "candidates": candidates,
         "warnings": warnings,

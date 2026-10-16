@@ -322,6 +322,263 @@ class CatalogTests(unittest.TestCase):
         )
         self.assertEqual(audit["errors"], [])
 
+    def separate_preprint_and_publication(self):
+        preprint = {
+            **sample_manifest(self.source),
+            "input": "arXiv:2304.14665",
+            "input_type": "arxiv",
+            "normalized_identifier": "2304.14665",
+            "bibcode": "2023arXiv230414665Z",
+            "doctype": "eprint",
+            "pub": "arXiv e-prints",
+            "doi": ["10.48550/arXiv.2304.14665"],
+        }
+        self.ingest(preprint)
+        preprint_id = self.lookup("arXiv:2304.14665")["paper_id"]
+        with self.connection:
+            catalog.annotate_paper(
+                self.connection,
+                preprint_id,
+                collections=["FRB/Polarization"],
+                note="Read before publication.",
+            )
+        self.capture(
+            [{**source_record(), "identifier": []}], collections=["FRB/Statistics"]
+        )
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM papers").fetchone()[0], 2
+        )
+
+    def assert_merged_publication(self):
+        papers = self.connection.execute("SELECT * FROM papers").fetchall()
+        self.assertEqual(len(papers), 1)
+        self.assertEqual(papers[0]["bibcode"], "2023ApJ...955..142Z")
+        self.assertEqual(papers[0]["doctype"], "article")
+        paper_id = papers[0]["id"]
+        organization = catalog.paper_organization(self.connection, paper_id)
+        self.assertEqual(
+            organization["collections"], ["FRB/Polarization", "FRB/Statistics"]
+        )
+        self.assertEqual(
+            [note["text"] for note in organization["notes"]],
+            ["Read before publication."],
+        )
+        self.assertEqual(self.lookup("arXiv:2304.14665")["paper_id"], paper_id)
+        self.assertEqual(self.lookup()["reuse_status"], "reusable")
+        audit = lib.audit_library(
+            self.connection, self.fts, self.library, verify_hashes=True
+        )
+        self.assertEqual(audit["errors"], [])
+        self.assertNotIn(
+            "search_document_drift", [item["kind"] for item in audit["warnings"]]
+        )
+
+    def test_capture_merges_preprint_once_scix_links_publication(self):
+        self.separate_preprint_and_publication()
+        result = self.capture(
+            [{**source_record(), "identifier": ["arXiv:2304.14665"]}]
+        )
+        self.assertEqual(result["captured"], 1)
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM search_hits").fetchone()[0], 2
+        )
+        self.assert_merged_publication()
+
+    def test_enrich_merges_preprint_with_linked_publication(self):
+        self.separate_preprint_and_publication()
+        lib.enrich_paper_metadata(
+            self.connection,
+            self.fts,
+            catalog.metadata_manifest(
+                {**source_record(), "identifier": ["arXiv:2304.14665"]}
+            ),
+        )
+        self.assert_merged_publication()
+
+    def separate_duplicate_readings(self, *, conflicting=False):
+        preprint = sample_manifest(self.source)
+        preprint.update(
+            input="arXiv:2304.14665",
+            input_type="arxiv",
+            normalized_identifier="2304.14665",
+            bibcode="2023arXiv230414665Z",
+            doctype="eprint",
+            pub="arXiv e-prints",
+            doi=["10.48550/arXiv.2304.14665"],
+        )
+        preprint["selected"]["candidate"]["version"] = "preprint"
+        preprint["selected"]["final_url"] = "https://arxiv.org/html/2304.14665v1"
+        digest = sample_digest()
+        if conflicting:
+            finding = dict(digest["facets"][0]["findings"][0])
+            finding["statement"] = "Independent evidence from the preprint reading."
+            digest["facets"][0]["findings"].append(finding)
+        first = self.ingest(preprint, digest)
+        publication_source = self.root / "publication-source"
+        publication_source.mkdir()
+        publication = sample_manifest(
+            publication_source, body=b"<html>another wrapper for the same text</html>"
+        )
+        publication.update(arxiv_ids=[], doi=["10.3847/1538-4357/aced0b"])
+        publication["selected"]["candidate"]["version"] = "preprint"
+        publication["selected"]["final_url"] = "https://arxiv.org/html/2304.14665v2"
+        second = self.ingest(publication)
+        self.assertNotEqual(first["paper_id"], second["paper_id"])
+        self.assertEqual(first["content_sha256"], second["content_sha256"])
+        return first, second
+
+    def test_duplicate_reading_conflict_preserves_both_records(self):
+        self.separate_duplicate_readings(conflicting=True)
+        before = tuple(self.connection.iterdump())
+        actions = {
+            "capture": self.capture,
+            "ingest": self.ingest,
+            "enrich": lambda: lib.enrich_paper_metadata(
+                self.connection, self.fts, catalog.metadata_manifest(source_record())
+            ),
+        }
+        for name, action in actions.items():
+            with self.subTest(operation=name):
+                with self.assertRaisesRegex(
+                    lib.LiteratureError, "different stored digests"
+                ):
+                    action()
+                self.assertFalse(self.connection.in_transaction)
+                self.assertEqual(tuple(self.connection.iterdump()), before)
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM findings").fetchone()[0], 9
+        )
+
+    def test_duplicate_versions_preserve_artifacts_and_arxiv_labels(self):
+        first, second = self.separate_duplicate_readings()
+        self.capture()
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM versions").fetchone()[0], 1
+        )
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM digests").fetchone()[0], 1
+        )
+        for label, original in (("v1", first), ("v2", second)):
+            with self.subTest(label=label):
+                result = self.lookup(
+                    "arXiv:2304.14665" + label, original["artifact_sha256"]
+                )
+                self.assertEqual(result["reuse_status"], "reusable")
+                self.assertEqual(result["version"]["id"], second["version_id"])
+        self.assertEqual(
+            {row[0] for row in self.connection.execute("SELECT sha256 FROM artifacts")},
+            {first["artifact_sha256"], second["artifact_sha256"]},
+        )
+        audit = lib.audit_library(
+            self.connection, self.fts, self.library, verify_hashes=True
+        )
+        self.assertEqual(audit["errors"], [])
+        self.assertNotIn(
+            "search_document_drift", [item["kind"] for item in audit["warnings"]]
+        )
+
+    def test_duplicate_version_moves_the_only_stored_digest(self):
+        first, second = self.separate_duplicate_readings()
+        with self.connection:
+            self.connection.execute(
+                "DELETE FROM digests WHERE version_id = ?", (second["version_id"],)
+            )
+        self.capture()
+        result = self.lookup()
+        self.assertEqual(result["reuse_status"], "reusable")
+        self.assertEqual(
+            self.connection.execute("SELECT id FROM digests").fetchone()[0],
+            first["digest_id"],
+        )
+        self.assertEqual(result["version"]["id"], second["version_id"])
+
+    def test_ingest_conflict_rolls_back_identity_merge(self):
+        self.separate_preprint_and_publication()
+        before = tuple(self.connection.iterdump())
+        digest = sample_digest()
+        digest["overview"]["summary"] = "An independent complete reading summary."
+        with patch.object(lib, "store_objects") as store:
+            with self.assertRaisesRegex(lib.LiteratureError, "different digest"):
+                self.ingest(digest=digest)
+            store.assert_not_called()
+        self.assertFalse(self.connection.in_transaction)
+        self.assertEqual(tuple(self.connection.iterdump()), before)
+
+    def test_ingest_write_failure_rolls_back_identity_merge(self):
+        self.separate_preprint_and_publication()
+        before = tuple(self.connection.iterdump())
+        for step in ("store_objects", "insert_digest"):
+            with self.subTest(step=step):
+                with patch.object(lib, step, side_effect=RuntimeError("write failed")):
+                    with self.assertRaisesRegex(RuntimeError, "write failed"):
+                        self.ingest()
+                self.assertFalse(self.connection.in_transaction)
+                self.assertEqual(tuple(self.connection.iterdump()), before)
+
+    def test_enrich_failure_rolls_back_identity_merge(self):
+        self.separate_preprint_and_publication()
+        before = tuple(self.connection.iterdump())
+        with patch.object(lib, "upsert_paper", side_effect=RuntimeError("write failed")):
+            with self.assertRaisesRegex(RuntimeError, "write failed"):
+                lib.enrich_paper_metadata(
+                    self.connection, self.fts, catalog.metadata_manifest(source_record())
+                )
+        self.assertFalse(self.connection.in_transaction)
+        self.assertEqual(tuple(self.connection.iterdump()), before)
+
+    def test_ingest_merges_preprint_with_linked_publication(self):
+        self.separate_preprint_and_publication()
+        self.ingest()
+        self.assert_merged_publication()
+
+    def test_capture_adopts_final_bibcode_that_supersedes_temporary_record(self):
+        temporary = {
+            **source_record(bibcode="2023ApJ...tmp..142Z"),
+            "volume": None,
+            "page": None,
+        }
+        self.capture([temporary])
+        self.capture([{**source_record(), "alternate_bibcode": ["2023ApJ...tmp..142Z"]}])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual(paper["bibcode"], "2023ApJ...955..142Z")
+        self.assertEqual(json.loads(paper["metadata_json"])["volume"], "955")
+        self.assertEqual(self.lookup("2023ApJ...tmp..142Z")["paper_id"], paper["id"])
+
+    def test_capture_stores_scix_subjects_and_holdings(self):
+        def metadata():
+            row = self.connection.execute("SELECT metadata_json FROM papers").fetchone()
+            return json.loads(row[0])
+
+        record = {
+            **source_record(),
+            "uat": ["fast radio bursts", "radio transient sources"],
+            "has": ["body", "data"],
+        }
+        self.capture([record])
+        self.assertEqual(metadata()["uat"], record["uat"])
+        self.assertEqual(metadata()["has"], ["body", "data"])
+        self.capture([source_record()])
+        self.assertEqual(metadata()["uat"], record["uat"])
+        self.capture([{**record, "uat": ["magnetars"]}])
+        self.assertEqual(metadata()["uat"], ["magnetars"])
+        self.assertEqual(
+            catalog.brief_search_results(self.connection, "magnetars")[0]["bibcode"],
+            "2023ApJ...955..142Z",
+        )
+        self.ingest()
+        found = lib.search_library(
+            self.connection,
+            self.fts,
+            "magnetars",
+            scope="summary",
+            mode="terms",
+            topics=[],
+            year_from=None,
+            year_to=None,
+            limit=20,
+        )
+        self.assertEqual(found["results"][0]["reading_status"], "full")
+
     def test_summarize_and_repeat_capture_reuse_without_fabricated_full_reading(self):
         result = self.capture()
         item = result["records"][0]

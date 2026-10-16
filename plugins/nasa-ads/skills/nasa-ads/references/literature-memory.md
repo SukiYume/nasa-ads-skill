@@ -19,9 +19,9 @@ An abstract summary and a complete article digest have separate source identitie
 
 ## Screening Before Capture
 
-Exploratory searches use `ads_api.py --no-store search` with identity fields, title, abstract, and document type. Use the research metadata field set in [ADS CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library. Naked object numbers and wildcard terms can match reference lists, grant numbers, or unrelated identifiers. Prefer `title:` and `abs:` fields for object-name discovery and verify the actual subject. Preserve relevant counterevidence and alternative models; uncertain relevance remains an explicit candidate state. Label datasets, meeting abstracts, news, and proposals with their actual source type.
+Exploratory searches use `ads_api.py --no-store search` with identity fields, title, abstract, and document type. Use the research metadata field set in [SciX CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library. Naked object numbers and wildcard terms can match reference lists, grant numbers, or unrelated identifiers. Prefer `title:` and `abs:` fields for object-name discovery and verify the actual subject. Preserve relevant counterevidence and alternative models; uncertain relevance remains an explicit candidate state. Label datasets, meeting abstracts, news, and proposals with their actual source type.
 
-Retain the accepted original records in `response.docs` of a saved ADS response. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
+Retain the accepted original records in `response.docs` of a saved SciX response. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
 
 ```bash
 python3 "<skill-dir>/scripts/literature_db.py" capture --results "<screened-response.json>" --query "<query; page; criteria; returned/retained counts>"
@@ -31,7 +31,7 @@ Inspect the returned `run_id` and complete that run below. An empty retained set
 
 ## Automatic Capture and Summary Completion
 
-`ads_api.py search` and `bigquery` capture their returned records automatically. The request includes the metadata fields needed for reuse. The JSON response retains the ADS response and adds `literature.run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. `fulltext.py fetch` also captures its available metadata and exposes the same completion information. Preparation and capture leave scientific authorship to the agent.
+`ads_api.py search` and `bigquery` capture their returned records automatically. The request includes the metadata fields needed for reuse. The JSON response retains the SciX response and adds `literature.run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. `fulltext.py fetch` also captures its available metadata and exposes the same completion information. Preparation and capture leave scientific authorship to the agent.
 
 Capture uses the local library; the remote requests are read-only. The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) specifies opt-out behavior and option placement.
 
@@ -72,7 +72,7 @@ Finish all pages retrieved for the task. `pending` supports `--limit` and `--off
 
 `check --run-id <id>` verifies the task's summaries and topic memberships. It reports `needs_classification` and exits with code 1 while either requirement remains incomplete. Use plain `check` during requested whole-library maintenance. Inspect the existing `collections` tree before assigning paths; reuse its language and hierarchy. The agent chooses scientific classifications from the paper's content. The scripts persist and verify those choices.
 
-Recover capture from a saved ADS response or a full-text manifest:
+Recover capture from a saved SciX response or a full-text manifest:
 
 ```bash
 python3 "<skill-dir>/scripts/literature_db.py" capture --results "<response-or-manifest.json>" --query "<recorded scope>"
@@ -151,7 +151,7 @@ For foreground service operation, use:
 python3 "<skill-dir>/scripts/adslib.py" serve --port 8765
 ```
 
-The Web server uses the Python standard library and bundled assets. Local browsing needs no ADS token. An absent database displays an empty library without creating files; `init` is needed when upgrading an existing incompatible schema. Installing the skill provides its code. To reuse a personal library on another computer, transfer a CLI backup and restore it to a new destination, which rewrites managed article paths. Use the default destination or the same `NASA_ADS_LITERATURE_DIR` for subsequent searches and Web browsing. Stop and restart the server when changing its library directory.
+The Web server uses the Python standard library and bundled assets. Local browsing needs no SciX token. An absent database displays an empty library without creating files; `init` is needed when upgrading an existing incompatible schema. Installing the skill provides its code. To reuse a personal library on another computer, transfer a CLI backup and restore it to a new destination, which rewrites managed article paths. Use the default destination or the same `NASA_ADS_LITERATURE_DIR` for subsequent searches and Web browsing. Stop and restart the server when changing its library directory.
 
 On Windows, use `python` or `py -3` with the same arguments. The server supports collapsible topic navigation, combined topic/role/tag/year filters, sorting, summaries directly in the list, focused reading, scientific facets, version downloads, and BibTeX export for selected papers or the entire filtered view (up to 2000 papers). Narrow windows use a navigation drawer and a separate reader with a return button. The library information button shows the actual storage directory. Refresh reads current data from that directory. The page uses bundled assets and loads no external scripts. It binds to localhost and blocks cross-origin access. Classification and notes are edited through the CLI or agent.
 
@@ -159,7 +159,7 @@ Apply a year range with the year control's apply button. Invalid ranges keep the
 
 ## Citation Export
 
-For a citation-only task, use this section directly. Stored BibTeX and metadata-derived exports work offline. For missing papers, retrieve their metadata through ADS `bigquery`, finish that run's source summaries and scientific topic assignments, then export citations. Subsequent content investigation follows the shared [reading scope](../SKILL.md#reading-scope).
+For a citation-only task, use this section directly. Stored BibTeX and metadata-derived exports work offline. For missing papers, retrieve their metadata through SciX `bigquery`, finish that run's source summaries and scientific topic assignments, then export citations. Subsequent content investigation follows the shared [reading scope](../SKILL.md#reading-scope).
 
 Export the local bibliography:
 
@@ -169,7 +169,7 @@ python3 "<skill-dir>/scripts/literature_db.py" citations --collection "My manusc
 python3 "<skill-dir>/scripts/literature_db.py" citations --all --output "<personal-library.bib>"
 ```
 
-Cached official ADS entries retain their exact keys and source. A record without a cached official entry receives BibTeX generated from its stored metadata, with a provenance comment. Metadata-derived exports include only known fields; publication details may be incomplete.
+Cached official SciX entries retain their exact keys and source. A record without a cached official entry receives BibTeX generated from its stored metadata, with a provenance comment. Metadata-derived exports include only known fields; publication details may be incomplete.
 
 Fetch and cache official entries for selected known papers:
 
@@ -177,9 +177,9 @@ Fetch and cache official entries for selected known papers:
 python3 "<skill-dir>/scripts/literature_db.py" citations "<identifier>" --fetch
 ```
 
-This explicit online operation uses ADS credentials. Existing official entries are reused. Direct arXiv records with pending ADS indexing keep their metadata-derived entries. Citation output files are written outside the managed database directory.
+This explicit online operation uses SciX credentials. Existing official entries are reused. Direct arXiv records with pending SciX indexing keep their metadata-derived entries. Citation output files are written outside the managed database directory.
 
-A bulk unedited BibTeX export obtained through `ads_api.py export` can be cached with `import-citations --bibtex <ads-export.bib>`. Every entry must identify the paper's current library bibcode; unknown records, duplicates and incomplete entries abort the transaction. Refresh existing metadata through `enrich` first when ADS indexing or publication status has changed.
+A bulk unedited BibTeX export obtained through `ads_api.py export` can be cached with `import-citations --bibtex <scix-export.bib>`. Every entry must identify the paper's current library bibcode; unknown records, duplicates and incomplete entries abort the transaction. Refresh existing metadata through `enrich` first when SciX indexing or publication status has changed.
 
 ## Integrity, Backup, and Migration
 
@@ -199,4 +199,25 @@ Backups contain a consistent SQLite snapshot, article objects, and `backup.json`
 
 The audit checks SQLite integrity, foreign keys, digest validity, complete reading state, search parity, primary and historical objects, and their hashes. An unhealthy audit returns a nonzero exit code. `--skip-hashes` provides a structural pass. Pending abstract summaries represent incomplete reading work and appear in the summary queue.
 
-Use `enrich --manifest <file>` to add metadata and reconcile identifiers for an existing paper. Confirmed journal metadata can upgrade a preprint's bibliographic record. Use `reindex` to rebuild derived complete-digest search documents. A complete-digest replacement uses `backup` followed by approved `ingest --replace-digest`.
+Use `enrich --manifest <file>` to add metadata and reconcile identifiers for an existing paper. Confirmed journal metadata can upgrade a preprint's bibliographic record, and a record that lists the stored bibcode in `alternate_bibcode`, such as a final volume replacing a `.tmp.` bibcode, replaces it. When one capture, ingest, or enrich manifest carries identifiers held by several stored papers, such as a preprint and its separately captured publication that SciX later links, those papers merge into one. The merged paper keeps distinct versions, reading evidence, briefs, topics, tags, roles, notes, and search hits, and takes the published metadata. Merging follows the manifest's identifiers; verify title and authors before adding identifiers by hand to unite records that SciX has not linked.
+
+Duplicate full-text versions retain their artifact files and exact arXiv version labels. Identical stored digests share one record; a digest present on only one side moves to the retained version. Different stored digests stop automatic merging with a conflict error, and every operation carrying both records' identifiers reports the same conflict until the digests agree. Reconcile them on the separate records:
+
+1. Run `backup`.
+2. Run `lookup <identifier> --include-digest` for each record with an identifier only that record holds, such as the preprint's arXiv ID and the publication's DOI. Note each `version.manifest_path` and stored digest.
+3. Author one complete digest that keeps the verified evidence of both readings, and check it with `validate-digest`.
+4. Run `ingest --manifest <that record's manifest_path> --digest <reconciled digest> --replace-digest` once for each record. Each stored manifest carries only its own record's identifiers.
+5. Retry the original capture, ingest, or enrich; the records then merge.
+
+Identity reconciliation, ingest checks, and database writes share one transaction; a failed operation rolls back its database changes. Successful merging rebuilds the retained paper's search documents.
+
+A whole-library SciX metadata refresh completes an upgrade from a pre-2.0 library and picks up later publication changes:
+
+1. Run `backup`.
+2. Write the bibcodes from `list --limit <paper count>` to a file and run `ads_api.py bigquery --bibcodes-file <file>` with default capture. SciX resolves superseded preprint and `.tmp.` bibcodes to the current records.
+3. For papers without a bibcode, run `ads_api.py search --query 'identifier:"arXiv:<id>"'` with default capture; papers SciX has not indexed keep their arXiv metadata.
+4. Complete the pending summaries of these runs, cache official BibTeX with `citations --fetch` where needed, and finish with `check` and `audit`.
+
+Capture applies the identifier rules above, including preprint upgrades, superseded bibcodes, and merges. Unchanged sources reuse their summaries.
+
+Use `reindex` to rebuild derived complete-digest search documents. A complete-digest replacement uses `backup` followed by approved `ingest --replace-digest`.

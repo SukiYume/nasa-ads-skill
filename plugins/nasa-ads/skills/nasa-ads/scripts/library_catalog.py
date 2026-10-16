@@ -274,14 +274,14 @@ def capture_search(
     library = db()
     response = payload.get("response")
     if not isinstance(response, dict) or not isinstance(response.get("docs"), list):
-        raise library.LiteratureError("ADS search response requires response.docs.", 2)
+        raise library.LiteratureError("SciX search response requires response.docs.", 2)
     count = response.get("numFound")
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise library.LiteratureError(
-            "ADS search response requires a nonnegative numFound.", 2
+            "SciX search response requires a nonnegative numFound.", 2
         )
     manifests = [
-        metadata_manifest(library.require_mapping(record, "ADS record"))
+        metadata_manifest(library.require_mapping(record, "SciX record"))
         for record in response["docs"]
     ]
     prepared = [
@@ -327,7 +327,7 @@ def capture_search(
                     "summary_status": "complete" if brief["summary"] else "pending",
                 }
             )
-            reindex_paper(connection, fts5, paper_id)
+            library.reindex_paper_documents(connection, fts5, paper_id)
     unique = list({item["paper_id"]: item for item in captured}.values())
     return {
         "status": "captured",
@@ -342,29 +342,6 @@ def capture_search(
         "uncategorized": completion_report(connection, run_id=run_id)["uncategorized"],
         "records": unique,
     }
-
-
-def reindex_paper(connection, fts5: bool, paper_id: int):
-    library = db()
-    for row in connection.execute(
-        "SELECT v.id, v.text_path, d.id AS digest_id, d.digest_json FROM versions v "
-        "JOIN digests d ON d.version_id = v.id WHERE v.paper_id = ?",
-        (paper_id,),
-    ).fetchall():
-        text = (
-            Path(row["text_path"]).read_text(encoding="utf-8")
-            if row["text_path"] and Path(row["text_path"]).is_file()
-            else ""
-        )
-        document = library.build_search_document(
-            connection,
-            paper_id,
-            row["id"],
-            row["digest_id"],
-            json.loads(row["digest_json"]),
-            text,
-        )
-        library.replace_search_document(connection, document, fts5)
 
 
 def pending_summaries(connection, *, run_id=None, limit=50, offset=0) -> dict:
@@ -890,7 +867,7 @@ def citation_for_paper(connection, paper_id: int) -> dict:
     if arxiv_id:
         fields.update(eprint=arxiv_id, archivePrefix="arXiv")
     fields["url"] = (
-        "https://ui.adsabs.harvard.edu/abs/" + quote(paper["bibcode"], safe="")
+        ads_api.abstract_url(paper["bibcode"])
         if paper["bibcode"]
         else "https://doi.org/" + quote(doi, safe="/")
         if doi
@@ -930,7 +907,7 @@ def cache_ads_citation(connection, paper_id: int, token: str):
     matches = re.findall(r"(?m)^\s*@\w+\s*\{\s*([^,\s]+)\s*,", text)
     if len(matches) != 1 or matches[0] != paper["bibcode"]:
         raise db().LiteratureError(
-            "ADS citation response does not identify the requested bibcode.", 2
+            "SciX citation response does not identify the requested bibcode.", 2
         )
     with connection:
         connection.execute(
@@ -948,7 +925,7 @@ def export_citations(connection, paper_ids) -> str:
     ]
     if len({entry["citekey"] for entry in entries}) != len(entries):
         raise db().LiteratureError(
-            "Selected citations contain duplicate keys. Refresh their ADS citations.", 2
+            "Selected citations contain duplicate keys. Refresh their SciX citations.", 2
         )
     return "\n".join(entry["bibtex"].strip() for entry in entries) + (
         "\n" if entries else ""
@@ -956,10 +933,10 @@ def export_citations(connection, paper_ids) -> str:
 
 
 def import_ads_citations(connection, text: str) -> dict:
-    """Cache an unedited ADS BibTeX export after checking every record identity."""
+    """Cache an unedited SciX BibTeX export after checking every record identity."""
     matches = list(re.finditer(r"(?m)^\s*@\w+\s*\{\s*([^,\s]+)\s*,", text))
     if not matches:
-        raise db().LiteratureError("The ADS export contains no BibTeX entries.", 2)
+        raise db().LiteratureError("The SciX export contains no BibTeX entries.", 2)
     prepared = []
     seen = set()
     for index, match in enumerate(matches):
@@ -967,7 +944,7 @@ def import_ads_citations(connection, text: str) -> dict:
         paper = db().find_paper_by_identifier(connection, key)
         if paper is None or paper["bibcode"] != key or key in seen:
             raise db().LiteratureError(
-                f"ADS citation does not match one current library bibcode: {key}", 2
+                f"SciX citation does not match one current library bibcode: {key}", 2
             )
         seen.add(key)
         entry = text[
@@ -1019,7 +996,7 @@ def record_version_label(connection, version_id: int, manifest: dict):
 
 def add_parser_commands(subparsers):
     capture = subparsers.add_parser(
-        "capture", help="store an ADS result JSON with pending source-based summaries"
+        "capture", help="store a SciX result JSON with pending source-based summaries"
     )
     capture.add_argument("--results", required=True)
     capture.add_argument("--query", default="imported search results")
@@ -1046,7 +1023,7 @@ def add_parser_commands(subparsers):
     organize.add_argument("--annotations", required=True)
     import_cites = subparsers.add_parser(
         "import-citations",
-        help="cache an unedited ADS BibTeX export for existing papers",
+        help="cache an unedited SciX BibTeX export for existing papers",
     )
     import_cites.add_argument("--bibtex", required=True)
     summaries = subparsers.add_parser(
@@ -1073,7 +1050,7 @@ def add_parser_commands(subparsers):
     )
     runs.add_argument("--limit", type=ads_api.positive_int, default=20)
     cites = subparsers.add_parser(
-        "citations", help="export cached BibTeX or fetch official ADS entries"
+        "citations", help="export cached BibTeX or fetch official SciX entries"
     )
     cites.add_argument("identifiers", nargs="*")
     cites.add_argument("--collection")

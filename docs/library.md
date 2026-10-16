@@ -8,11 +8,12 @@
 - [Choose the data directory](#choose-the-data-directory)
 - [Move to another computer](#move-to-a-new-computer)
 - [Upgrade an older database](#upgrade-an-older-library)
+- [Refresh SciX metadata](#refresh-scix-metadata)
 - [Check library health](#check-library-health)
 
 ## Locate the Installed Skill
 
-You can ask the agent to perform the tasks in this guide. It locates the scripts relative to its loaded `SKILL.md` and uses your selected library. Local browsing, cached citations, backup, and health checks work without an ADS token.
+You can ask the agent to perform the tasks in this guide. It locates the scripts relative to its loaded `SKILL.md` and uses your selected library. Local browsing, cached citations, backup, and health checks work without a SciX token.
 
 For manual commands, first choose the directory containing the installed `SKILL.md`. The examples below use the Codex standalone location.
 
@@ -38,7 +39,7 @@ Complete [one-time adslib registration](installation.md#register-the-adslib-comm
 adslib
 ```
 
-`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no ADS token.
+`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no SciX token.
 
 | Command | Action |
 | --- | --- |
@@ -78,6 +79,7 @@ Claude plugin users can invoke `/nasa-ads:ads-memory serve`. The agent resolves 
 | Find papers for a manuscript section | Combine a topic with a writing role such as methods or discussion |
 | Search a particular evidence layer | Choose metadata, authored summaries, or stored full text |
 | Apply a date range | Open years, enter the range, and click 应用年份; applied filters can be removed individually |
+| Browse by SciX subject | Open a paper and click a subject term in its overview to search the library for it; the header links the SciX record and shows whether SciX holds the full text or linked data |
 | Read detailed findings | Open a paper and switch between overview, scientific facets, citations, and article versions |
 | Revisit the same result | Copy the article link; it preserves filters, page, paper, and detail tab on the same computer |
 | Read with the keyboard | `/` focuses search; Escape closes the year control or reader; arrow keys switch focused detail tabs |
@@ -87,9 +89,9 @@ The interface provides read-only browsing. Ask the agent to add summaries, class
 
 ## Export Citations
 
-> Export BibTeX for the papers in my selected topic, use cached official ADS entries where available, and save the bibliography as references.bib.
+> Export BibTeX for the papers in my selected topic, use cached official SciX entries where available, and save the bibliography as references.bib.
 
-The Web citation tab shows each entry's source. Official ADS entries retain their exact citation keys. A paper without a cached official entry receives an entry generated from known local metadata, with a provenance label. Fetching official entries requires ADS credentials.
+The Web citation tab shows each entry's source. Official SciX entries retain their exact citation keys. A paper without a cached official entry receives an entry generated from known local metadata, with a provenance label. Fetching official entries requires SciX credentials.
 
 These examples write `references.bib` in the current working directory. Replace the topic with one present in your library.
 
@@ -109,7 +111,7 @@ python3 "$nasa_ads_skill/scripts/literature_db.py" citations --all --output pers
 python3 "$nasa_ads_skill/scripts/literature_db.py" citations "2016PhRvL.116f1102A" --fetch
 ```
 
-The last command fetches and caches the official citation for a known local paper. Ask the agent to retrieve metadata for an article that is absent from the library. For RIS, AASTeX, MNRAS, or another supported remote format, ask for that format explicitly; the agent uses ADS citation export.
+The last command fetches and caches the official citation for a known local paper. Ask the agent to retrieve metadata for an article that is absent from the library. For RIS, AASTeX, MNRAS, or another supported remote format, ask for that format explicitly; the agent uses SciX citation export.
 
 ## Choose the Data Directory
 
@@ -199,6 +201,14 @@ python3 "$nasa_ads_skill/scripts/literature_db.py" audit
 
 Schema migration prepares the storage format. The agent assigns scientific categories by reading each paper's available summary and evidence. Ask it to organize an older unclassified library when that content work is needed.
 
+## Refresh SciX Metadata
+
+Libraries built before version 2.0 lack SciX subject terms and can hold a preprint and its publication as separate papers. Version 2.0 keeps the same database schema, so a metadata refresh completes the upgrade:
+
+> Back up my personal literature library, refresh every stored paper's metadata from SciX, add missing source summaries, and cache official BibTeX for papers that lack it.
+
+The agent retrieves each paper's current SciX record and writes summaries for abstracts that changed. The refresh adds subject terms, fills newly available abstracts, updates published preprints and temporary bibcodes to their journal versions, and combines a preprint and its journal version saved as two entries. Combined papers keep every reading, summary, topic, tag, note, and citation. The refresh needs a SciX token; papers SciX has not yet indexed keep their arXiv metadata until a later refresh.
+
 ## Check Library Health
 
 Windows PowerShell:
@@ -216,6 +226,8 @@ python3 "$nasa_ads_skill/scripts/literature_db.py" stats
 python3 "$nasa_ads_skill/scripts/literature_db.py" check
 python3 "$nasa_ads_skill/scripts/literature_db.py" audit
 ```
+
+The agent may report two different readings of the same article. This happens when a preprint and its journal version were saved as two entries and each was read in full. The library stays unchanged and both readings remain intact. Ask the agent to reconcile them; the two entries then become one.
 
 `stats` reports counts and the library location. `check` reports unfinished summaries and topic assignments; its exit code is 1 while that content work remains. `audit` checks database relationships and saved article integrity. A library can have healthy integrity and pending reading work at the same time.
 

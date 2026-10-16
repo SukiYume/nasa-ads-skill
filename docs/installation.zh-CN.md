@@ -2,7 +2,7 @@
 
 [返回 README](../README.zh-CN.md#安装) · [English](installation.md)
 
-选择正在使用的宿主，完成对应安装，配置在线 ADS 请求所需的 token，再验证结果。每个宿主的命令集中在同一个小节。已经安装的用户可以直接查看[更新步骤](#更新已有安装)。
+选择正在使用的宿主，完成对应安装，配置在线 SciX 请求所需的 token，再验证结果。每个宿主的命令集中在同一个小节。已经安装的用户可以直接查看[更新步骤](#更新已有安装)。
 
 - [安装前准备](#安装前准备)
 - [Claude Code 插件](#claude-code-plugin)
@@ -11,7 +11,7 @@
 - [Gemini CLI](#gemini-cli)
 - [其他宿主](#通用-markdown-skill-宿主)
 - [注册 adslib](#注册-adslib-命令)
-- [ADS token](#配置-ads-token)
+- [SciX token](#配置-scix-token)
 - [安装与 API 验证](#验证-api)
 - [更新步骤](#更新已有安装)
 
@@ -24,10 +24,10 @@
    - [Claude Code 安装文档](https://code.claude.com/docs/en/setup)
    - [Codex CLI 安装文档](https://developers.openai.com/codex/cli/)
    - [Gemini CLI 安装文档](https://geminicli.com/docs/get-started/installation/)
-3. **ADS 账号和 API token**：用于在线 ADS 请求，按[配置 ADS token](#配置-ads-token)完成；本地浏览和缓存引用导出可以离线使用。
-4. **Python 3.10 或更新版本**：完整的全文与文献记忆流程需要 Python，可从 [python.org/downloads](https://www.python.org/downloads/) 安装。四个自带 CLI 的核心路径都不需要第三方 Python 包。Python 不可用时，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，执行有限的 ADS 元数据/API 直接 HTTP 回退；该回退不提供全文准备和持久文献记忆。
+3. **SciX 账号和 API token**：用于在线 SciX 请求，按[配置 SciX token](#配置-scix-token)完成；已有 NASA ADS 账号可直接用同一凭据登录 SciX；本地浏览和缓存引用导出可以离线使用。
+4. **Python 3.10 或更新版本**：完整的全文与文献记忆流程需要 Python，可从 [python.org/downloads](https://www.python.org/downloads/) 安装。四个自带 CLI 的核心路径都不需要第三方 Python 包。Python 不可用时，macOS/Linux/WSL 可用 `curl`，Windows 可用 PowerShell，执行有限的 SciX 元数据/API 直接 HTTP 回退；该回退不提供全文准备和持久文献记忆。
 5. **可选 PDF 工具**：`pdftotext` 和 `pdfinfo` 可改善 PDF 文本处理，`pdftoppm` 可渲染扫描页。缺少这些工具时，具备相应能力的宿主仍可直接视觉阅读下载的 PDF 或页面图片。
-6. **可访问外网 HTTPS**：需要连接 `api.adsabs.harvard.edu`、`arxiv.org` 和流程选中的合法出版社或仓储来源。
+6. **可访问外网 HTTPS**：需要连接 `api.scixplorer.org`、`arxiv.org` 和流程选中的合法出版社或仓储来源。
 
 检查程序是否已经安装：
 
@@ -88,7 +88,7 @@ claude
 /nasa-ads:ads-memory <search, collections, serve, citations, pending, or paper topics>
 ```
 
-接着完成[注册 adslib](#注册-adslib-命令)和[配置 ADS token](#配置-ads-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
+接着完成[注册 adslib](#注册-adslib-命令)和[配置 SciX token](#配置-scix-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
 
 ### Codex Plugin
 
@@ -120,7 +120,7 @@ codex
 
 可以用 `$nasa-ads` 显式调用、通过 `/skills` 查看，也可以直接描述天文文献任务。
 
-接着完成[注册 adslib](#注册-adslib-命令)和[配置 ADS token](#配置-ads-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
+接着完成[注册 adslib](#注册-adslib-命令)和[配置 SciX token](#配置-scix-token)，然后执行[验证 API](#验证-api)中的公开论文测试。
 
 ### Codex 独立 Skill
 
@@ -251,7 +251,7 @@ gemini
 /memory show
 ```
 
-确认已加载内容中包含 `NASA ADS` 标题。本仓库自己的 [`GEMINI.md`](../GEMINI.md) 展示了同样的项目级相对导入格式。
+确认已加载内容中包含 `SciX Literature Agent Workflow` 标题。本仓库自己的 [`GEMINI.md`](../GEMINI.md) 展示了同样的项目级相对导入格式。
 
 ### 通用 Markdown Skill 宿主
 
@@ -264,7 +264,7 @@ git clone https://github.com/SukiYume/nasa-ads-skill.git
 2. 把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主文档指定的 skill 或 prompt 目录。
 3. 配置宿主加载其中的 `SKILL.md`。
 4. 确认宿主可以用 Python 3 运行自带 CLI，或能通过 `curl`/PowerShell 使用直接 HTTP 回退。
-5. 按下一节设置 ADS token。
+5. 按下一节设置 SciX token。
 6. 运行[验证 API](#验证-api)中的公开论文测试。
 
 不同宿主使用的发现目录和调用语法可能不同。未采用上述 Claude Code、Codex 或 Gemini 约定时，请查阅该宿主的当前官方文档。
@@ -300,19 +300,19 @@ adslib --version
 adslib
 ```
 
-版本应为 `1.15.3`。浏览器自动打开，服务在后台运行。使用 `adslib status`、`adslib stop` 和 `adslib restart` 管理服务；`adslib serve` 在前台运行，按 `Ctrl+C` 停止。完整命令见[文献库指南](library.zh-CN.md)。找不到命令时重启终端应用或 IDE，使其读取新的 PATH；也可直接执行已安装的 `adslib.py`。移动 skill、升级到新的插件缓存目录或更换 Python 后，再运行一次 `install` 更新命令指向。
+版本应为 `2.0.0`。浏览器自动打开，服务在后台运行。使用 `adslib status`、`adslib stop` 和 `adslib restart` 管理服务；`adslib serve` 在前台运行，按 `Ctrl+C` 停止。完整命令见[文献库指南](library.zh-CN.md)。找不到命令时重启终端应用或 IDE，使其读取新的 PATH；也可直接执行已安装的 `adslib.py`。移动 skill、升级到新的插件缓存目录或更换 Python 后，再运行一次 `install` 更新命令指向。
 
-## 配置 ADS Token
+## 配置 SciX Token
 
-每次调用 ADS Developer API 都需要个人 token。
+每次调用 SciX API 都需要个人 token。在 NASA ADS 上生成的 token 可以直接在 SciX 使用。
 
-1. 打开 [ADS token settings](https://ui.adsabs.harvard.edu/#user/settings/token)。
-2. 注册 ADS 账号或登录已有账号。
+1. 打开 [SciX token settings](https://scixplorer.org/user/settings/token)。
+2. 注册 SciX 账号或登录；NASA ADS 账号凭据可直接使用。
 3. 如果直达链接落在其他页面，请进入账号设置并选择 **API Token**。
-4. 选择 **Generate a new key**。
+4. 生成新的 token。
 5. 复制 token 并妥善保管。
 
-建议使用 `ADS_API_TOKEN` 作为主要环境变量；`ADS_DEV_KEY` 可作为兼容回退。
+把 token 保存在 `ADS_API_TOKEN` 环境变量中。
 
 ### macOS、Linux 或 WSL
 
@@ -327,10 +327,10 @@ export ADS_API_TOKEN='paste-your-token-here'
 检查变量是否存在，同时避免打印 token：
 
 ```bash
-if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then
-  echo "ADS token is set"
+if [ -n "${ADS_API_TOKEN:-}" ]; then
+  echo "SciX token is set"
 else
-  echo "ADS token is missing"
+  echo "SciX token is missing"
 fi
 ```
 
@@ -355,18 +355,18 @@ $env:ADS_API_TOKEN = 'paste-your-token-here'
 执行持久设置后，请打开新终端并重启宿主。检查变量是否存在，同时避免打印 token：
 
 ```powershell
-if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) {
-  'ADS token is set'
+if ($env:ADS_API_TOKEN) {
+  'SciX token is set'
 } else {
-  'ADS token is missing'
+  'SciX token is missing'
 }
 ```
 
-请勿把 token 放入仓库、截图、共享日志、shell 转录或支持请求。发现泄露时，请在 ADS 设置中撤销并重新生成。
+请勿把 token 放入仓库、截图、共享日志、shell 转录或支持请求。发现泄露时，请在 SciX 设置中撤销并重新生成。
 
 ## 验证 API
 
-下面使用一篇公开论文验证网络、身份认证和 ADS 响应格式。
+下面使用一篇公开论文验证网络、身份认证和 SciX 响应格式。
 
 ### 已安装的宿主
 
@@ -379,7 +379,7 @@ if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) {
 在 Codex、Gemini CLI 或其他宿主中发送：
 
 ```text
-在 NASA ADS 中检索 bibcode 2016PhRvL.116f1102A，返回标题、年份和 bibcode。
+在 SciX 中检索 bibcode 2016PhRvL.116f1102A，返回标题、年份和 bibcode。
 ```
 
 结果应识别出 *Observation of Gravitational Waves from a Binary Black Hole Merger*，并包含 `2016PhRvL.116f1102A`。如果提示缺少 token，说明宿主没有继承环境变量；如果返回 HTTP 错误，请按[排错](../README.zh-CN.md#排错)处理。
@@ -416,11 +416,11 @@ python "$nasaAdsSkill/scripts/ads_api.py" --no-store search `
   --rows 1
 ```
 
-如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。四个版本命令均应报告 `1.15.3`。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。`--no-store` 诊断会保留文献库当前内容。
+如果 Python 注册为 `py` launcher，请把 `python` 换成 `py -3`。四个版本命令均应报告 `2.0.0`。JSON 响应中应包含 bibcode `2016PhRvL.116f1102A`。`--no-store` 诊断会保留文献库当前内容。
 
 ### 全文 smoke test
 
-这篇公开 arXiv 论文有官方 HTML 版本，因此 smoke test 不依赖 PDF 辅助工具。环境中没有 ADS token 时也可以运行。
+这篇公开 arXiv 论文有官方 HTML 版本，因此 smoke test 不依赖 PDF 辅助工具。环境中没有 SciX token 时也可以运行。
 
 macOS、Linux 或 WSL：
 
@@ -444,7 +444,7 @@ python "$nasaAdsSkill/scripts/fulltext.py" fetch `
 
 ### 文献记忆 smoke test
 
-数据库 CLI 不需要 ADS token 就能验证 schema 和摘要契约。`template` 只输出 JSON，不会创建文献库。
+数据库 CLI 不需要 SciX token 就能验证 schema 和摘要契约。`template` 只输出 JSON，不会创建文献库。
 
 macOS、Linux 或 WSL：
 
@@ -462,7 +462,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-两个平台上的 CLI 版本命令均应报告 `1.15.3`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。正常检索、全文获取和显式文献库写入会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
+两个平台上的 CLI 版本命令均应报告 `2.0.0`。schema version 2 模板应包含 `overview`、`facets`、`findings`、`global_limitations` 和 `reading.coverage`。正常检索、全文获取和显式文献库写入会在 Windows 的 `%LOCALAPPDATA%\nasa-ads\literature` 或 macOS/Linux 的 `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` 创建或更新文献库。文献库不存在时，只读命令返回空结果且不会创建文件。可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。
 
 ### 直接 HTTP 回退
 
@@ -470,7 +470,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" template
 
 ## 更新已有安装
 
-沿用安装时选择的方式和源码目录进行更新。已有数据库报告 schema 不匹配时，按[数据库升级步骤](library.zh-CN.md#升级旧版文献库)处理。
+沿用安装时选择的方式和源码目录进行更新。2.0.0 版只从 `ADS_API_TOKEN` 读取 token；原先使用 `ADS_DEV_KEY` 时，请按[配置 SciX token](#配置-scix-token)把它的值改存到 `ADS_API_TOKEN`。从 1.x 升级后，请[刷新一次 SciX 元数据](library.zh-CN.md#刷新-scix-元数据)。已有数据库报告 schema 不匹配时，按[数据库升级步骤](library.zh-CN.md#升级旧版文献库)处理。
 
 Claude Code 或 Codex plugin 需要刷新 marketplace 和已经安装的 plugin：
 

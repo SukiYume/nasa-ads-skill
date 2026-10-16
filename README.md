@@ -6,8 +6,8 @@
 
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
-[![NASA ADS](https://img.shields.io/badge/Literature-NASA%20ADS-0B3D91)](https://ui.adsabs.harvard.edu/)
-[![Version](https://img.shields.io/badge/version-1.15.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
+[![Version](https://img.shields.io/badge/version-2.0.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -27,7 +27,7 @@ Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 ## Overview
 
-**NASA ADS Skill** brings [NASA ADS](https://ui.adsabs.harvard.edu/) into Claude Code, Codex, Gemini CLI, and other Markdown-skill hosts. It supports astronomy literature discovery, claim checks, and evidence gathering for **reviews, introductions, methods, and discussions**.
+**NASA ADS Skill** brings [SciX](https://scixplorer.org/), the NASA Science Explorer that succeeds NASA ADS, into Claude Code, Codex, Gemini CLI, and other Markdown-skill hosts. It supports astronomy literature discovery, claim checks, and evidence gathering for **reviews, introductions, methods, and discussions**.
 
 Each research task builds knowledge for later use:
 
@@ -43,7 +43,7 @@ Paste the prompt below into an agent with terminal and internet access. It selec
 <summary><strong>Copy the installation prompt</strong> · The agent completes setup and verification</summary>
 
 ```text
-Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the README and follow docs/installation.md for the current agent host, install missing prerequisites and the complete skill, replace only an existing nasa-ads installation when needed, check ADS_API_TOKEN and then ADS_DEV_KEY without displaying their values and guide me through token setup for online ADS access when both are absent, verify SKILL.md, agents/openai.yaml, scripts/ads_api.py, scripts/fulltext.py, scripts/literature_db.py, scripts/library_catalog.py, scripts/library_web.py, scripts/adslib.py, assets/library/index.html, assets/library/style.css, assets/library/app.js, references/research-writing.md, references/ads-cli.md, references/fulltext.md, references/literature-memory.md, references/digest-schema.md, references/libraries.md, and references/http-fallback.md, read the installed SKILL.md, run all four CLI version checks, run install from the installed scripts/adslib.py to register the adslib command and verify adslib --version in a fresh terminal, run the documented API smoke test when credentials are available, run the full-text and library smoke tests with the documented diagnostic options, verify that the Web page loads, and report the installed path, version, and results.
+Install the current NASA ADS Skill from https://github.com/SukiYume/nasa-ads-skill on this computer: read the README and follow docs/installation.md for the current agent host, install missing prerequisites and the complete skill, replace only an existing nasa-ads installation when needed, check ADS_API_TOKEN without displaying its value and guide me through token setup for online SciX access when it is absent, verify SKILL.md, agents/openai.yaml, scripts/ads_api.py, scripts/fulltext.py, scripts/literature_db.py, scripts/library_catalog.py, scripts/library_web.py, scripts/adslib.py, assets/library/index.html, assets/library/style.css, assets/library/app.js, references/research-writing.md, references/ads-cli.md, references/fulltext.md, references/literature-memory.md, references/digest-schema.md, references/libraries.md, and references/http-fallback.md, read the installed SKILL.md, run all four CLI version checks, run install from the installed scripts/adslib.py to register the adslib command and verify adslib --version in a fresh terminal, run the documented API smoke test when credentials are available, run the full-text and library smoke tests with the documented diagnostic options, verify that the Web page loads, and report the installed path, version, and results.
 ```
 
 </details>
@@ -64,9 +64,11 @@ Choose the route matching your host:
 
 The [installation guide](docs/installation.md) contains Windows and macOS/Linux/WSL commands, all required-file checks, and diagnostics. Existing installations use the [update instructions](docs/installation.md#updating-an-existing-install). Keep the complete skill folder so its scripts, references, and Web assets remain available.
 
-## Configure the ADS Token
+> **Upgrading from 1.x:** version 2.0 sends every online request to SciX and reads the token only from `ADS_API_TOKEN`; a value kept in `ADS_DEV_KEY` must move there. Existing libraries need no schema migration. Ask the agent to [refresh SciX metadata](docs/library.md#refresh-scix-metadata) once to add subject terms, upgrade published preprints, and merge duplicate records.
 
-Online ADS requests require a personal token from [ADS account settings](https://ui.adsabs.harvard.edu/#user/settings/token). Use `ADS_API_TOKEN`; `ADS_DEV_KEY` is supported as a fallback. Local library browsing, stored article reading, and cached citations work offline.
+## Configure the SciX Token
+
+Online SciX requests require a personal token from [SciX account settings](https://scixplorer.org/user/settings/token), stored in `ADS_API_TOKEN`. NASA ADS accounts and tokens carry over to SciX. Local library browsing, stored article reading, and cached citations work offline.
 
 Set the token in the terminal that will start your agent. These examples report presence without printing the value.
 
@@ -74,23 +76,23 @@ Set the token in the terminal that will start your agent. These examples report 
 
 ```powershell
 $env:ADS_API_TOKEN = 'paste-your-token-here'
-if ($env:ADS_API_TOKEN -or $env:ADS_DEV_KEY) { 'ADS token is set' }
+if ($env:ADS_API_TOKEN) { 'SciX token is set' }
 ```
 
 **macOS, Linux, or WSL:**
 
 ```bash
 export ADS_API_TOKEN='paste-your-token-here'
-if [ -n "${ADS_API_TOKEN:-${ADS_DEV_KEY:-}}" ]; then echo "ADS token is set"; fi
+if [ -n "${ADS_API_TOKEN:-}" ]; then echo "SciX token is set"; fi
 ```
 
-These settings last for the current terminal. Follow the [persistent token setup](docs/installation.md#configure-the-ads-token) for future sessions, then reopen the terminal and agent. Keep credentials outside shared files and logs. A [direct HTTP fallback](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) covers supported remote API operations when Python is unavailable; full-text preparation, persistent storage, and Web browsing require Python.
+These settings last for the current terminal. Follow the [persistent token setup](docs/installation.md#configure-the-scix-token) for future sessions, then reopen the terminal and agent. Keep credentials outside shared files and logs. A [direct HTTP fallback](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md) covers supported remote API operations when Python is unavailable; full-text preparation, persistent storage, and Web browsing require Python.
 
 ## Verify the API
 
 After installation, send your agent a small request:
 
-> Use nasa-ads to find bibcode 2016PhRvL.116f1102A and return its title, year, and ADS link.
+> Use nasa-ads to find bibcode 2016PhRvL.116f1102A and return its title, year, and SciX link.
 
 The result should identify *Observation of Gravitational Waves from a Binary Black Hole Merger* (2016). The [verification guide](docs/installation.md#verify-the-api) also provides CLI diagnostics that keep test papers out of your personal library, full-text checks, and expected version output.
 
@@ -106,9 +108,10 @@ Describe the scientific question and the kind of evidence you need. The skill ha
 | **Discussion evidence** | “Find studies that support or challenge this interpretation, and compare sample selection and uncertainties.” |
 | **A specific article** | “Read arXiv:1901.04502 and summarize its methods, findings, and limitations.” |
 | **An article detail** | “Explain Figure 3 in this paper and check the authors’ conclusion.” |
+| **Subject filters** | “Find papers under the UAT subject ‘fast radio bursts’ since 2024 whose full text SciX indexes.” |
 | **Earlier reading** | “Search my local library for circular-polarization sign reversals and show the supporting findings.” |
-| **Citations** | “Export BibTeX for these papers using cached official ADS entries where available.” |
-| **ADS account tools** | “List my ADS libraries” or “Show citation metrics for these bibcodes.” |
+| **Citations** | “Export BibTeX for these papers using cached official SciX entries where available.” |
+| **SciX account tools** | “List my SciX libraries” or “Show citation metrics for these bibcodes.” |
 
 Describe the research question; storage is part of the default workflow. Coarse discovery screens titles, abstracts, and source types before storing retained candidates and their source briefs. Obvious off-topic matches stay outside the library. Every paper selected for content assessment enters the refined reading set and receives full reading and silent ingest, including papers later excluded from the synthesis. A question about one figure, table, or conclusion follows the same paper-wide workflow; the answer addresses the requested detail. Verified complete versions are reused, and adequate local evidence can support an offline review. Successful library work stays silent. Access gaps are reported; a persistent storage failure preserves retry materials and is disclosed alongside the verified scientific answer.
 
@@ -120,7 +123,7 @@ After [registering adslib during installation](docs/installation.md#register-the
 adslib
 ```
 
-`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no ADS token.
+`adslib` opens the browser and starts or reuses a background service. You can close the terminal. Run it again after restarting the computer. A conflicting port gets an available alternative; subsequent commands discover that service using the same library and preferred port. Web uses local assets and the Python standard library and needs no SciX token.
 
 | Command | Action |
 | --- | --- |
@@ -157,7 +160,7 @@ You can also ask the agent:
 
 > Use the installed nasa-ads skill to open my personal Web library.
 
-The page combines topics, writing roles, years, and search scopes; displays summaries and scientific findings; downloads saved article versions; and exports selected papers or the full filtered bibliography. Page links preserve the search and reading context. The agent updates classifications, summaries, and notes.
+The page combines topics, writing roles, years, and search scopes; displays summaries, scientific findings, SciX subject terms, and whether SciX holds the full text or linked data; downloads saved article versions; and exports selected papers or the full filtered bibliography. Page links preserve the search and reading context. The agent updates classifications, summaries, and notes.
 
 Other installation paths, keyboard controls, and custom data locations are covered in the [Web and library guide](docs/library.md#start-the-web-library).
 
@@ -184,6 +187,8 @@ flowchart TB
 
 Set `NASA_ADS_LITERATURE_DIR` to use another location. Literature tasks and the Web server must use the same directory. The Web page's library information button shows the active path and counts. One paper can have several exact versions, so the paper count and full-text-summary count can differ.
 
+Saved papers keep their SciX subject terms. When a saved preprint is published, the next search or [metadata refresh](docs/library.md#refresh-scix-metadata) updates it to the journal version. If the preprint and the journal version were saved as two entries, they become one entry that keeps all readings, summaries, topics, tags, and notes.
+
 Scientific topics form a hierarchy, such as `FRB/Propagation/Scattering`. A paper can belong to multiple topics and writing roles: review, introduction, methods, discussion, and comparison. Tags and personal notes support later retrieval. A topic can also have a short thematic summary.
 
 ### Reading Levels
@@ -204,24 +209,26 @@ Coarse metadata and abstract records retain their evidence levels. Refined candi
 | --- | --- |
 | The host cannot find the skill | Follow its [installation and verification steps](docs/installation.md#install), then start a new host session |
 | Python does not start | Install Python 3.10 or newer; try `python3`, `python`, or Windows `py -3` |
-| ADS returns `401` | Check token presence and restart the host after setting its environment |
-| ADS returns `403` or `429` | Check account/library permissions for `403`; respect the reported rate-limit reset for `429` |
+| SciX returns `401` | Check token presence and restart the host after setting its environment |
+| A token stored only in `ADS_DEV_KEY` is reported missing | Version 2.0 reads `ADS_API_TOKEN` alone; move the value there and restart the host |
+| SciX returns `403` or `429` | Check account/library permissions for `403`; respect the reported rate-limit reset for `429` |
 | The `adslib` command is missing | Complete [one-time registration](docs/installation.md#register-the-adslib-command), then open a new terminal; restart an older terminal app or IDE if needed |
 | The Web page cannot connect | Run `adslib`, keep its new service running, and open the exact printed URL |
 | The Web page shows an unexpected count or an empty library | Check the displayed library path, active filters, and [data migration](docs/library.md#move-to-a-new-computer) |
 | Papers are marked pending or unclassified | Ask the agent to finish the relevant summaries and scientific topic assignments |
+| The agent reports two different readings of the same article | Two saved entries of one paper were read separately; ask the agent to reconcile the readings, after which they become one entry ([details](docs/library.md#check-library-health)) |
 | An older database reports a schema mismatch | Follow the [backup and upgrade procedure](docs/library.md#upgrade-an-older-library) |
 | Full text is unavailable | The result retains available metadata or abstract evidence and reports the access gap |
 | A local search misses a phrase | Search the stored full text; [search scopes and health checks](docs/library.md#check-library-health) help identify the cause |
 
 ## Data and Further Reading
 
-ADS credentials are used for ADS requests. Article files come from lawful publisher, repository, arXiv, or ADS sources. Papers, summaries, and citation caches are stored locally; the selected agent host processes the content read for your task under that host's policies.
+SciX credentials are used for SciX requests. Article files come from lawful publisher, repository, arXiv, or SciX sources. Papers, summaries, and citation caches are stored locally; the selected agent host processes the content read for your task under that host's policies.
 
 - [Installation, diagnostics, and updates](docs/installation.md)
 - [Web browsing, citations, backup, and migration](docs/library.md)
 - [Agent workflow](plugins/nasa-ads/skills/nasa-ads/SKILL.md) and [CLI reference](plugins/nasa-ads/skills/nasa-ads/references/ads-cli.md)
-- [ADS API documentation](https://ui.adsabs.harvard.edu/help/api/) and [ADS Libraries](plugins/nasa-ads/skills/nasa-ads/references/libraries.md)
+- [SciX API documentation](https://scixplorer.org/scixhelp/api/) and [SciX Libraries](plugins/nasa-ads/skills/nasa-ads/references/libraries.md)
 - [Project review and validation records](docs/review.md)
 
 ## License

@@ -185,7 +185,7 @@ async function loadList({historyMode = 'push'} = {}) {
     $('#papers').replaceChildren();
     if (!data.results.length) {
       const filtered = state.query || state.collection || state.role || state.tag || $('#status').value || state.yearFrom || state.yearTo;
-      const message = filtered ? '当前条件下没有文献。调整关键词或筛选条件后继续查找。' : state.uncategorized ? '全部文献均已分类。新增文献需要整理时，会出现在这里。' : '文献库准备就绪。通过 NASA ADS skill 检索后，文章会出现在这里。';
+      const message = filtered ? '当前条件下没有文献。调整关键词或筛选条件后继续查找。' : state.uncategorized ? '全部文献均已分类。新增文献需要整理时，会出现在这里。' : '文献库准备就绪。通过 SciX 检索后，文章会出现在这里。';
       $('#papers').append(el('p', message, 'empty'));
     }
     for (const item of data.results) {
@@ -285,12 +285,15 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
     }
     reader.append(el('p', [data.paper.year, data.paper.pub, data.paper.bibcode].filter(Boolean).join(' · '), 'paper-meta'));
     const links = el('div', null, 'source-links');
-    if (data.paper.bibcode) links.append(externalLink('ADS 原始记录 ↗', 'https://ui.adsabs.harvard.edu/abs/' + encodeURIComponent(data.paper.bibcode)));
+    if (data.paper.bibcode) links.append(externalLink('SciX 原始记录 ↗', 'https://scixplorer.org/abs/' + encodeURIComponent(data.paper.bibcode) + '/abstract'));
     const doi = data.paper.identifiers.find(item => item.kind === 'doi');
     const arxiv = data.paper.identifiers.find(item => item.kind === 'arxiv');
     if (doi) links.append(externalLink('DOI ↗', 'https://doi.org/' + encodeURIComponent(doi.value)));
     if (arxiv) links.append(externalLink('arXiv ↗', 'https://arxiv.org/abs/' + arxiv.value));
     reader.append(links);
+    const holdings = {body: '正文', data: '数据链接'};
+    const held = (data.paper.metadata.has || []).filter(value => holdings[value]).map(value => holdings[value]);
+    if (held.length) reader.append(el('p', 'SciX 收录：' + held.join(' · '), 'paper-meta'));
     const tabs = el('div', null, 'tabs');
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', '文献详情栏目');
@@ -317,6 +320,11 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
           const topics = el('div', null, 'topic-links');
           for (const path of data.collections) { const button = el('button', path.split('/').slice(-2).join(' / ')); button.title = path; button.addEventListener('click', () => navigateTopic(path)); topics.append(button); }
           content.append(topics);
+        }
+        if (data.paper.metadata.uat?.length) {
+          content.append(el('h3', 'UAT 主题词')); const terms = el('div', null, 'tag-links');
+          for (const value of data.paper.metadata.uat) { const term = el('button', value); term.addEventListener('click', () => { state.query = value; $('#query').value = value; state.offset = 0; closeReader(); loadList(); }); terms.append(term); }
+          content.append(terms);
         }
         lines(content, '写作用途', data.roles.map(role => roles[role] || role));
         if (data.tags.length) {
@@ -351,7 +359,7 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
       },
       '引用': () => {
         paragraph(content, '引用键', data.citation.citekey);
-        paragraph(content, '来源', data.citation.source === 'ads' ? 'ADS 官方 BibTeX，已保存在本地。' : '根据本地题录生成。投稿前可获取 ADS 官方条目，核对期刊、卷号与页码。');
+        paragraph(content, '来源', data.citation.source === 'ads' ? 'SciX 官方 BibTeX，已保存在本地。' : '根据本地题录生成。投稿前可获取 SciX 官方条目，核对期刊、卷号与页码。');
         const copy = el('button', '复制 BibTeX');
         copy.addEventListener('click', async () => {
           try { await navigator.clipboard.writeText(data.citation.bibtex); notice('BibTeX 已复制。'); }
