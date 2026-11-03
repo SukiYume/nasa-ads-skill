@@ -207,7 +207,7 @@ Libraries built before version 2.0 lack SciX subject terms and can hold a prepri
 
 > Back up my personal literature library, refresh every stored paper's metadata from SciX, add missing source summaries, and cache official BibTeX for papers that lack it.
 
-The agent retrieves each paper's current SciX record and writes summaries for abstracts that changed. The refresh adds subject terms, fills newly available abstracts, updates published preprints and temporary bibcodes to their journal versions, and combines a preprint and its journal version saved as two entries. Combined papers keep every reading, summary, topic, tag, note, and citation. The refresh needs a SciX token; papers SciX has not yet indexed keep their arXiv metadata until a later refresh.
+The agent retrieves each paper's current SciX record and writes summaries for abstracts that changed. The refresh corrects existing bibliographic fields, adds subject terms and newly available abstracts, and updates linked preprints and temporary bibcodes to their journal records. Verified duplicate identities combine into one paper that keeps its readings, source snapshots, topics, tags, and notes. Source abstracts retain their retrieved wording; agent interpretations are stored as summaries. Changed citation details invalidate the old cache and allow a fresh official export. The refresh needs a SciX token; publisher or arXiv metadata can supply verified details while indexing remains pending.
 
 ## Check Library Health
 
@@ -229,7 +229,7 @@ python3 "$nasa_ads_skill/scripts/literature_db.py" audit
 
 The agent may report two different readings of the same article. This happens when a preprint and its journal version were saved as two entries and each was read in full. The library stays unchanged and both readings remain intact. Ask the agent to reconcile them; the two entries then become one.
 
-`stats` reports counts and the library location. `check` reports unfinished summaries and topic assignments; its exit code is 1 while that content work remains. `audit` checks database relationships and saved article integrity. A library can have healthy integrity and pending reading work at the same time.
+`stats` reports counts and the library location. `check` reports all unfinished source summaries, including historical snapshots, and topic assignments; its exit code is 1 while that content work remains. `audit` checks database relationships, saved article integrity, all records' metadata, source-snapshot hashes, completion, and citation-cache coverage. Source verification distinguishes repairable errors from legitimate missing fields. A library can have healthy integrity and pending reading work at the same time.
 
 If search misses expected text, choose the matching scope: metadata for titles and source abstracts, summary for authored reading and findings, or full text for the stored article. Chinese terms use substring matching. A phrase query searches a contiguous phrase; terms mode requires all terms. Requesting the latest publication or a changed article version can require a fresh source check.
 

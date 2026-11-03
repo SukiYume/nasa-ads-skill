@@ -270,6 +270,7 @@ def capture_search(
     parameters: dict,
     collections=(),
     roles=(),
+    refresh_metadata: bool = True,
 ) -> dict[str, Any]:
     library = db()
     response = payload.get("response")
@@ -296,7 +297,9 @@ def capture_search(
             (query, library.json_text(parameters), count, len(manifests), now),
         ).lastrowid
         for position, (manifest, aliases) in enumerate(prepared):
-            paper_id = library.upsert_paper(connection, manifest, aliases)
+            paper_id = library.upsert_paper(
+                connection, manifest, aliases, refresh_metadata=refresh_metadata
+            )
             snapshot = source_snapshot(manifest)
             source_hash = library.stable_digest(snapshot)
             level = (
@@ -350,8 +353,6 @@ def pending_summaries(connection, *, run_id=None, limit=50, offset=0) -> dict:
     if run_id is not None:
         where += " AND EXISTS (SELECT 1 FROM search_hits h WHERE h.brief_id = b.id AND h.run_id = ?)"
         params.append(run_id)
-    else:
-        where += " AND b.id = (SELECT recent.id FROM briefs recent WHERE recent.paper_id = b.paper_id ORDER BY recent.updated_at DESC, recent.id DESC LIMIT 1)"
     total = connection.execute(
         f"SELECT COUNT(*) FROM briefs b {where}", params
     ).fetchone()[0]
@@ -468,7 +469,7 @@ def completion_report(connection, *, run_id=None) -> dict:
         ).fetchone()
     ):
         raise db().LiteratureError("Unknown search run.", 2)
-    pending = pending_summaries(connection, run_id=run_id, limit=1)["count"]
+    pending = pending_summaries(connection, run_id=run_id, limit=0)["count"]
     where = ""
     params = ()
     if run_id is not None:
@@ -860,7 +861,7 @@ def citation_for_paper(connection, paper_id: int) -> dict:
         "doi": doi,
     }
     for field in ("volume", "issue", "page", "eid"):
-        value = snapshot.get(field) or metadata.get(field)
+        value = metadata.get(field) or snapshot.get(field)
         fields[{"page": "pages", "issue": "number"}.get(field, field)] = (
             ", ".join(fulltext.list_value(value)) if isinstance(value, list) else value
         )
@@ -1067,7 +1068,9 @@ def execute_command(args, connection, fts5, library_dir, environ, stdin):
     library = db()
     if args.command == "capture":
         payload = library.load_json(args.results, stdin)
+        refresh_metadata = True
         if isinstance(payload, dict) and "response" not in payload:
+            refresh_metadata = False
             records = payload.get("results", [payload])
             if isinstance(records, list):
                 payload = {"response": {"numFound": len(records), "docs": records}}
@@ -1079,6 +1082,7 @@ def execute_command(args, connection, fts5, library_dir, environ, stdin):
             parameters={"source": "import"},
             collections=args.collection,
             roles=args.role,
+            refresh_metadata=refresh_metadata,
         )
     if args.command == "pending":
         return pending_summaries(

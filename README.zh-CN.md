@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-2.0.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -187,7 +187,7 @@ flowchart TB
 
 可以通过 `NASA_ADS_LITERATURE_DIR` 选择其他位置。文献任务与 Web 服务需要使用同一目录。页面中的文献库信息按钮会显示实际路径和数量。同一篇文章可以保存多个精确版本，因此文章数与全文总结数可能不同。
 
-已存论文保留 SciX 主题词。已存的预印本正式发表后，下一次检索或[元数据刷新](docs/library.zh-CN.md#刷新-scix-元数据)会把它更新为期刊版本。如果预印本和期刊版本曾被存成两条，它们会合并为一条，并保留全部阅读、总结、主题、标签和笔记。
+已存论文保留来源摘要和 SciX 主题词。新的检索与[元数据刷新](docs/library.zh-CN.md#刷新-scix-元数据)会纠正书目字段，并把已关联的预印本更新为期刊记录。身份核实后的重复记录会合并，保留阅读、来源快照、总结、主题、标签和笔记。原始来源与 Agent 解读分别保存，全库检查也会覆盖历史未完成总结。
 
 科学主题使用层级目录，例如 `快速射电暴/传播效应/散射`。一篇文章可以同时属于多个主题，并用于综述、引言、方法、讨论和结果比较。标签与个人笔记用于后续查找，分类目录也可以保存简短的主题综述。
 

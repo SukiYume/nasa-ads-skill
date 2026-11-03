@@ -22,7 +22,7 @@ Use the persistent literature database for: $ARGUMENTS
    - complete stored digest and provenance: `show <identifier>`
    - hierarchy and topic summaries: `collections` or `collections --create <path> --description <summary>`
    - paper classification and personal notes: `annotate <identifier> --collection <path> --role methods --tag <tag> --note <note>`
-   - unfinished summaries: `pending`, followed by source-grounded `summarize --summaries <json>`
+   - unfinished source snapshots, including historical ones: `pending`, followed by source-grounded `summarize --summaries <json>`
    - reviewed bulk classifications: `organize --annotations <json>`
    - summary and classification completion: `check --run-id <id>`; plain `check` for whole-library maintenance
    - search history: `runs`

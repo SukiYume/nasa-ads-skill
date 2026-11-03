@@ -853,7 +853,7 @@ class LibraryWorkflowTests(unittest.TestCase):
         )
         self.assertIn("10.5555/new-metadata-record", shown["paper"]["metadata"]["doi"])
 
-    def test_enrich_preserves_existing_nonempty_metadata(self):
+    def test_enrich_refreshes_current_metadata_and_old_ingest_preserves_it(self):
         original = sample_manifest(self.source)
         self.ingest(manifest=original)
         conflict_root = self.root / "conflicting-metadata"
@@ -878,13 +878,19 @@ class LibraryWorkflowTests(unittest.TestCase):
             include_fulltext=False,
         )
 
-        self.assertEqual(shown["paper"]["title"], original["title"])
-        self.assertEqual(shown["paper"]["authors"], original["author"])
-        self.assertEqual(shown["paper"]["abstract"], original["abstract"])
-        self.assertEqual(shown["paper"]["year"], int(original["year"]))
-        self.assertEqual(shown["paper"]["pub"], original["pub"])
-        self.assertEqual(shown["paper"]["doctype"], original["doctype"])
+        self.assertEqual(shown["paper"]["title"], incoming["title"])
+        self.assertEqual(shown["paper"]["authors"], incoming["author"])
+        self.assertEqual(shown["paper"]["abstract"], incoming["abstract"])
+        self.assertEqual(shown["paper"]["year"], int(incoming["year"]))
+        self.assertEqual(shown["paper"]["pub"], incoming["pub"])
+        self.assertEqual(shown["paper"]["doctype"], incoming["doctype"])
         self.assertIn("10.5555/new-metadata-record", shown["paper"]["metadata"]["doi"])
+        self.ingest(manifest=original)
+        reused = literature_db.show_paper(
+            self.connection, "2023ApJ...955..142Z", include_fulltext=False
+        )
+        self.assertEqual(reused["paper"]["title"], incoming["title"])
+        self.assertEqual(reused["paper"]["abstract"], incoming["abstract"])
 
     def test_new_article_rejects_schema1_digest_before_object_copy(self):
         digest = sample_digest()
@@ -945,7 +951,11 @@ class LibraryWorkflowTests(unittest.TestCase):
         )
 
     def test_backup_is_consistent_and_audit_reports_quality(self):
-        self.ingest()
+        result = self.ingest()
+        literature_db.library_catalog.annotate_paper(
+            self.connection, result["paper_id"], collections=["Radio astronomy"]
+        )
+        self.connection.commit()
         destination = self.root / "backup"
         result = literature_db.create_library_backup(
             self.connection, self.fts5, self.library, str(destination)

@@ -285,6 +285,45 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(citation["citekey"], "2023ApJ...955..142Z")
         self.assertEqual(citation["source"], "stored-metadata")
 
+    def test_generated_citation_uses_refreshed_journal_fields(self):
+        record = source_record()
+        self.capture([record])
+        updated = catalog.metadata_manifest({**record, "volume": "956", "page": ["200"]})
+        lib.enrich_paper_metadata(self.connection, self.fts, updated)
+        citation = catalog.citation_for_paper(self.connection, 1)
+        self.assertIn("volume = {956}", citation["bibtex"])
+        self.assertIn("pages = {200}", citation["bibtex"])
+
+    def test_metadata_refresh_invalidates_only_changed_bibliography_cache(self):
+        record = source_record()
+        self.capture([record])
+        entry = "@article{2023ApJ...955..142Z, title={Original}, year={2023}}\n"
+        catalog.import_ads_citations(self.connection, entry)
+        self.capture([{**record, "abstract": "Revised source abstract."}])
+        self.assertEqual(catalog.citation_for_paper(self.connection, 1)["source"], "ads")
+        self.capture([{**record, "year": "2024"}])
+        citation = catalog.citation_for_paper(self.connection, 1)
+        self.assertEqual(citation["source"], "stored-metadata")
+        self.assertIn("year = {2024}", citation["bibtex"])
+
+    def test_new_citation_identifiers_invalidate_cached_export(self):
+        record = {**source_record(), "doi": [], "identifier": []}
+        self.capture([record])
+        for field, values, expected in (
+            ("doi", ["10.3847/1538-4357/aced0b"], "doi = {10.3847/1538-4357/aced0b}"),
+            ("identifier", ["arXiv:2304.14665"], "eprint = {2304.14665}"),
+        ):
+            with self.subTest(field=field):
+                catalog.import_ads_citations(
+                    self.connection,
+                    "@article{2023ApJ...955..142Z, title={Original}, year={2023}}\n",
+                )
+                record[field] = values
+                self.capture([record])
+                citation = catalog.citation_for_paper(self.connection, 1)
+                self.assertEqual(citation["source"], "stored-metadata")
+                self.assertIn(expected, citation["bibtex"])
+
     def test_backup_can_be_relocated_before_restoration(self):
         self.ingest()
         backup = self.root / "backup"
@@ -636,6 +675,10 @@ class CatalogTests(unittest.TestCase):
         second = self.capture([updated])
         self.assertEqual(second["pending_summaries"], 1)
         self.assertEqual(
+            self.connection.execute("SELECT abstract FROM papers").fetchone()[0],
+            updated["abstract"],
+        )
+        self.assertEqual(
             self.connection.execute(
                 "SELECT COUNT(*) FROM briefs WHERE summary <> ''"
             ).fetchone()[0],
@@ -645,6 +688,163 @@ class CatalogTests(unittest.TestCase):
             catalog.pending_summaries(self.connection, run_id=first["run_id"])["count"],
             0,
         )
+
+    def test_global_completion_includes_unfinished_historical_sources(self):
+        first = self.capture()
+        updated = source_record()
+        updated["abstract"] = "A revised source abstract."
+        second = self.capture([updated])
+        item = second["records"][0]
+        catalog.summarize(self.connection, [{
+            "identifier": item["identifier"], "source_hash": item["source_hash"],
+            "summary": "Summary of the revised source.", "collections": ["Radio astronomy"],
+        }])
+        self.assertEqual(catalog.completion_report(self.connection, run_id=second["run_id"])["status"], "complete")
+        pending = catalog.pending_summaries(self.connection)
+        self.assertEqual(pending["count"], 1)
+        self.assertEqual(pending["results"][0]["source_hash"], first["records"][0]["source_hash"])
+        self.assertEqual(catalog.completion_report(self.connection)["status"], "incomplete")
+
+    def test_capture_corrects_preprint_type_and_cached_fetch_keeps_refresh(self):
+        record = source_record(bibcode="2023arXiv230414665Z")
+        record.update(pub="arXiv e-prints", year="2024")
+        self.capture([record])
+        corrected = {**record, "doctype": "eprint", "year": "2023", "abstract": "Current source abstract."}
+        self.capture([corrected])
+        self.capture([record], refresh_metadata=False)
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual((paper["doctype"], paper["year"], paper["abstract"]), ("eprint", 2023, corrected["abstract"]))
+
+    def test_capture_cli_distinguishes_search_results_from_recovered_manifests(self):
+        original = source_record()
+        self.capture([original])
+        updated = {**original, "title": ["Revised title"], "abstract": "Revised source abstract."}
+        args = lib.build_parser().parse_args(["capture", "--results", "-"])
+        for payload in (
+            {"response": {"numFound": 1, "docs": [updated]}},
+            catalog.metadata_manifest(original),
+            {"results": [catalog.metadata_manifest(original)]},
+        ):
+            catalog.execute_command(
+                args, self.connection, self.fts, self.library, {}, io.StringIO(json.dumps(payload))
+            )
+            paper = self.connection.execute("SELECT * FROM papers").fetchone()
+            self.assertEqual(paper["title"], "Revised title")
+            self.assertEqual(paper["abstract"], updated["abstract"])
+
+    def test_unidentified_article_label_preserves_preprint_bibliography(self):
+        preprint = source_record(bibcode="2023arXiv230414665Z")
+        preprint.update(doctype="eprint", pub="arXiv e-prints")
+        self.capture([preprint])
+        incoming = {**preprint, "bibcode": None, "pub": None, "doctype": "article", "abstract": "A secondary description."}
+        self.capture([incoming])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual(paper["doctype"], "eprint")
+        self.assertEqual(paper["abstract"], preprint["abstract"])
+
+    def test_recapturing_preprint_preserves_publication_and_current_properties(self):
+        preprint = source_record(bibcode="2023arXiv230414665Z")
+        preprint.update(doctype="eprint", pub="arXiv e-prints", property=["NOT REFEREED"])
+        self.capture([preprint])
+        publication = {**source_record(), "property": ["REFEREED"], "abstract": "Published abstract."}
+        self.capture([publication])
+        self.capture([preprint])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual(paper["bibcode"], publication["bibcode"])
+        self.assertEqual(paper["abstract"], publication["abstract"])
+        self.assertEqual(json.loads(paper["metadata_json"])["property"], ["REFEREED"])
+
+    def test_preprint_capture_preserves_doi_only_publication_and_citation(self):
+        publication = {**source_record(), "bibcode": None, "property": ["REFEREED"]}
+        self.capture([publication])
+        preprint = {
+            **source_record(bibcode="2023arXiv230414665Z"),
+            "doctype": "eprint", "pub": "arXiv e-prints", "property": ["NOT REFEREED"],
+        }
+        for _ in range(2):
+            self.capture([preprint])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertIsNone(paper["bibcode"])
+        self.assertEqual(paper["pub"], publication["pub"])
+        self.assertEqual(paper["doctype"], "article")
+        citation = catalog.citation_for_paper(self.connection, paper["id"])
+        self.assertIn("journal = {The Astrophysical Journal}", citation["bibtex"])
+        self.assertEqual(lib.find_paper_by_identifier(self.connection, preprint["bibcode"])["id"], paper["id"])
+
+    def test_preprint_upgrades_to_doi_only_publication_before_journal_indexing(self):
+        preprint = {
+            **source_record(bibcode="2023arXiv230414665Z"),
+            "doctype": "eprint", "pub": "arXiv e-prints",
+            "property": ["NOT REFEREED"],
+        }
+        self.capture([preprint])
+        catalog.import_ads_citations(
+            self.connection,
+            "@misc{2023arXiv230414665Z, title={Preprint}, year={2023}}\n",
+        )
+        publication = {
+            **source_record(), "bibcode": None, "title": ["Published title"],
+            "abstract": "Published source abstract.", "property": ["REFEREED"],
+        }
+        self.capture([publication])
+        for _ in range(2):
+            self.capture([preprint])
+            paper = self.connection.execute("SELECT * FROM papers").fetchone()
+            self.assertIsNone(paper["bibcode"])
+            self.assertEqual(paper["doctype"], "article")
+            self.assertEqual(paper["pub"], publication["pub"])
+            self.assertEqual(paper["title"], publication["title"][0])
+            self.assertEqual(paper["abstract"], publication["abstract"])
+            self.assertEqual(json.loads(paper["metadata_json"])["property"], ["REFEREED"])
+            citation = catalog.citation_for_paper(self.connection, paper["id"])
+            self.assertEqual(citation["source"], "stored-metadata")
+            self.assertIn("journal = {The Astrophysical Journal}", citation["bibtex"])
+        self.capture([{**publication, "bibcode": source_record()["bibcode"]}])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual(paper["bibcode"], source_record()["bibcode"])
+        self.assertEqual(lib.find_paper_by_identifier(self.connection, preprint["bibcode"])["id"], paper["id"])
+        self.assertEqual(self.connection.execute("SELECT COUNT(*) FROM papers").fetchone()[0], 1)
+
+    def test_preprint_alternate_keeps_publication_metadata(self):
+        publication = source_record()
+        self.capture([publication])
+        self.capture([{
+            **publication, "bibcode": "2023arXiv230414665Z",
+            "alternate_bibcode": [publication["bibcode"]],
+            "doctype": "eprint", "pub": "arXiv e-prints",
+            "title": ["Preprint title"], "abstract": "Preprint abstract.",
+        }])
+        paper = self.connection.execute("SELECT * FROM papers").fetchone()
+        self.assertEqual(paper["bibcode"], publication["bibcode"])
+        self.assertEqual(paper["title"], publication["title"][0])
+        self.assertEqual(paper["doctype"], "article")
+        self.assertEqual(paper["abstract"], publication["abstract"])
+
+    def test_audit_covers_metadata_only_records_and_source_snapshot_integrity(self):
+        record = source_record()
+        record.update(author=[], abstract="")
+        self.capture([record])
+        audit = lib.audit_library(self.connection, self.fts, self.library, verify_hashes=False)
+        warnings = {item["kind"]: item for item in audit["warnings"]}
+        self.assertEqual(warnings["incomplete_metadata"]["counts"]["authors"], 1)
+        self.assertEqual(warnings["incomplete_metadata"]["counts"]["abstract"], 1)
+        self.assertEqual(warnings["catalog_completion"]["pending_summaries"], 1)
+        self.assertEqual(warnings["catalog_completion"]["uncategorized"], 1)
+        self.assertEqual(len(audit["information"]["missing_cached_citations"]), 1)
+        with self.connection:
+            self.connection.execute("UPDATE briefs SET source_hash = 'changed'")
+        audit = lib.audit_library(self.connection, self.fts, self.library, verify_hashes=False)
+        self.assertIn("invalid_source_snapshots", {item["kind"] for item in audit["errors"]})
+
+    def test_audit_reports_malformed_pending_source_without_crashing(self):
+        self.capture()
+        with self.connection:
+            self.connection.execute("UPDATE briefs SET source_json = '{'")
+        audit = lib.audit_library(self.connection, self.fts, self.library, verify_hashes=False)
+        errors = {item["kind"]: item for item in audit["errors"]}
+        self.assertEqual(errors["invalid_source_snapshots"]["brief_ids"], [1])
+        warnings = {item["kind"]: item for item in audit["warnings"]}
+        self.assertEqual(warnings["catalog_completion"]["pending_summaries"], 1)
 
     def test_summaries_reject_wrong_hash_and_overwrite(self):
         result = self.capture()

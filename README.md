@@ -7,7 +7,7 @@
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-2.0.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -187,7 +187,7 @@ flowchart TB
 
 Set `NASA_ADS_LITERATURE_DIR` to use another location. Literature tasks and the Web server must use the same directory. The Web page's library information button shows the active path and counts. One paper can have several exact versions, so the paper count and full-text-summary count can differ.
 
-Saved papers keep their SciX subject terms. When a saved preprint is published, the next search or [metadata refresh](docs/library.md#refresh-scix-metadata) updates it to the journal version. If the preprint and the journal version were saved as two entries, they become one entry that keeps all readings, summaries, topics, tags, and notes.
+Saved papers keep their source abstracts and SciX subject terms. Fresh searches and [metadata refreshes](docs/library.md#refresh-scix-metadata) correct bibliographic fields and update linked preprints to their journal records. Verified duplicate identities combine into one entry that keeps readings, source snapshots, summaries, topics, tags, and notes. Source text and agent interpretations remain separate, and whole-library checks include historical unfinished summaries.
 
 Scientific topics form a hierarchy, such as `FRB/Propagation/Scattering`. A paper can belong to multiple topics and writing roles: review, introduction, methods, discussion, and comparison. Tags and personal notes support later retrieval. A topic can also have a short thematic summary.
 
