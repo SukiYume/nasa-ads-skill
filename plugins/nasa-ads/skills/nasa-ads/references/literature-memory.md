@@ -21,7 +21,7 @@ An abstract summary and a complete article digest have separate source identitie
 
 Exploratory searches use `ads_api.py --no-store search` with identity fields, title, abstract, and document type. Use the research metadata field set in [SciX CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library. Naked object numbers and wildcard terms can match reference lists, grant numbers, or unrelated identifiers. Prefer `title:` and `abs:` fields for object-name discovery and verify the actual subject. Preserve relevant counterevidence and alternative models; uncertain relevance remains an explicit candidate state. Label datasets, meeting abstracts, news, and proposals with their actual source type.
 
-Retain the accepted original records in `response.docs` of a saved SciX response. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
+Retain the accepted original records in `response.docs` of a saved SciX response. Source fields contain the retrieved metadata and abstract, including the source's actual document type. Agent interpretations belong in `summary`, notes, or a full digest. For a direct publisher or arXiv record, preserve its source text and record the source URL. Missing fields remain explicit gaps. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
 
 ```bash
 python3 "<skill-dir>/scripts/literature_db.py" capture --results "<screened-response.json>" --query "<query; page; criteria; returned/retained counts>"
@@ -68,7 +68,7 @@ python3 "<skill-dir>/scripts/literature_db.py" check --run-id <id>
 python3 "<skill-dir>/scripts/literature_db.py" runs
 ```
 
-Finish all pages retrieved for the task. `pending` supports `--limit` and `--offset`. Process repeated batches from offset zero as summaries are completed. Without `--run-id`, it lists the latest pending snapshot per paper. `runs` records query parameters, retrieval counts, and remaining summaries.
+Finish all pages retrieved for the task. `pending` supports `--limit` and `--offset`. Process repeated batches from offset zero as summaries are completed. Without `--run-id`, it lists every unfinished source snapshot, including historical snapshots. `runs` records query parameters, retrieval counts, and remaining summaries.
 
 `check --run-id <id>` verifies the task's summaries and topic memberships. It reports `needs_classification` and exits with code 1 while either requirement remains incomplete. Use plain `check` during requested whole-library maintenance. Inspect the existing `collections` tree before assigning paths; reuse its language and hierarchy. The agent chooses scientific classifications from the paper's content. The scripts persist and verify those choices.
 
@@ -128,6 +128,8 @@ python3 "<skill-dir>/scripts/literature_db.py" list --collection "FRB" --role di
 
 Collection paths support up to twelve levels. Parent directories are created automatically. Papers can belong to multiple branches; parent counts deduplicate papers. Writing roles are `review`, `intro`, `methods`, `discussion`, and `comparison`. Additions preserve memberships, tags, and notes. Use collection descriptions for concise thematic syntheses with identifiable paper references. Scientific details remain in each article's digest.
 
+Before creating a branch, compare its scientific concept with existing paths, including synonyms and translations. Reuse a matching branch in the library's established language. Requested taxonomy cleanup can consolidate equivalent paths after reviewing their members and preserving their combined memberships.
+
 For an existing library, read each paper's stored overview, keywords and facets, prepare a reviewed batch, and run `organize --annotations <file.json>`. The file contains an `annotations` array; each item has `identifier`, a nonempty `collections` list, and optional `tags`, `roles`, and `note`. The operation validates all items within one transaction and preserves earlier annotations. Schema migration creates the catalog tables; content-based classification uses this separate reading and organization step. Full digest ingest also saves its keywords as tags.
 
 ## Web Browsing and Citation Export
@@ -169,7 +171,7 @@ python3 "<skill-dir>/scripts/literature_db.py" citations --collection "My manusc
 python3 "<skill-dir>/scripts/literature_db.py" citations --all --output "<personal-library.bib>"
 ```
 
-Cached official SciX entries retain their exact keys and source. A record without a cached official entry receives BibTeX generated from its stored metadata, with a provenance comment. Metadata-derived exports include only known fields; publication details may be incomplete.
+Cached official SciX entries retain their exact keys and source. Changes to citation-bearing metadata, including DOI and arXiv identifiers, invalidate that paper's cached entry. A record without a cached official entry receives BibTeX generated from its current stored metadata, with a provenance comment. Metadata-derived exports include only known fields; publication details may be incomplete.
 
 Fetch and cache official entries for selected known papers:
 
@@ -197,9 +199,11 @@ Database schema 3 adds the personal catalog to existing complete article records
 
 Backups contain a consistent SQLite snapshot, article objects, and `backup.json`. Restore requires a new destination and rewrites managed file references. It checks object hashes and database integrity before publishing the restored directory. The original library remains available at its original path.
 
-The audit checks SQLite integrity, foreign keys, digest validity, complete reading state, search parity, primary and historical objects, and their hashes. An unhealthy audit returns a nonzero exit code. `--skip-hashes` provides a structural pass. Pending abstract summaries represent incomplete reading work and appear in the summary queue.
+The audit checks SQLite integrity, foreign keys, digest validity, complete reading state, search parity, primary and historical objects, and their hashes. It also checks every paper's metadata, source-snapshot hashes and evidence levels, historical pending summaries, and topic assignments, and reports missing citation caches. An unhealthy audit returns a nonzero exit code. `--skip-hashes` provides a structural pass. Verify reported metadata gaps against the source; some document types and unindexed publications legitimately lack fields. Source fidelity and scientific correctness require source comparison in addition to these structural checks.
 
-Use `enrich --manifest <file>` to add metadata and reconcile identifiers for an existing paper. Confirmed journal metadata can upgrade a preprint's bibliographic record, and a record that lists the stored bibcode in `alternate_bibcode`, such as a final volume replacing a `.tmp.` bibcode, replaces it. When one capture, ingest, or enrich manifest carries identifiers held by several stored papers, such as a preprint and its separately captured publication that SciX later links, those papers merge into one. The merged paper keeps distinct versions, reading evidence, briefs, topics, tags, roles, notes, and search hits, and takes the published metadata. Merging follows the manifest's identifiers; verify title and authors before adding identifiers by hand to unite records that SciX has not linked.
+Use `enrich --manifest <file>` to refresh current source metadata and reconcile identifiers for an existing paper. Fresh search capture and enrichment can correct existing nonempty fields for the same current record. Empty incoming fields preserve known values. Ingest and cached full-text capture preserve the current bibliography while recording historical source evidence. Confirmed journal metadata can upgrade a preprint's bibliographic record, and a record that lists the stored bibcode in `alternate_bibcode`, such as a final volume replacing a `.tmp.` bibcode, replaces it. A publication awaiting its journal bibcode retains the preprint bibcode as a lookup alias. Later preprint captures preserve the confirmed journal bibliography.
+
+When one capture, ingest, or enrich manifest carries identifiers held by several stored papers, such as a preprint and its separately captured publication that SciX later links, those papers merge into one. The merged paper keeps distinct versions, reading evidence, briefs, topics, tags, roles, notes, and search history, and takes the published metadata. Merging follows the manifest's identifiers. For unlinked candidates, verify authors, article content, and publication provenance before adding identifiers by hand; title similarity supports candidate discovery. Retain separate identities for related articles, datasets, conference abstracts, and corrections.
 
 Duplicate full-text versions retain their artifact files and exact arXiv version labels. Identical stored digests share one record; a digest present on only one side moves to the retained version. Different stored digests stop automatic merging with a conflict error, and every operation carrying both records' identifiers reports the same conflict until the digests agree. Reconcile them on the separate records:
 
@@ -215,8 +219,9 @@ A whole-library SciX metadata refresh completes an upgrade from a pre-2.0 librar
 
 1. Run `backup`.
 2. Write the bibcodes from `list --limit <paper count>` to a file and run `ads_api.py bigquery --bibcodes-file <file>` with default capture. SciX resolves superseded preprint and `.tmp.` bibcodes to the current records.
-3. For papers without a bibcode, run `ads_api.py search --query 'identifier:"arXiv:<id>"'` with default capture; papers SciX has not indexed keep their arXiv metadata.
-4. Complete the pending summaries of these runs, cache official BibTeX with `citations --fetch` where needed, and finish with `check` and `audit`.
+3. For papers without a bibcode, query their known DOI and arXiv identifiers with `ads_api.py search --query 'identifier:"<id>"'`. Publisher or arXiv metadata can fill verified publication details while SciX indexing remains pending. Preserve source links and exact identifiers.
+4. Inspect suspected source-field substitutions against their original sources. Preserve legitimate abstract revisions and formatting differences. Correct confirmed substitutions with verified source text and source-grounded summaries; retain the earlier work in the backup and record the correction's provenance.
+5. Complete pending summaries from all historical runs within this maintenance scope, reconcile reviewed duplicate identities and equivalent collection paths, cache official BibTeX with `citations --fetch` where needed, and finish with `check` and `audit`.
 
 Capture applies the identifier rules above, including preprint upgrades, superseded bibcodes, and merges. Unchanged sources reuse their summaries.
 

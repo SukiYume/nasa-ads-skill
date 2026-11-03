@@ -22,7 +22,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 DATABASE_SCHEMA_VERSION = 3
 DIGEST_SCHEMA_VERSION = 2
 READING_STATUSES = {"full", "targeted", "visual"}
@@ -1902,6 +1902,8 @@ def upsert_paper(
     connection: sqlite3.Connection,
     manifest: dict[str, Any],
     aliases: Sequence[tuple[str, str, str]],
+    *,
+    refresh_metadata: bool = False,
 ) -> int:
     matches = paper_ids_for_aliases(connection, aliases)
     if len(matches) > 1:
@@ -1954,47 +1956,82 @@ def upsert_paper(
             and existing["bibcode"]
             in fulltext.list_value(manifest.get("alternate_bibcode"))
         )
-        upgrade = superseded or (
-            existing["doctype"] == "eprint" and manifest.get("doctype") == "article"
+        existing_preprint = (
+            existing["doctype"] == "eprint"
+            or "arxiv" in str(existing["bibcode"] or "").casefold()
+            or str(existing["pub"] or "").casefold() in {"arxiv", "arxiv e-prints"}
         )
+        incoming_preprint = (
+            manifest.get("doctype") == "eprint"
+            or "arxiv" in str(bibcode or "").casefold()
+            or str(manifest.get("pub") or "").casefold() in {"arxiv", "arxiv e-prints"}
+        )
+        upgrade = superseded or (
+            existing_preprint
+            and manifest.get("doctype") == "article"
+            and not incoming_preprint
+            and bool(bibcode or manifest.get("pub"))
+        )
+        # Capture/enrich refresh the current source. Ingest can reuse an older
+        # artifact manifest, whose bibliographic fields must stay historical.
+        preserve_publication = (
+            incoming_preprint
+            and not existing_preprint
+            and existing["doctype"] == "article"
+            and bool(existing["bibcode"] or existing["pub"])
+        )
+        prefer_incoming = not preserve_publication and (
+            upgrade or (
+                refresh_metadata
+                and (not existing["bibcode"] or existing["bibcode"] == bibcode)
+            )
+        )
+        # A publication awaiting indexing keeps its preprint bibcode as an alias.
         bibcode = (
-            (bibcode or existing["bibcode"])
+            existing["bibcode"]
+            if preserve_publication
+            else bibcode
             if upgrade
             else str(existing["bibcode"] or "").strip() or bibcode
         )
-        title = title if upgrade else str(existing["title"] or "").strip() or title
+        title = title if prefer_incoming else str(existing["title"] or "").strip() or title
         authors = (
-            (authors or existing_authors) if upgrade else existing_authors or authors
+            (authors or existing_authors) if prefer_incoming else existing_authors or authors
         )
         abstract = (
             (abstract or existing["abstract"])
-            if upgrade
+            if prefer_incoming
             else str(existing["abstract"] or "").strip() or abstract
         )
         year = (
             year
-            if upgrade and year is not None
+            if prefer_incoming and year is not None
             else existing["year"]
             if existing["year"] is not None
             else year
         )
         pub = (
             (manifest.get("pub") or existing["pub"])
-            if upgrade
+            if prefer_incoming
             else str(existing["pub"] or "").strip() or manifest.get("pub")
         )
         doctype = (
             (manifest.get("doctype") or existing["doctype"])
-            if upgrade
+            if prefer_incoming
             else str(existing["doctype"] or "").strip() or manifest.get("doctype")
         )
-        for field in ("property", "doi", "arxiv_ids"):
+        for field in ("doi", "arxiv_ids"):
             metadata[field] = ordered_unique_casefolded_strings(
                 [
                     *fulltext.list_value(existing_metadata.get(field)),
                     *metadata[field],
                 ]
             )
+        metadata["property"] = (
+            metadata["property"] or existing_metadata.get("property", [])
+            if prefer_incoming
+            else existing_metadata.get("property") or metadata["property"]
+        )
         for field in ("citation_count", "read_count"):
             if metadata[field] is None:
                 metadata[field] = existing_metadata.get(field)
@@ -2003,9 +2040,21 @@ def upsert_paper(
         for field in ("volume", "issue", "page", "eid", "pubdate"):
             metadata[field] = (
                 metadata[field] or existing_metadata.get(field)
-                if upgrade
+                if prefer_incoming
                 else existing_metadata.get(field) or metadata[field]
             )
+        if (
+            (bibcode, title, authors, year, pub, doctype)
+            != (
+                existing["bibcode"], existing["title"], existing_authors,
+                existing["year"], existing["pub"], existing["doctype"],
+            )
+            or any(
+                metadata[field] != existing_metadata.get(field)
+                for field in ("doi", "arxiv_ids", "volume", "issue", "page", "eid")
+            )
+        ):
+            connection.execute("DELETE FROM citations WHERE paper_id = ?", (paper_id,))
         connection.execute(
             """
             UPDATE papers
@@ -2563,7 +2612,7 @@ def enrich_paper_metadata(
                 "Metadata enrichment requires an existing paper identifier.", 2
             )
         expected_paper_id = next(iter(matching))
-        paper_id = upsert_paper(connection, manifest, aliases)
+        paper_id = upsert_paper(connection, manifest, aliases, refresh_metadata=True)
         if paper_id != expected_paper_id:
             raise LiteratureError("Metadata enrichment changed paper identity.")
         versions_reindexed = reindex_paper_documents(connection, fts5, paper_id)
@@ -3613,6 +3662,53 @@ def audit_library(
     referenced_object_dirs: set[Path] = set()
     object_issues: list[dict[str, str]] = []
 
+    for paper in connection.execute("SELECT * FROM papers ORDER BY id"):
+        key = str(paper["canonical_key"])
+        if not paper["bibcode"]:
+            if key.startswith("arxiv:"):
+                arxiv_awaiting_bibcode.append(key)
+            else:
+                metadata_missing["bibcode"].append(key)
+        try:
+            authors = json.loads(paper["authors_json"])
+        except json.JSONDecodeError:
+            authors = []
+        if not authors:
+            metadata_missing["authors"].append(key)
+        if not str(paper["abstract"] or "").strip():
+            metadata_missing["abstract"].append(key)
+        if paper["year"] is None:
+            metadata_missing["year"].append(key)
+
+    invalid_sources: list[int] = []
+    for brief in connection.execute("SELECT * FROM briefs ORDER BY id"):
+        try:
+            source = json.loads(brief["source_json"])
+        except json.JSONDecodeError:
+            invalid_sources.append(brief["id"])
+            continue
+        if (
+            not isinstance(source, dict)
+            or stable_digest(source) != brief["source_hash"]
+            or brief["evidence_level"] != (
+                "abstract" if str(source.get("abstract") or "").strip() else "metadata"
+            )
+        ):
+            invalid_sources.append(brief["id"])
+    if invalid_sources:
+        errors.append({"kind": "invalid_source_snapshots", "brief_ids": invalid_sources})
+
+    completion = library_catalog.completion_report(connection)
+    if completion["status"] != "complete":
+        warnings.append({"kind": "catalog_completion", **completion})
+    information["missing_cached_citations"] = [
+        row[0] for row in connection.execute(
+            "SELECT p.canonical_key FROM papers p LEFT JOIN citations c ON c.paper_id = p.id "
+            "WHERE p.bibcode IS NOT NULL AND (c.paper_id IS NULL OR c.citekey <> p.bibcode) "
+            "ORDER BY p.id"
+        )
+    ]
+
     for row in rows:
         key = str(row["canonical_key"])
         try:
@@ -3632,22 +3728,6 @@ def audit_library(
                 or digest["reading"]["unread_sections"]
             ):
                 incomplete_reading.append(key)
-
-        if not row["bibcode"]:
-            if key.startswith("arxiv:"):
-                arxiv_awaiting_bibcode.append(key)
-            else:
-                metadata_missing["bibcode"].append(key)
-        try:
-            authors = json.loads(row["authors_json"])
-        except json.JSONDecodeError:
-            authors = []
-        if not authors:
-            metadata_missing["authors"].append(key)
-        if not str(row["abstract"] or "").strip():
-            metadata_missing["abstract"].append(key)
-        if row["year"] is None:
-            metadata_missing["year"].append(key)
 
         full_text_value = ""
         text_path = Path(str(row["text_path"])) if row["text_path"] else None
