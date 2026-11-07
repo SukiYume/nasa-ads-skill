@@ -1,39 +1,53 @@
-# OS
+# Operating system
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# IDE
+# Editors and IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Python (if using ads client)
+# Python caches, environments, and tooling
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+venv/
+env/
+.env
+.mypy_cache/
+.pytest_cache/
 .ruff_cache/
 .coverage
 .coverage.*
 htmlcov/
-venv/
-env/
-.env
+build/
+dist/
+*.egg-info/
 
 # Node
 node_modules/
 
-# Local config (never commit tokens)
-.claude/*.local.md
-.claude/*.local.json
+# Credentials and local agent settings (never commit tokens)
 *.secret
 *.token
+.claude/settings.local.json
+.claude/*.local.md
+.claude/*.local.json
 
-# Agent work products
+# Personal literature data, caches, and exports from local runs
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+literature/
+fulltext-cache/
+
+# Agent scratch work and disposable validation output
+work/
 docs/plans/
 tmp-skill-install*/
-
-# Disposable audit artifacts
 .validation/

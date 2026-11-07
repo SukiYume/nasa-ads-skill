@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "2.0.1"
+VERSION = "3.0.0"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -324,7 +324,10 @@ def build_parser() -> argparse.ArgumentParser:
         "outline",
         help="extract a reviewable section outline from prepared article text",
     )
-    outline.add_argument("text", help="prepared article text path")
+    outline.add_argument(
+        "text",
+        help="prepared article text path, or a fetch manifest to also use its HTML headings",
+    )
     outline.add_argument(
         "--limit",
         type=ads_api.positive_int,
@@ -352,14 +355,28 @@ def count_words(value: str) -> int:
     return len(re.findall(r"\b[^\W_][\w'-]*\b", value, flags=re.UNICODE))
 
 
+APPENDIX_HEADING_RE = re.compile(
+    r"^(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+", re.IGNORECASE
+)
+REFERENCE_HEADINGS = {"references", "bibliography"}
+
+
 def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
-    headings: list[str] = []
-    seen: set[str] = set()
-    in_references = False
+    """Infer section headings from prepared text, in reading order.
+
+    Publisher pages often repeat the heading list as a table of contents before
+    the article, so a repeated heading keeps its last occurrence, an unnumbered
+    entry gives way to the numbered heading of the same title, and the
+    reference list starts at the last ``References`` heading.
+    """
+    # Section numbers have at most two digits per level, so years and
+    # measurements at the start of a wrapped text line are not headings.
     numbered = re.compile(
-        r"^(?:§\s*\d+(?:\.\d+){0,3}\s+|"
-        r"(?:\d+(?:\.\d+){0,3}|[A-Z]\.\d+(?:\.\d+){0,2})[.)]?\s+|"
+        r"^(?:§\s*\d{1,2}(?:\.\d{1,2}){0,3}\s+|"
+        r"(?:\d{1,2}(?:\.\d{1,2}){0,3}|[A-Z]\.\d{1,2}(?:\.\d{1,2}){0,2}|"
+        r"(?-i:[IVXLC]+)(?:\.\d{1,2}){1,3})[.)]?\s+|"
         r"[IVXLC]+[.)]\s+|"
+        r"(?-i:[IVXLC]+)\s+(?=(?-i:[A-Z]))|"
         r"(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+)(\S.*)$",
         re.IGNORECASE,
     )
@@ -369,41 +386,110 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
         r"acknowledg(?:e)?ments?|references|bibliography)$",
         re.IGNORECASE,
     )
+    candidates: list[tuple[str, str, str | None]] = []
     for raw_line in value.splitlines():
         line = " ".join(raw_line.split())
         if not line or len(line) > 180:
             continue
         if MEASUREMENT_ONLY_RE.fullmatch(line) or DATE_ONLY_RE.fullmatch(line):
             continue
-        match = numbered.match(line)
-        if in_references:
-            if not re.match(
-                r"^(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+",
-                line,
-                re.IGNORECASE,
-            ):
-                continue
-            in_references = False
-        if not match and not named.match(line):
+        if re.match(r"^(?:Figure|Table)\s+\d", line, re.IGNORECASE):
             continue
+        match = numbered.match(line)
         if match:
             heading_text = match.group(1)
             if not any(character.isalpha() for character in heading_text):
                 continue
-            if ". " in heading_text:
+            if ". " in heading_text or heading_text[0].islower():
                 continue
-        if re.match(r"^(?:Figure|Table)\s+\d", line, re.IGNORECASE):
-            continue
-        key = line.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        headings.append(line)
-        if key in {"references", "bibliography"}:
+            candidates.append((line, line.casefold(), heading_text.casefold()))
+        elif named.match(line):
+            candidates.append((line, line.casefold(), None))
+    reference_starts = [
+        index for index, (_line, key, _title) in enumerate(candidates) if key in REFERENCE_HEADINGS
+    ]
+    references_at = reference_starts[-1] if reference_starts else len(candidates)
+    numbered_titles = {title for _line, _key, title in candidates if title}
+    last_index = {key: index for index, (_line, key, _title) in enumerate(candidates)}
+    headings: list[str] = []
+    in_references = False
+    for index, (line, key, title) in enumerate(candidates):
+        if index == references_at:
             in_references = True
+        elif in_references:
+            if not APPENDIX_HEADING_RE.match(line):
+                continue
+            in_references = False
+        if last_index[key] != index or (title is None and key in numbered_titles):
+            continue
+        headings.append(line)
         if len(headings) >= limit:
             break
     return headings
+
+
+def article_outline(
+    text: str, manifest: Mapping[str, Any] | None = None, *, limit: int = 400
+) -> list[dict[str, Any]]:
+    """Section spans from the manifest's HTML headings or the inferred outline.
+
+    The candidate that places more headings on lines of ``text`` wins.
+    """
+    candidates = [infer_text_outline(text, limit=limit)]
+    statistics = ((manifest or {}).get("selected") or {}).get("statistics") or {}
+    outline = statistics.get("outline")
+    if isinstance(outline, list) and all(isinstance(item, str) for item in outline):
+        candidates.insert(0, outline)
+    best: list[dict[str, Any]] = []
+    for headings in candidates:
+        located = locate_headings(text, headings)
+        if len(located) > len(best):
+            best = located
+    return best
+
+
+FRONT_MATTER_HEADING = "Front matter"
+
+
+def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
+    """Place outline headings on their own lines; a section runs to the next one.
+
+    Returns sections with the heading, its one-based ``line``, character
+    ``start`` and ``end`` offsets, and the number of ``lines`` it spans. Text
+    before the first heading becomes a front-matter section.
+    """
+    lines = text.split("\n")
+    starts: list[int] = []
+    offset = 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    normalized = [" ".join(line.split()).casefold() for line in lines]
+    placed: list[tuple[str, int]] = []
+    cursor = 0
+    for heading in headings:
+        key = " ".join(str(heading).split()).casefold()
+        for index in range(cursor, len(lines)):
+            if normalized[index] == key:
+                placed.append((str(heading), index))
+                cursor = index + 1
+                break
+    if not placed or (placed[0][1] > 0 and text[: starts[placed[0][1]]].strip()):
+        placed.insert(0, (FRONT_MATTER_HEADING, 0))
+    sections: list[dict[str, Any]] = []
+    for position, (heading, index) in enumerate(placed):
+        next_index = placed[position + 1][1] if position + 1 < len(placed) else len(lines)
+        end = starts[next_index] if next_index < len(lines) else len(text)
+        sections.append(
+            {
+                "heading": heading,
+                "line": index + 1,
+                "lines": next_index - index,
+                "start": starts[index],
+                "end": end,
+            }
+        )
+    return sections
 
 
 def list_value(value: Any) -> list[str]:
@@ -615,6 +701,28 @@ def fetch_external(
         ) from exc
 
 
+SUBSCRIPTION_PREVIEW_MARKERS = (
+    "this is a preview of subscription content",
+    "access through your institution",
+    "buy this article",
+    "subscribe to this journal",
+    "purchase on springerlink",
+    "get full access to this article",
+    "rent this article",
+    "log in to view full text",
+    "sign in to view full text",
+)
+
+
+def text_before_references(value: str) -> str:
+    match = re.search(
+        r"^\s*(?:references|bibliography|reference list)\s*$",
+        value,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    return value[: match.start()] if match else value
+
+
 def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str, Any]]:
     try:
         html = body.decode("utf-8")
@@ -638,6 +746,13 @@ def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str
         and word_count < 2000
     ):
         raise FullTextError("HTML candidate is an access, login, or challenge page.")
+    if any(marker in full_text_lower for marker in SUBSCRIPTION_PREVIEW_MARKERS):
+        body_words = count_words(text_before_references(text))
+        if body_words < 1500:
+            raise FullTextError(
+                "HTML candidate is a subscription preview "
+                f"({body_words} words before the references)."
+            )
     if word_count < 300:
         raise FullTextError(
             f"HTML candidate contains too little article text ({word_count} words)."
@@ -1755,15 +1870,35 @@ def execute(
         stdout.write("\n")
         return 0
     if args.command == "outline":
-        text_path = Path(args.text).expanduser().resolve()
+        source = Path(args.text).expanduser().resolve()
+        manifest: dict[str, Any] | None = None
+        text_path = source
+        if source.suffix.casefold() == ".json" and source.is_file():
+            try:
+                manifest = json.loads(source.read_text(encoding="utf-8-sig"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise FullTextError(f"Unable to read manifest {source}: {exc}", 2) from exc
+            text_path = Path(str((manifest.get("selected") or {}).get("text_path") or ""))
         if not text_path.is_file():
             raise FullTextError(f"Prepared article text does not exist: {text_path}", 2)
         article_text = text_path.read_text(encoding="utf-8", errors="replace")
+        sections = article_outline(article_text, manifest, limit=args.limit)
         result = {
             "status": "outlined",
             "text_path": str(text_path),
             "words": count_words(article_text),
-            "headings": infer_text_outline(article_text, limit=args.limit),
+            "lines": article_text.count("\n") + 1,
+            "sections": [
+                {
+                    "heading": section["heading"],
+                    "line": section["line"],
+                    "lines": section["lines"],
+                    "words": count_words(
+                        article_text[section["start"] : section["end"]]
+                    ),
+                }
+                for section in sections
+            ],
         }
         json.dump(result, stdout, ensure_ascii=False, indent=2)
         stdout.write("\n")

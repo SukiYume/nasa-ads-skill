@@ -246,6 +246,26 @@ function paragraph(container, title, text) {
   if (title) container.append(el('h3', title));
   container.append(el('p', text));
 }
+const findingKinds = {measurement: '测量', constraint: '约束', interpretation: '作者解释', prediction: '模型预测', nondetection: '未探测', method: '方法', comparison: '比较', limitation: '局限'};
+const confidenceLevels = {high: '高可信度', medium: '中等可信度', low: '低可信度'};
+const valueStatuses = {measured: '测量值', fitted: '拟合值', derived: '推导值', fixed: '固定值', assumed: '假设值', predicted: '预测值', 'upper-limit': '上限', 'lower-limit': '下限'};
+const studyTypes = {observational: '观测', theoretical: '理论', simulation: '数值模拟', laboratory: '实验室', instrumentation: '仪器', methods: '方法', catalog: '星表与数据发布', review: '综述'};
+const entityTypes = {source: '天体或事件', instrument: '仪器', survey: '巡天', catalog: '星表', software: '软件', simulation: '模拟', model: '模型', other: '其他'};
+const datasetTypes = {observation: '观测', survey: '巡天', archival: '存档数据', catalog: '星表', simulation: '模拟', laboratory: '实验室'};
+const productTypes = {data: '数据', code: '代码', catalog: '星表', table: '表格', software: '软件', other: '其他'};
+const versionKinds = {published: '出版版', accepted: '接收稿', preprint: '预印本', scan: '扫描版'};
+const locatorLabels = [['section', '章节'], ['page', '页'], ['figure', '图'], ['table', '表'], ['equation', '公式'], ['appendix', '附录'], ['paragraph', '段落']];
+function formatLocator(locator) {
+  return locatorLabels.filter(([key]) => locator?.[key]).map(([key, label]) => `${label} ${key === 'section' ? String(locator[key]).replace(/^(?:sections?|sects?\.?|secs?\.?|§)\s*/i, '') : locator[key]}`).join(' · ');
+}
+function formatValue(value) {
+  const present = item => item !== undefined && item !== null && item !== '';
+  const label = present(value.symbol) ? `${value.name} (${value.symbol})` : value.name;
+  const uncertainty = present(value.uncertainty) && !/^[±+\-]/.test(String(value.uncertainty)) ? '± ' + value.uncertainty : value.uncertainty;
+  const amount = [value.value, uncertainty, value.range && `[${value.range[0]}, ${value.range[1]}]`, value.unit].filter(present).join(' ');
+  const context = [valueStatuses[value.status] || value.status, value.qualifier, value.model && '模型：' + value.model, value.dataset && '数据：' + value.dataset, value.method && '方法：' + value.method, value.condition, value.cited_from && '引自：' + value.cited_from].filter(present);
+  return `${label} = ${amount}${context.length ? ' · ' + context.join(' · ') : ''}`;
+}
 function lines(container, title, values) {
   if (!values?.length) return;
   if (title) container.append(el('h3', title));
@@ -303,11 +323,16 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
     const views = {
       '概览': () => {
         if (digest) {
+          if (!digest.overview.summary?.startsWith(digest.overview.tldr)) paragraph(content, '一句话总结', digest.overview.tldr);
           paragraph(content, '论文总结', digest.overview.summary);
-          paragraph(content, '研究意义', digest.overview.significance);
           lines(content, '研究问题', digest.overview.questions);
+          if (digest.overview.study_types?.length) paragraph(content, '研究类型', digest.overview.study_types.map(type => studyTypes[type] || type).join('、'));
+          lines(content, '研究对象与设施', digest.entities.map(item => [item.name, entityTypes[item.type] || item.type, item.aliases?.length && '别名：' + item.aliases.join('、'), item.description].filter(Boolean).join(' · ')));
+          lines(content, '观测、实验与样本', digest.datasets.map(item => [item.name, datasetTypes[item.type] || item.type, item.description, formatLocator(item.locator), item.cited_from && '引自：' + item.cited_from].filter(Boolean).join(' · ')));
+          lines(content, '主要方法', digest.methods.map(item => [item.name, item.description, ...(item.assumptions || []).map(text => '假设：' + text), formatLocator(item.locator), item.cited_from && '引自：' + item.cited_from].filter(Boolean).join(' · ')));
           lines(content, '适用范围与局限', digest.global_limitations);
-          lines(content, '主要方法', digest.methods.map(item => [item.name, item.description, item.purpose].filter(Boolean).join(' · ')));
+          lines(content, '阅读评估（读者判断，非原文观点）', digest.assessment);
+          lines(content, '数据与代码', digest.data_products.map(item => [item.name, productTypes[item.type] || item.type, item.availability, item.locator, item.url].filter(Boolean).join(' · ')));
         } else if (data.brief?.summary) {
           paragraph(content, data.brief.evidence_level === 'abstract' ? '基于摘要的总结' : '基于题录的记录', data.brief.summary);
         } else paragraph(content, '总结状态', '题录与来源已经保存，阅读总结等待补写。');
@@ -343,17 +368,15 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
           details.open = digest.facets.length <= 3;
           details.append(el('summary', facet.label));
           paragraph(details, '', facet.summary);
-          for (const finding of facet.findings) {
+          facet.findings.forEach((finding, index) => {
             const block = el('div', null, 'finding');
             block.append(el('p', finding.statement));
-            const locator = Object.entries(finding.locator).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(' · ');
-            const kinds = {measurement: '测量', result: '结果', interpretation: '作者解释', prediction: '模型预测', constraint: '约束', method: '方法', limitation: '局限', observation: '观测', upper_limit: '上限'};
-            const confidence = {high: '高可信度', medium: '中等可信度', low: '低可信度'};
-            block.append(el('div', `${kinds[finding.kind] || finding.kind} · ${confidence[finding.confidence] || finding.confidence} · ${locator}`, 'locator'));
-            for (const value of finding.values) block.append(el('div', [value.name, value.value, value.unit, value.uncertainty, value.qualifier].filter(item => item !== undefined && item !== null).join(' '), 'locator'));
+            const attribution = [finding.cited_from && '引自：' + finding.cited_from, finding.compared_with?.length && '比较对象：' + finding.compared_with.join('、')].filter(Boolean).map(text => ' · ' + text).join('');
+            block.append(el('div', `${findingKinds[finding.kind] || finding.kind} · ${confidenceLevels[finding.confidence] || finding.confidence} · ${formatLocator(finding.locator)}${attribution} · 编号 ${facet.key}.${index + 1}`, 'locator'));
+            if (finding.quote) block.append(el('div', `原文：“${finding.quote}”`, 'locator'));
+            for (const value of finding.values || []) block.append(el('div', formatValue(value), 'locator'));
             details.append(block);
-          }
-          lines(details, '局限', facet.limitations);
+          });
           content.append(details);
         }
       },
@@ -371,14 +394,15 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
       '全文版本': () => {
         if (!data.versions.length) { paragraph(content, '', '当前保存了题录与摘要。阅读全文后会保存对应的文章文件、版本和阅读范围。'); return; }
         for (const item of data.versions) {
-          paragraph(content, `${item.version_kind} · ${item.format}${item.id === data.preferred_version_id ? ' · 当前优先版本' : ''}`, `保存时间：${item.retrieved_at || '未记录'}`);
+          paragraph(content, `${versionKinds[item.version_kind] || item.version_kind} · ${item.format.toUpperCase()}${item.id === data.preferred_version_id ? ' · 当前优先版本' : ''}`, `保存时间：${item.retrieved_at || '未记录'}`);
           const actions = el('div', null, 'source-links');
           actions.append(downloadLink('下载文章文件', `/api/artifact?version=${item.id}&kind=article`));
           if (item.text_path) actions.append(downloadLink('下载提取文本', `/api/artifact?version=${item.id}&kind=text`));
           content.append(actions);
           const reading = item.digest?.digest?.reading;
-          if (reading) lines(content, '阅读章节', reading.sections);
-          if (reading?.visual_page_ranges.length) paragraph(content, '视觉阅读页码', reading.visual_page_ranges.join(', '));
+          if (reading) lines(content, '阅读章节', reading.sections.map(item => [item.heading, item.gist].filter(Boolean).join(' — ')));
+          if (reading?.visual_page_ranges?.length) paragraph(content, '视觉阅读页码', reading.visual_page_ranges.join(', '));
+          if (reading?.notes) paragraph(content, '阅读说明', reading.notes);
           paragraph(content, '内容指纹', item.content_sha256);
         }
       }

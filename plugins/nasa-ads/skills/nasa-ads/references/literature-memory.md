@@ -1,47 +1,47 @@
 # Personal Literature Library
 
-Load this reference for persistent search capture, source-based summaries, local reuse, organization, Web browsing, citations, and maintenance. Apply the defaults and exceptions in [Core Invariants](../SKILL.md#core-invariants), and load [digest-schema.md](digest-schema.md) for complete article digests.
+Load this reference for search capture, source summaries, local lookup, stored-evidence queries, classification, citations, and the Web library. Apply [Core Invariants](../SKILL.md#core-invariants). Digest authoring lives in [digest-schema.md](digest-schema.md); backup, restore, and repair live in [library-maintenance.md](library-maintenance.md).
+
+All commands below run `python3 "<skill-dir>/scripts/literature_db.py" [--library-dir <dir>] <subcommand>`; the examples show only the subcommand.
 
 ## Storage and Evidence Levels
 
-The default root is `%LOCALAPPDATA%/nasa-ads/literature` on Windows and `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. Set `NASA_ADS_LITERATURE_DIR` or place `--library-dir <path>` before the database subcommand to select another root.
+The default root is `%LOCALAPPDATA%/nasa-ads/literature` on Windows and `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. `NASA_ADS_LITERATURE_DIR` or `--library-dir <path>` selects another root. The root holds `literature.sqlite3` and a verified `objects/` tree; manage both only through the CLI.
 
-The root contains `literature.sqlite3` and a verified `objects/` tree. Keep both together. A backup and explicit restoration provide a portable copy. Use the bundled CLI to manage them. Concurrent writes on one computer use SQLite transactions; copying a live database across synchronized machines requires a consistent backup.
-
-| Layer | Meaning | Future use |
+| Layer | Contents | Supports |
 |---|---|---|
-| Metadata record | Bibliographic identity with no available abstract | Identification and relevance triage |
-| Abstract record | Stored source abstract plus pending or completed agent summary | Abstract-level claims and later selection |
-| Complete article version | Verified article and text, full or whole-document visual reading, one complete digest | Scientific evidence with facet coverage and locators |
+| Metadata record | Bibliographic identity without an abstract | Identification and relevance triage |
+| Abstract record | Source abstract plus an agent-authored source summary | Abstract-level statements and later selection |
+| Complete article version | Verified article and text, full or whole-document visual reading, one complete digest | Claims about data, methods, parameters, figures, tables, and limitations, with locators |
 | Organization | Hierarchical collections, tags, writing roles, personal notes | Reuse across projects and manuscript sections |
 
-An abstract summary and a complete article digest have separate source identities. Changed abstracts retain earlier snapshots and summaries. Changed article content receives a new exact-version digest. A pending record never claims completed reading.
+Abstract summaries and article digests have separate source identities. A changed abstract keeps earlier snapshots and summaries; changed article content receives a new exact-version digest. A pending record never claims completed reading.
 
 ## Screening Before Capture
 
-Exploratory searches use `ads_api.py --no-store search` with identity fields, title, abstract, and document type. Use the research metadata field set in [SciX CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library. Naked object numbers and wildcard terms can match reference lists, grant numbers, or unrelated identifiers. Prefer `title:` and `abs:` fields for object-name discovery and verify the actual subject. Preserve relevant counterevidence and alternative models; uncertain relevance remains an explicit candidate state. Label datasets, meeting abstracts, news, and proposals with their actual source type.
+Preview exploratory searches with `ads_api.py --no-store search` and the research field set in [SciX CLI](ads-cli.md#search). Compare each result with the requested objects, physical question, and source scope before writing to the library:
 
-Retain the accepted original records in `response.docs` of a saved SciX response. Source fields contain the retrieved metadata and abstract, including the source's actual document type. Agent interpretations belong in `summary`, notes, or a full digest. For a direct publisher or arXiv record, preserve its source text and record the source URL. Missing fields remain explicit gaps. Preserve the original `numFound`; record the original query, page boundaries, screening criteria, and returned/retained counts in the capture query description. Keep raw preview results temporary. Capture the reviewed response through the existing CLI:
+- Bare object numbers and wildcards can match reference lists, grant numbers, or unrelated identifiers; prefer `title:` and `abs:` for object names and confirm the actual subject.
+- Keep relevant counterevidence and alternative models. Record uncertain relevance as an explicit candidate state.
+- Label datasets, meeting abstracts, news, and proposals with their actual document type.
+
+Save the accepted original records in `response.docs` of a SciX response file. Source fields keep the retrieved metadata and abstract; agent interpretation belongs in `summary`, notes, or a digest. For a direct publisher or arXiv record, keep its source text and URL. Preserve the original `numFound` and describe the query, page boundaries, screening criteria, and returned/retained counts in `--query`:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" capture --results "<screened-response.json>" --query "<query; page; criteria; returned/retained counts>"
+capture --results "<screened-response.json>" --query "<query; page; criteria; returned/retained counts>"
 ```
 
-Inspect the returned `run_id` and complete that run below. An empty retained set needs no capture. Exact metadata lookup for already selected identifiers can use default automatic capture. Previewing with `--no-store` defers persistence until screening; an explicit user request for no library writes applies to the entire task and also disables this later capture.
+An empty retained set needs no capture. Exact metadata retrieval for already selected identifiers can use the default automatic capture.
 
 ## Automatic Capture and Summary Completion
 
-`ads_api.py search` and `bigquery` capture their returned records automatically. The request includes the metadata fields needed for reuse. The JSON response retains the SciX response and adds `literature.run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. `fulltext.py fetch` also captures its available metadata and exposes the same completion information. Preparation and capture leave scientific authorship to the agent.
-
-Capture uses the local library; the remote requests are read-only. The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) specifies opt-out behavior and option placement.
-
-Inspect each task's summary queue:
+`ads_api.py search`, `ads_api.py bigquery`, and `fulltext.py fetch` capture their returned records by default. The output adds a `literature` object with `run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. Capture never writes summaries; the agent authors them from the stored source:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" pending --run-id <id>
+pending --run-id <id>
 ```
 
-Read the returned `source` for each entry. Author a concise paraphrase of the question, approach, result, and relevance supported by that source. Preserve uncertainty. If the record has only a title and bibliographic metadata, summarize its identity and stated topic. Include a source-level limitation in that short summary. Fill this batch structure using the exact returned identifiers and hashes:
+For each entry, paraphrase the question, approach, result, and relevance supported by the returned `source`, and keep its uncertainty. A record with only bibliographic metadata gets a short identity summary that names that limitation. Fill a batch with the exact identifiers and hashes from `pending`:
 
 ```json
 {
@@ -59,170 +59,137 @@ Read the returned `source` for each entry. Author a concise paraphrase of the qu
 }
 ```
 
-`identifier`, `source_hash`, and `summary` are required. Every paper needs a topic collection before the research task is complete; supply `collections` here or preserve its existing memberships. The CLI accepts missing list fields for staged work. `check` exposes unfinished classifications. Keywords also become paper tags. Notes are appended separately. Summaries for the same source are idempotent; a different replacement summary is rejected to preserve earlier work.
+`identifier`, `source_hash`, and `summary` are required. Supply `collections` here or keep existing memberships; every paper needs a topic before the task is complete. Keywords also become tags, and notes are appended. Repeating the same summary is idempotent; a different summary for the same source is rejected to protect earlier work.
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" summarize --summaries "<summaries.json>"
-python3 "<skill-dir>/scripts/literature_db.py" pending --run-id <id>
-python3 "<skill-dir>/scripts/literature_db.py" check --run-id <id>
-python3 "<skill-dir>/scripts/literature_db.py" runs
+summarize --summaries "<summaries.json>"
+check --run-id <id>
+runs
 ```
 
-Finish all pages retrieved for the task. `pending` supports `--limit` and `--offset`. Process repeated batches from offset zero as summaries are completed. Without `--run-id`, it lists every unfinished source snapshot, including historical snapshots. `runs` records query parameters, retrieval counts, and remaining summaries.
-
-`check --run-id <id>` verifies the task's summaries and topic memberships. It reports `needs_classification` and exits with code 1 while either requirement remains incomplete. Use plain `check` during requested whole-library maintenance. Inspect the existing `collections` tree before assigning paths; reuse its language and hierarchy. The agent chooses scientific classifications from the paper's content. The scripts persist and verify those choices.
-
-Recover capture from a saved SciX response or a full-text manifest:
-
-```bash
-python3 "<skill-dir>/scripts/literature_db.py" capture --results "<response-or-manifest.json>" --query "<recorded scope>"
-```
-
-Capture validates the batch and commits it atomically. Storage errors follow the shared [failure routing](../SKILL.md#failure-routing).
+`pending` pages with `--limit` and `--offset`; without `--run-id` it lists every unfinished snapshot, including historical ones. `check --run-id` exits 1 and reports `needs_classification` while summaries or topics remain. `runs` lists query parameters, retrieval counts, and remaining summaries. Capture commits each batch atomically; `capture --results <response-or-manifest.json>` recovers from a saved SciX response or full-text manifest.
 
 ## Local Lookup and Reading
 
-Use lookup to select and verify local evidence. Apply the shared [reading scope](../SKILL.md#reading-scope) when investigating article content. The actions below describe that investigation path; catalog-only tasks can return the available records and their evidence levels.
+Use `lookup` to decide whether a paper needs reading:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" lookup "<identifier>" --topic "<scientific dimension>" --include-digest
-python3 "<skill-dir>/scripts/literature_db.py" show "<identifier>"
-python3 "<skill-dir>/scripts/literature_db.py" search "<concept or method>" --scope summary
-python3 "<skill-dir>/scripts/literature_db.py" search "<exact article phrase>" --scope fulltext --mode phrase
-python3 "<skill-dir>/scripts/literature_db.py" list
+lookup "<identifier>" --topic "<scientific dimension>"
 ```
+
+`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Retrieve the citable results with `findings --paper "<identifier>"` and their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version.
 
 | Lookup state | Action |
 |---|---|
-| `not_found` | Retrieve metadata and the required article version, then complete its source brief and article digest. |
-| `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the missing paper-wide reading and digest. |
-| `reusable` | Reuse the selected complete version and stored artifacts. |
-| `targeted_reading` | Read relevant complete sections locally and merge the missing facets. |
-| `version_changed` | Retrieve and complete the exact requested version. |
+| `not_found` | Retrieve metadata and the article version, then complete its source summary and digest. |
+| `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the paper-wide reading and digest. |
+| `reusable` | Reuse the complete version through `findings`, `parameters`, and `passage`. |
+| `targeted_reading` | Find the relevant sections with `passage --outline` or `--grep`, read them with `passage --section`, and merge the missing facets. |
+| `version_changed` | Retrieve and read the exact requested version. |
 
-Explicit arXiv suffixes such as `v2` require corresponding stored version provenance. `--sha256` selects a known artifact, historical artifact, text, or canonical-content hash. Choose online discovery according to the freshness, coverage, and source-scope criteria in [Core Invariants](../SKILL.md#core-invariants).
+An explicit arXiv suffix such as `v2` requires matching stored version provenance. `--sha256` selects a known artifact, text, or canonical-content hash, including historical artifacts. Lookup verifies stored article and text integrity, and its `version.manifest_path` points to durable stored objects suitable for later merging, so clearing the download cache keeps local reuse intact.
 
-Lookup validates stored article and text integrity. Its `version.manifest_path` is suitable for later ingest and merging. New stored manifests point to durable article objects, so clearing the download cache preserves local reuse.
-
-Check every identifier in the task's investigation set. Pass a small set directly; `--identifiers-file` accepts a UTF-8 file with one exact identifier per line for large or resumable queues. Full-reading completion and source-summary completion have separate checks:
+Check full-reading completion for the investigation set, directly or from a UTF-8 file with one identifier per line:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" reading-check "<identifier-1>" "<identifier-2>"
-python3 "<skill-dir>/scripts/literature_db.py" reading-check --identifiers-file "<reading-list.txt>"
+reading-check "<identifier-1>" "<identifier-2>"
+reading-check --identifiers-file "<reading-list.txt>"
 ```
 
-`reading-check` verifies declared full or visual coverage, exact-version lookup, stored-object integrity, and scientific topic membership. It is read-only and exits with code 1 while any listed entry remains incomplete. Its `needs_reading` and `needs_classification` fields form the remaining queue. `check --run-id <id>` covers captured source summaries and topics. The agent remains responsible for the reading and scientific authorship behind these structural checks.
+`reading-check` verifies declared full or visual coverage, exact-version lookup, object integrity, and topic membership. It is read-only, exits 1 while any entry is incomplete, and lists the remaining queue in `needs_reading` and `needs_classification`.
 
-Search scopes are `metadata`, `summary`, `fulltext`, and `all`. Terms mode requires all terms; phrase mode matches a phrase. SQLite FTS5 serves token queries when available. Continuous CJK text uses literal case-insensitive substring matching. `--mode fts` requires FTS5 and covers complete-digest search documents. Source-level briefs participate in terms and phrase searches.
+### Read Stored Passages
 
-`--topic` filters complete-digest facets. `--year-from`, `--year-to`, and `--limit` bound results. `--collection`, `--role`, and `--tag` filter personal organization. Collection filters include their descendants. Search results label the matching evidence layer and article version.
-
-## Classification and Manuscript Uses
+`passage` reads a bounded part of a stored article version, after verifying its text hash:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" annotate "<identifier>" --collection "FRB/Polarization/Circular" --collection "My manuscript/Discussion" --tag "FAST" --role discussion --note "<comparison and its limitations>"
-python3 "<skill-dir>/scripts/literature_db.py" collections
-python3 "<skill-dir>/scripts/literature_db.py" collections --create "FRB/Polarization" --description "<source-backed thematic overview>"
-python3 "<skill-dir>/scripts/literature_db.py" list --collection "FRB" --role discussion
+passage "<identifier>" --outline
+passage "<identifier>" --finding "<finding_id>"
+passage "<identifier>" --section "3.2" --section "Discussion"
+passage "<identifier>" --grep "<term>" --grep "<second term>"
 ```
 
-Collection paths support up to twelve levels. Parent directories are created automatically. Papers can belong to multiple branches; parent counts deduplicate papers. Writing roles are `review`, `intro`, `methods`, `discussion`, and `comparison`. Additions preserve memberships, tags, and notes. Use collection descriptions for concise thematic syntheses with identifiable paper references. Scientific details remain in each article's digest.
+| Request | Returns |
+|---|---|
+| `--outline` (also the default) | Stored section headings with starting line, word count, and the digest's gist |
+| `--finding` | The paragraph its quote anchors; without a quote, the paragraph naming its table, figure, or equation, or the start of its locator section; the finding's statement and locator come with it |
+| `--section` | One section, matched by number, heading, or heading words, such as `2.3`, `Sec. 4`, or `Discussion` |
+| `--grep` | Paragraphs containing every term, with their section headings; `term_matches` counts all matches |
 
-Before creating a branch, compare its scientific concept with existing paths, including synonyms and translations. Reuse a matching branch in the library's established language. Requested taxonomy cleanup can consolidate equivalent paths after reviewing their members and preserving their combined memberships.
+Each passage reports its `section`, `match` type, `lines` in the stored text, and `truncated` when it reached `--max-chars` (default 3000; `0` returns complete passages). A truncated section adds `section_lines` for reading the rest by line range from `version.text_path`. `--context <n>` adds neighboring paragraphs, `--limit` caps grep paragraphs (default 5), and `--sha256` selects a known version. Requests that resolve nowhere are listed in `unresolved`; a scan without extracted text returns the finding locators and the artifact path.
 
-For an existing library, read each paper's stored overview, keywords and facets, prepare a reviewed batch, and run `organize --annotations <file.json>`. The file contains an `annotations` array; each item has `identifier`, a nonempty `collections` list, and optional `tags`, `roles`, and `note`. The operation validates all items within one transaction and preserves earlier annotations. Schema migration creates the catalog tables; content-based classification uses this separate reading and organization step. Full digest ingest also saves its keywords as tags.
+## Query Stored Evidence
 
-## Web Browsing and Citation Export
+Search concepts, findings, and text:
 
-When the user asks to start or open the Web library, resolve `<skill-dir>` from the installed `SKILL.md`. A Codex standalone installation normally uses `~/.agents/skills/nasa-ads`; a Claude standalone installation uses `~/.claude/skills/nasa-ads`. Marketplace plugins use the path of the loaded skill. The complete directory includes `scripts/adslib.py`, `scripts/library_web.py`, `scripts/library_catalog.py`, and `assets/library/`.
+```bash
+search "<concept or method>" --scope summary
+search "<exact article phrase>" --scope fulltext --mode phrase
+list --collection "<topic path>" --role discussion
+```
 
-During skill installation or a request to register the shortcut, run `python3 "<skill-dir>/scripts/adslib.py" install`, then verify `adslib --version` in a fresh shell. This registers a user-level wrapper pointing to this installed script and the working Python interpreter. Windows uses `~/.local/bin/adslib.cmd` for PowerShell and a sibling `adslib` shell script for Git Bash and preserves existing user PATH entries. macOS/Linux/WSL use `~/.local/bin/adslib`; the installer adds a managed PATH block to the active bash/zsh/sh configuration when needed. `install --bin-dir <path> --no-path` supports a user-managed command directory. Existing foreign launchers are preserved. Re-register after moving the installed skill or changing its interpreter. A host plugin installation copies resources; command registration completes shell setup.
+Scopes are `metadata`, `summary`, `fulltext`, and `all`. `terms` mode requires every term, `phrase` matches the phrase, and `fts` uses SQLite FTS5 syntax over complete digests. Continuous CJK text uses literal case-insensitive matching. `--topic` filters digest facets; `--year-from`, `--year-to`, `--collection` (including descendants), `--role`, `--tag`, and `--limit` narrow results. Results label the evidence layer and article version, and include matching findings with their values and locators.
 
-Ordinary Web launch uses `adslib`, or the bundled script directly when the command is unregistered:
+Retrieve citable findings and values as rows for comparison tables, claim checks, and citations. `findings` returns one row per finding, including inferences, predictions, and constraints without numbers; `parameters` returns one row per stored value:
+
+```bash
+findings "<concept, object, or mechanism>" --kind interpretation
+findings --paper "<identifier>"
+parameters "<quantity, symbol, or model>"
+parameters "<quantity>" --entity "<object name>" --status fitted --status measured
+parameters "<quantity>" --collection "<topic path>" --format csv --output "<table.csv>"
+```
+
+Both commands accept `--paper`, `--entity`, `--kind`, `--status`, `--collection` (including descendants), `--role`, `--tag`, `--year-from`, `--year-to`, `--limit` (default 200), `--format json|csv`, and `--output`. Every row carries the paper's `citekey`, `bibcode`, year, version, reading status, facet, `finding_id`, finding statement, kind, confidence, `locator`, and `cited_from`. Finding rows add `quote`, `compared_with`, `values`, and `keywords`; `passage --finding <finding_id>` returns the stating paragraph. Value rows add `name`, `symbol`, `value`, `range`, `uncertainty`, `unit`, `qualifier`, `status`, `model`, `dataset`, `method`, and `condition`, and inherit the finding's `cited_from` when the value has none. For `findings`, `--status` keeps findings that report a value with that status.
+
+Latin query terms match at word starts; other scripts match as substrings. Rows whose own text matches every term (`"match": "finding"` or `"value"`) precede rows matched only through the enclosing finding or facet (`"context"`). `--entity` keeps papers whose digest names that object, alias, or dataset identifier; include the object in the query to select its specific findings. `missing` and `without_complete_digest` list requested papers that still need capture or reading, and `truncated` reports a result set beyond `--limit`. CSV output is UTF-8 with a byte-order mark for spreadsheet tools, and `--output` must lie outside the library directory.
+
+`cited_from` names the work a restated result comes from. [Citing specific results](research-writing.md#cite-specific-results) covers how these rows enter manuscript writing.
+
+## Classification and Manuscript Roles
+
+```bash
+collections
+collections --create "FRB/Polarization" --description "<source-backed thematic overview>"
+annotate "<identifier>" --collection "FRB/Polarization/Circular" --collection "My manuscript/Discussion" --tag "FAST" --role discussion --note "<comparison and its limitations>"
+organize --annotations "<annotations.json>"
+```
+
+Collection paths support up to twelve levels and create their parents. A paper can belong to several branches; parent counts deduplicate papers. Writing roles are `review`, `intro`, `methods`, `discussion`, and `comparison`. Additions preserve existing memberships, tags, and notes. Collection descriptions hold concise thematic syntheses with identifiable paper references; detailed evidence stays in each paper's digest.
+
+Before creating a branch, compare its concept with existing paths, including synonyms and translations, and reuse a matching branch in the library's established language. For bulk classification, read each paper's stored overview, keywords, and facets, then write an `annotations` array whose items have `identifier`, a nonempty `collections` list, and optional `tags`, `roles`, and `note`. `organize` validates the whole batch in one transaction and preserves earlier annotations. Full digest ingest saves digest keywords as tags.
+
+## Citation Export
+
+Citation-only tasks use this section without opening article content.
+
+```bash
+citations "<identifier>"
+citations "<identifier>" --fetch
+citations --collection "My manuscript" --output "<references.bib>"
+citations --all --output "<personal-library.bib>"
+```
+
+Cached official SciX entries keep their exact keys and source. A paper without one receives BibTeX generated from stored metadata with a provenance comment; it includes only known fields. `--fetch` caches official entries for the selected papers using SciX credentials and reuses existing ones. Changes to citation-bearing metadata, including DOI and arXiv identifiers, invalidate a cached entry. Direct arXiv records awaiting SciX indexing keep metadata-generated entries. Output files must lie outside the library directory.
+
+For papers missing from the library, retrieve metadata with `ads_api.py bigquery`, complete that run's summaries and topics, then export. Other citation formats use [`ads_api.py export`](ads-cli.md#citation-export).
+
+## Web Library
+
+Run the registered `adslib` command, or the bundled script when the command is unregistered:
 
 ```bash
 adslib
 python3 "<skill-dir>/scripts/adslib.py"
 ```
 
-The launcher defaults to `open`: it opens the browser and starts or reuses a managed background service. `start` starts in the background without opening a browser; `status` prints the URL, library, version and PID; `stop` shuts down the matching instance; `restart` starts a replacement in the background; `serve` runs in the foreground until Ctrl+C. Use the same `--library-dir <path>` and preferred `--port <number>` for subsequent commands. An occupied port gets an available alternative, which is recorded for discovery. `--no-open` suppresses browser launch. Windows background processes use hidden windows. The CLI handles background process creation and authenticated shutdown. Verify `status`, `/api/stats`, and the page before reporting the URL. Status returns 3 when no managed instance is running; repeated stop succeeds. Startup prints a log path. Runtime state is separate from the literature database; preserve the same user and runtime-directory environment for control.
+`open` (the default) starts or reuses a background service and opens the browser; `start`, `status`, `stop`, `restart`, and `serve` (foreground) manage it. Pass the same `--library-dir <path>` and preferred `--port <number>` to later commands; an occupied port is replaced by a free one and recorded for discovery. `--no-open` suppresses the browser. `status` exits 3 when no managed instance runs, and repeated `stop` succeeds. Verify `status`, `/api/stats`, and the page before reporting the URL. The service binds to localhost, uses bundled assets, needs no SciX token, and shows an empty library when no database exists. Classification and notes are edited through the CLI.
 
-For foreground service operation, use:
-
-```bash
-python3 "<skill-dir>/scripts/adslib.py" serve --port 8765
-```
-
-The Web server uses the Python standard library and bundled assets. Local browsing needs no SciX token. An absent database displays an empty library without creating files; `init` is needed when upgrading an existing incompatible schema. Installing the skill provides its code. To reuse a personal library on another computer, transfer a CLI backup and restore it to a new destination, which rewrites managed article paths. Use the default destination or the same `NASA_ADS_LITERATURE_DIR` for subsequent searches and Web browsing. Stop and restart the server when changing its library directory.
-
-On Windows, use `python` or `py -3` with the same arguments. The server supports collapsible topic navigation, combined topic/role/tag/year filters, sorting, summaries directly in the list, focused reading, scientific facets, version downloads, and BibTeX export for selected papers or the entire filtered view (up to 2000 papers). Narrow windows use a navigation drawer and a separate reader with a return button. The library information button shows the actual storage directory. Refresh reads current data from that directory. The page uses bundled assets and loads no external scripts. It binds to localhost and blocks cross-origin access. Classification and notes are edited through the CLI or agent.
-
-Apply a year range with the year control's apply button. Invalid ranges keep the previous results and show persistent validation feedback. Applied years, reading levels, and search scopes appear as removable filters. The URL preserves filters, sorting, pagination, the active paper, and its detail tab across reloads and browser back/forward navigation. Copied article links include that browsing context. Connection failures show an inline message and a refresh recovery action. Keyboard shortcuts support `/` for search, `Escape` for closing the year control or reader, and arrow keys within detail tabs.
-
-## Citation Export
-
-For a citation-only task, use this section directly. Stored BibTeX and metadata-derived exports work offline. For missing papers, retrieve their metadata through SciX `bigquery`, finish that run's source summaries and scientific topic assignments, then export citations. Subsequent content investigation follows the shared [reading scope](../SKILL.md#reading-scope).
-
-Export the local bibliography:
+Register the command once during installation or on request, then verify it in a fresh shell:
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" citations "<identifier>"
-python3 "<skill-dir>/scripts/literature_db.py" citations --collection "My manuscript" --output "<references.bib>"
-python3 "<skill-dir>/scripts/literature_db.py" citations --all --output "<personal-library.bib>"
+python3 "<skill-dir>/scripts/adslib.py" install
+adslib --version
 ```
 
-Cached official SciX entries retain their exact keys and source. Changes to citation-bearing metadata, including DOI and arXiv identifiers, invalidate that paper's cached entry. A record without a cached official entry receives BibTeX generated from its current stored metadata, with a provenance comment. Metadata-derived exports include only known fields; publication details may be incomplete.
-
-Fetch and cache official entries for selected known papers:
-
-```bash
-python3 "<skill-dir>/scripts/literature_db.py" citations "<identifier>" --fetch
-```
-
-This explicit online operation uses SciX credentials. Existing official entries are reused. Direct arXiv records with pending SciX indexing keep their metadata-derived entries. Citation output files are written outside the managed database directory.
-
-A bulk unedited BibTeX export obtained through `ads_api.py export` can be cached with `import-citations --bibtex <scix-export.bib>`. Every entry must identify the paper's current library bibcode; unknown records, duplicates and incomplete entries abort the transaction. Refresh existing metadata through `enrich` first when SciX indexing or publication status has changed.
-
-## Integrity, Backup, and Migration
-
-`lookup`, `show`, `search`, `list`, `stats`, `pending`, `check`, `reading-check`, `runs`, ordinary `collections`, offline `citations`, Web requests, and `audit` open read-only connections. Ordinary reads of a missing library create no files. `audit` and `backup` require an existing database.
-
-```bash
-python3 "<skill-dir>/scripts/literature_db.py" stats
-python3 "<skill-dir>/scripts/literature_db.py" audit
-python3 "<skill-dir>/scripts/literature_db.py" backup --destination "<new backup directory>"
-python3 "<skill-dir>/scripts/literature_db.py" restore "<backup directory>" --destination "<new library directory>"
-python3 "<skill-dir>/scripts/literature_db.py" init
-```
-
-Database schema 3 adds the personal catalog to existing complete article records. `init` automatically creates a backup before migrating schema 1 or 2. Schema 1 migration retains the active highest digest revision and enforces one current digest per exact version. Existing current digests and article objects remain available. Ordinary write commands require the migration to be performed explicitly.
-
-Backups contain a consistent SQLite snapshot, article objects, and `backup.json`. Restore requires a new destination and rewrites managed file references. It checks object hashes and database integrity before publishing the restored directory. The original library remains available at its original path.
-
-The audit checks SQLite integrity, foreign keys, digest validity, complete reading state, search parity, primary and historical objects, and their hashes. It also checks every paper's metadata, source-snapshot hashes and evidence levels, historical pending summaries, and topic assignments, and reports missing citation caches. An unhealthy audit returns a nonzero exit code. `--skip-hashes` provides a structural pass. Verify reported metadata gaps against the source; some document types and unindexed publications legitimately lack fields. Source fidelity and scientific correctness require source comparison in addition to these structural checks.
-
-Use `enrich --manifest <file>` to refresh current source metadata and reconcile identifiers for an existing paper. Fresh search capture and enrichment can correct existing nonempty fields for the same current record. Empty incoming fields preserve known values. Ingest and cached full-text capture preserve the current bibliography while recording historical source evidence. Confirmed journal metadata can upgrade a preprint's bibliographic record, and a record that lists the stored bibcode in `alternate_bibcode`, such as a final volume replacing a `.tmp.` bibcode, replaces it. A publication awaiting its journal bibcode retains the preprint bibcode as a lookup alias. Later preprint captures preserve the confirmed journal bibliography.
-
-When one capture, ingest, or enrich manifest carries identifiers held by several stored papers, such as a preprint and its separately captured publication that SciX later links, those papers merge into one. The merged paper keeps distinct versions, reading evidence, briefs, topics, tags, roles, notes, and search history, and takes the published metadata. Merging follows the manifest's identifiers. For unlinked candidates, verify authors, article content, and publication provenance before adding identifiers by hand; title similarity supports candidate discovery. Retain separate identities for related articles, datasets, conference abstracts, and corrections.
-
-Duplicate full-text versions retain their artifact files and exact arXiv version labels. Identical stored digests share one record; a digest present on only one side moves to the retained version. Different stored digests stop automatic merging with a conflict error, and every operation carrying both records' identifiers reports the same conflict until the digests agree. Reconcile them on the separate records:
-
-1. Run `backup`.
-2. Run `lookup <identifier> --include-digest` for each record with an identifier only that record holds, such as the preprint's arXiv ID and the publication's DOI. Note each `version.manifest_path` and stored digest.
-3. Author one complete digest that keeps the verified evidence of both readings, and check it with `validate-digest`.
-4. Run `ingest --manifest <that record's manifest_path> --digest <reconciled digest> --replace-digest` once for each record. Each stored manifest carries only its own record's identifiers.
-5. Retry the original capture, ingest, or enrich; the records then merge.
-
-Identity reconciliation, ingest checks, and database writes share one transaction; a failed operation rolls back its database changes. Successful merging rebuilds the retained paper's search documents.
-
-A whole-library SciX metadata refresh completes an upgrade from a pre-2.0 library and picks up later publication changes:
-
-1. Run `backup`.
-2. Write the bibcodes from `list --limit <paper count>` to a file and run `ads_api.py bigquery --bibcodes-file <file>` with default capture. SciX resolves superseded preprint and `.tmp.` bibcodes to the current records.
-3. For papers without a bibcode, query their known DOI and arXiv identifiers with `ads_api.py search --query 'identifier:"<id>"'`. Publisher or arXiv metadata can fill verified publication details while SciX indexing remains pending. Preserve source links and exact identifiers.
-4. Inspect suspected source-field substitutions against their original sources. Preserve legitimate abstract revisions and formatting differences. Correct confirmed substitutions with verified source text and source-grounded summaries; retain the earlier work in the backup and record the correction's provenance.
-5. Complete pending summaries from all historical runs within this maintenance scope, reconcile reviewed duplicate identities and equivalent collection paths, cache official BibTeX with `citations --fetch` where needed, and finish with `check` and `audit`.
-
-Capture applies the identifier rules above, including preprint upgrades, superseded bibcodes, and merges. Unchanged sources reuse their summaries.
-
-Use `reindex` to rebuild derived complete-digest search documents. A complete-digest replacement uses `backup` followed by approved `ingest --replace-digest`.
+Registration writes a user-level wrapper pointing at this installed script and the working Python: `~/.local/bin/adslib.cmd` plus a Git Bash script on Windows, and `~/.local/bin/adslib` with a managed PATH block for bash, zsh, or sh on macOS, Linux, and WSL. Existing PATH entries and foreign launchers are preserved. `install --bin-dir <path> --no-path` uses a user-managed directory. Re-register after moving the skill or changing Python. Standalone installs usually live at `~/.agents/skills/nasa-ads` (Codex) or `~/.claude/skills/nasa-ads` (Claude); marketplace plugins use the loaded skill's path.

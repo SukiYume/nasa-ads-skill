@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.util
 import io
 import json
@@ -37,6 +38,7 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
                     "kind": "measurement",
                     "confidence": "high",
                     "locator": {"section": "3.1", "figure": "1"},
+                    "quote": "we detected 1076 bursts in total",
                     "values": [
                         {"name": "burst count", "value": 1076, "unit": "bursts"},
                         {"name": "maximum rate", "value": 390, "unit": "hr^-1"},
@@ -48,12 +50,12 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
                     "kind": "measurement",
                     "confidence": "high",
                     "locator": {"section": "3.1", "table": "1"},
+                    "quote": "the burst rate varied strongly between sessions",
                     "values": [],
                     "keywords": ["session variability"],
                 },
             ],
-            "methods": ["offline burst search"],
-            "limitations": ["The measured rate depends on observing cadence."],
+            "methods": ["burst search"],
         },
         {
             "key": "circular-polarization",
@@ -73,6 +75,7 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
                     "kind": "measurement",
                     "confidence": "high",
                     "locator": {"section": "3.3", "figure": "9"},
+                    "quote": "circular polarization reverses sign",
                     "values": [],
                     "keywords": ["sign reversal", "time-frequency morphology"],
                 },
@@ -81,54 +84,39 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
                     "kind": "measurement",
                     "confidence": "high",
                     "locator": {"section": "3.3", "figure": "1"},
+                    "quote": "the rotation measure stays close to zero",
                     "values": [{"name": "mean RM", "value": -0.08, "unit": "rad m^-2"}],
                     "keywords": ["rotation measure"],
                 },
             ],
-            "methods": ["polarization calibration", "RM synthesis"],
-            "limitations": ["The physical origin is not uniquely determined."],
+            "methods": ["RM synthesis"],
         },
     ]
     chosen_facets = facets if facets is not None else default_facets
     sections = ["1", "2", "3.1", "3.2", "3.3", "4", "5"]
-    facet_keys = [facet["key"] for facet in chosen_facets]
-    coverage = [
-        {
-            "section": section,
-            "role": "scientific" if section in {"3.1", "3.3"} else "context",
-            "facet_keys": (
-                facet_keys
-                if section in {"3.1", "3.3"}
-                else []
-            ),
-            "notes": (
-                ""
-                if section in {"3.1", "3.3"}
-                else "This section supplies context, methods, or synthesis."
-            ),
-        }
-        for section in sections
-    ]
-    return {
+    gists = {
+        "3.1": "Burst detections and the event rate across sessions.",
+        "3.3": "Polarization measurements and rotation measures.",
+    }
+    digest = {
         "schema_version": literature_db.DIGEST_SCHEMA_VERSION,
         "language": "zh-CN",
         "overview": {
+            "tldr": "FAST measured the activity and polarization of FRB 20220912A.",
             "summary": (
                 "FAST measured burst statistics and polarization for FRB 20220912A."
-            ),
-            "significance": (
-                "The paper connects source activity, spectra, and polarization."
             ),
             "questions": [
                 "What controls repeater activity?",
                 "What do the polarization measurements imply?",
             ],
+            "study_types": ["observational"],
         },
         "keywords": ["fast radio burst", "FAST", "FRB 20220912A"],
         "entities": [
             {
                 "name": "FRB 20220912A",
-                "type": "repeating FRB",
+                "type": "source",
                 "description": "An active localized repeater.",
                 "aliases": ["FRB20220912A"],
             }
@@ -136,24 +124,27 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
         "datasets": [
             {
                 "name": "FAST 2022 campaign",
-                "description": "Seventeen L-band observations.",
-                "instrument": "FAST",
-                "sample": "1076 bursts",
-                "time_span": "2022 October-December",
-                "frequency": "1-1.5 GHz",
+                "type": "observation",
+                "description": (
+                    "Seventeen FAST L-band observations at 1-1.5 GHz in 2022 "
+                    "October-December, yielding 1076 bursts."
+                ),
                 "identifiers": ["ScienceDB 10.57760/sciencedb.08058"],
             }
         ],
         "methods": [
             {
                 "name": "burst search",
-                "description": "A classifier cross-checked with PRESTO.",
-                "purpose": "Detect individual bursts.",
-                "keywords": ["PRESTO", "classification"],
-            }
+                "description": "A classifier cross-checked with PRESTO detects bursts.",
+            },
+            {
+                "name": "RM synthesis",
+                "description": "Faraday rotation fitting of calibrated spectra.",
+            },
         ],
         "facets": chosen_facets,
         "global_limitations": ["The observations cover only the FAST L band."],
+        "assessment": [],
         "data_products": [
             {
                 "name": "Burst property table",
@@ -165,14 +156,119 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
         ],
         "reading": {
             "status": "full",
-            "sections": sections,
-            "page_ranges": [],
-            "visual_page_ranges": [],
-            "unread_sections": [],
+            "sections": [
+                {"heading": section, "gist": gists[section]}
+                if section in gists
+                else section
+                for section in sections
+            ],
             "notes": "Publisher HTML was read in full.",
-            "coverage": coverage,
         },
     }
+    # Fixture facets name their methods freely and omit value statuses.
+    known_methods = {method["name"].casefold() for method in digest["methods"]}
+    for facet in digest["facets"]:
+        for name in facet.get("methods", []):
+            if name.casefold() not in known_methods:
+                digest["methods"].append({"name": name})
+                known_methods.add(name.casefold())
+        for finding in facet["findings"]:
+            for value in finding.get("values", []):
+                value.setdefault("status", "measured")
+    return digest
+
+
+def schema3_digest() -> dict:
+    """A schema 3 record as the previous release stored it."""
+    digest = sample_digest()
+    digest["schema_version"] = 3
+    tldr = digest["overview"].pop("tldr")
+    digest["overview"]["summary"] = tldr + " The campaign also measured rotation measures."
+    digest["overview"]["significance"] = "It links activity and polarization."
+    digest["datasets"][0].update(instrument="FAST", frequency="1-1.5 GHz")
+    digest["methods"][0].update(purpose="Detect bursts.", keywords=["PRESTO"])
+    for facet in digest["facets"]:
+        facet.setdefault("aliases", [])
+        for finding in facet["findings"]:
+            finding.pop("quote", None)
+            finding.setdefault("keywords", [])
+    sections = [
+        section["heading"] if isinstance(section, dict) else section
+        for section in digest["reading"]["sections"]
+    ]
+    facet_keys = [facet["key"] for facet in digest["facets"]]
+    digest["reading"].update(
+        sections=[*sections, "References"],
+        page_ranges=[],
+        visual_page_ranges=[],
+        unread_sections=[],
+        coverage=[
+            *(
+                {
+                    "section": section,
+                    "role": "scientific" if section in {"3.1", "3.3"} else "context",
+                    "facet_keys": facet_keys if section in {"3.1", "3.3"} else [],
+                    "notes": "" if section in {"3.1", "3.3"} else "Read and reviewed.",
+                }
+                for section in sections
+            ),
+            {
+                "section": "References",
+                "role": "references",
+                "facet_keys": [],
+                "notes": "Checked cited works.",
+            },
+        ],
+    )
+    return digest
+
+
+def legacy_digest() -> dict:
+    """A schema 2 record as earlier releases stored it."""
+    digest = schema3_digest()
+    digest["schema_version"] = 2
+    digest["overview"].pop("study_types")
+    digest.pop("assessment")
+    digest["entities"][0]["type"] = "repeating FRB"
+    digest["datasets"][0].pop("type")
+    digest["facets"][0]["limitations"] = [
+        "The measured rate depends on observing cadence."
+    ]
+    digest["facets"][1]["methods"] = ["polarization calibration", "RM synthesis"]
+    for facet in digest["facets"]:
+        for finding in facet["findings"]:
+            for value in finding["values"]:
+                value.pop("status", None)
+    digest["facets"][1]["findings"][1]["values"].append(
+        {"name": "RM upper limit", "value": 0.1, "qualifier": "3 sigma upper limit"}
+    )
+    return digest
+
+
+def current_digest(*, facets: list[dict] | None = None) -> dict:
+    """The shared fixture with an assessment, mixed statuses, and a limitation."""
+    digest = sample_digest(facets=facets)
+    digest["assessment"] = [
+        "The RM sample is restricted to high signal-to-noise bursts."
+    ]
+    if facets is None:
+        statuses = iter(["measured", "measured", "derived"])
+        for facet in digest["facets"]:
+            for finding in facet["findings"]:
+                for value in finding["values"]:
+                    value["status"] = next(statuses)
+        digest["facets"][0]["findings"].append(
+            {
+                "statement": "The measured rate depends on observing cadence.",
+                "kind": "limitation",
+                "confidence": "high",
+                "locator": {"section": "4"},
+                "quote": "the measured rate depends on the observing cadence",
+                "values": [],
+                "keywords": ["cadence"],
+            }
+        )
+    return digest
 
 
 def sample_manifest(
@@ -294,36 +390,7 @@ class DigestValidationTests(unittest.TestCase):
         self.assertEqual(len(validated["facets"][0]["findings"]), 1)
         self.assertEqual(validated["global_limitations"], [])
 
-    def test_schema2_requires_section_coverage_for_every_read_section(self):
-        digest = sample_digest()
-        digest["reading"]["coverage"] = digest["reading"]["coverage"][:-1]
-        with self.assertRaisesRegex(
-            literature_db.LiteratureError, "map digest.reading.sections exactly"
-        ):
-            literature_db.validate_digest(digest)
-
-    def test_scientific_section_requires_a_facet_mapping(self):
-        digest = sample_digest()
-        digest["reading"]["coverage"][0].update(
-            {"role": "scientific", "facet_keys": []}
-        )
-        with self.assertRaisesRegex(
-            literature_db.LiteratureError, "scientific section without a facet"
-        ):
-            literature_db.validate_digest(digest)
-
-    def test_non_scientific_section_rejects_facet_mappings(self):
-        digest = sample_digest()
-        digest["reading"]["coverage"][0]["role"] = "references"
-        digest["reading"]["coverage"][0]["facet_keys"] = [
-            digest["facets"][0]["key"]
-        ]
-        with self.assertRaisesRegex(
-            literature_db.LiteratureError, "Scientific and technical sections"
-        ):
-            literature_db.validate_digest(digest)
-
-    def test_complete_schema2_digest_rejects_unread_sections(self):
+    def test_complete_digest_rejects_unread_sections(self):
         digest = sample_digest()
         digest["reading"]["unread_sections"] = ["Appendix A"]
         with self.assertRaisesRegex(
@@ -334,9 +401,8 @@ class DigestValidationTests(unittest.TestCase):
     def test_legacy_digest_is_rejected(self):
         digest = sample_digest()
         digest["schema_version"] = 1
-        digest["reading"].pop("coverage")
         with self.assertRaisesRegex(
-            literature_db.LiteratureError, "schema_version must be 2"
+            literature_db.LiteratureError, "schema_version must be 4"
         ):
             literature_db.validate_digest(digest)
 
@@ -372,7 +438,6 @@ class DigestValidationTests(unittest.TestCase):
                         }
                     ],
                     "methods": ["resolution study"],
-                    "limitations": ["Only three resolution levels were tested."],
                 },
                 {
                     "key": "observable-predictions",
@@ -394,7 +459,6 @@ class DigestValidationTests(unittest.TestCase):
                         }
                     ],
                     "methods": ["analytic model"],
-                    "limitations": ["The prediction depends on the model assumptions."],
                 },
             ]
         )
@@ -402,10 +466,8 @@ class DigestValidationTests(unittest.TestCase):
             "summary": (
                 "A numerical and analytic study of an arbitrary physical system."
             ),
-            "significance": (
-                "It tests convergence and derives an observable prediction."
-            ),
             "questions": ["Are the results converged?", "How can the model be tested?"],
+            "study_types": ["simulation", "theoretical"],
         }
         digest["keywords"] = ["numerical simulation", "analytic theory"]
         digest["entities"] = []
@@ -414,8 +476,6 @@ class DigestValidationTests(unittest.TestCase):
             {
                 "name": "resolution study",
                 "description": "Three numerical resolutions were compared.",
-                "purpose": "Separate numerical artifacts from stable behavior.",
-                "keywords": ["convergence"],
             }
         ]
         digest["reading"].update(
@@ -442,6 +502,230 @@ class DigestValidationTests(unittest.TestCase):
         )
         with self.assertRaises(literature_db.LiteratureError):
             literature_db.validate_digest(template)
+
+    def test_experiment_and_fit_parameter_fields_are_accepted(self):
+        digest = sample_digest()
+        digest["datasets"][0].update(
+            type="observation", description="19-beam receiver, 49.152 us sampling."
+        )
+        digest["methods"][0].update(assumptions=["Bursts are independent events."])
+        digest["facets"][0]["findings"][0]["values"].append(
+            {
+                "name": "Weibull shape",
+                "symbol": "k",
+                "value": 0.75,
+                "uncertainty": "+0.05/-0.04",
+                "qualifier": "68% credible interval",
+                "status": "fitted",
+                "model": "Weibull waiting-time distribution",
+                "dataset": "FAST 2022 campaign",
+                "method": "burst search",
+                "condition": "1-1.5 GHz",
+            }
+        )
+        validated = literature_db.validate_digest(digest)
+        value = validated["facets"][0]["findings"][0]["values"][-1]
+        self.assertEqual(value["status"], "fitted")
+        self.assertEqual(validated["methods"][0]["assumptions"], ["Bursts are independent events."])
+
+    def test_value_status_uses_a_controlled_vocabulary(self):
+        digest = sample_digest()
+        digest["facets"][0]["findings"][0]["values"][0]["status"] = "guessed"
+        with self.assertRaises(literature_db.LiteratureError):
+            literature_db.validate_digest(digest)
+
+    def test_blank_optional_fields_from_the_template_are_dropped(self):
+        digest = sample_digest()
+        digest["entities"][0]["description"] = ""
+        digest["facets"][0]["findings"][0]["values"][0].update(
+            symbol="", qualifier="", model="  "
+        )
+        validated = literature_db.validate_digest(digest)
+        self.assertNotIn("description", validated["entities"][0])
+        value = validated["facets"][0]["findings"][0]["values"][0]
+        for field in ("symbol", "qualifier", "model"):
+            self.assertNotIn(field, value)
+
+    def test_findings_accept_predictions_and_attribution(self):
+        digest = sample_digest()
+        finding = digest["facets"][0]["findings"][0]
+        finding.update(kind="prediction", cited_from="Zhou et al. 2022")
+        finding["values"][0]["cited_from"] = "2022RAA....22l4001Z"
+        digest["facets"][0]["findings"][1]["cited_from"] = " "
+        validated = literature_db.validate_digest(digest)
+        first, second = validated["facets"][0]["findings"]
+        self.assertEqual(first["kind"], "prediction")
+        self.assertEqual(first["cited_from"], "Zhou et al. 2022")
+        self.assertEqual(first["values"][0]["cited_from"], "2022RAA....22l4001Z")
+        self.assertNotIn("cited_from", second)
+
+
+class DigestSchemaFourTests(unittest.TestCase):
+    def test_schema_four_is_the_authoring_standard(self):
+        digest = literature_db.validate_digest(current_digest())
+        self.assertEqual(digest["schema_version"], 4)
+        self.assertNotIn("limitations", digest["facets"][0])
+        self.assertEqual(literature_db.digest_warnings(digest), [])
+        template = literature_db.digest_template()
+        self.assertEqual(template["schema_version"], literature_db.DIGEST_SCHEMA_VERSION)
+        self.assertIn("assessment", template)
+        self.assertNotIn("limitations", template["facets"][0])
+
+    def test_schema_four_rejects_legacy_shortcuts(self):
+        cases = [
+            (lambda d: d["overview"].pop("study_types"), "study_types"),
+            (lambda d: d["overview"].update(study_types=["opinion"]), "study_types"),
+            (lambda d: d["overview"].pop("tldr"), "overview.tldr"),
+            (lambda d: d["reading"].update(coverage=[]), "unsupported fields: coverage"),
+            (lambda d: d["overview"].update(significance="x"), "unsupported fields: significance"),
+            (lambda d: d["datasets"][0].update(instrument="FAST"), "unsupported fields: instrument"),
+            (
+                lambda d: d["entities"][0].update(type="repeating FRB"),
+                r"entities\[0\]\.type",
+            ),
+            (lambda d: d["datasets"][0].pop("type"), r"datasets\[0\]\.type"),
+            (lambda d: d["facets"][0].update(limitations=["x"]), "unsupported fields: limitations"),
+            (
+                lambda d: d["facets"][1].update(methods=["polarization calibration"]),
+                "digest.methods",
+            ),
+            (
+                lambda d: d["facets"][0]["findings"][0]["values"][0].pop("status"),
+                "status is required",
+            ),
+            (
+                lambda d: d["facets"][0]["findings"][0]["values"][0].update(
+                    dataset="GBT archive"
+                ),
+                "digest.datasets",
+            ),
+        ]
+        for change, message in cases:
+            with self.subTest(message=message):
+                digest = current_digest()
+                change(digest)
+                with self.assertRaisesRegex(literature_db.LiteratureError, message):
+                    literature_db.validate_digest(digest)
+
+    def test_values_accept_ranges_and_resolve_references(self):
+        digest = current_digest()
+        values = digest["facets"][0]["findings"][0]["values"]
+        values.append(
+            {
+                "name": "dispersion measure span",
+                "value": "",
+                "range": [100, 400],
+                "unit": "pc cm^-3",
+                "status": "measured",
+                "dataset": "fast 2022 campaign",
+                "method": "Burst Search",
+            }
+        )
+        added = literature_db.validate_digest(digest)["facets"][0]["findings"][0][
+            "values"
+        ][-1]
+        self.assertEqual(added["range"], [100, 400])
+        self.assertNotIn("value", added)
+        self.assertEqual(
+            literature_db.value_text(added),
+            "dispersion measure span = [100, 400] pc cm^-3 [measured]",
+        )
+        for bad in ([400, 100], [1], [1, "2"], "100-400"):
+            with self.subTest(bad=bad):
+                values[-1]["range"] = bad
+                with self.assertRaisesRegex(literature_db.LiteratureError, "range"):
+                    literature_db.validate_digest(digest)
+        values[-1] = {"name": "dispersion measure", "status": "measured"}
+        with self.assertRaisesRegex(literature_db.LiteratureError, "give a range"):
+            literature_db.validate_digest(digest)
+
+    def test_attribution_and_locators_on_datasets_and_methods(self):
+        digest = current_digest()
+        digest["datasets"][0].update(
+            locator={"section": "2.1", "table": "1"}, cited_from="Zhang et al. 2023"
+        )
+        digest["methods"][0].update(locator={"section": ""}, cited_from="")
+        digest["facets"][1]["findings"][1]["compared_with"] = [
+            "Hilmarsson et al. 2021",
+            " ",
+        ][:1]
+        validated = literature_db.validate_digest(digest)
+        self.assertEqual(validated["datasets"][0]["locator"], {"section": "2.1", "table": "1"})
+        self.assertNotIn("locator", validated["methods"][0])
+        self.assertNotIn("cited_from", validated["methods"][0])
+        self.assertEqual(
+            validated["facets"][1]["findings"][1]["compared_with"],
+            ["Hilmarsson et al. 2021"],
+        )
+
+    def test_targeted_digests_defer_reference_checks(self):
+        digest = current_digest()
+        digest["reading"].update(status="targeted", unread_sections=["Earlier sections"])
+        digest["datasets"] = []
+        digest["facets"][0]["findings"][0]["values"][0]["dataset"] = "FAST 2022 campaign"
+        literature_db.validate_digest(digest)
+        with self.assertRaisesRegex(literature_db.LiteratureError, "digest.datasets"):
+            literature_db.validate_digest(digest, check_references=True)
+
+    def test_warnings_keep_digests_at_citation_level(self):
+        digest = current_digest()
+        finding = digest["facets"][0]["findings"][0]
+        finding["locator"] = {"section": "3.1; Table 2"}
+        finding["cited_from"] = "Zhou et al. 2022; Li et al. 2021"
+        finding["values"][0].update(status="fitted", value=7.399999999999999e27)
+        finding["values"].extend(
+            {"name": f"burst {index} DM", "value": 560, "status": "measured"}
+            for index in range(15)
+        )
+        messages = {
+            warning["message"]
+            for warning in literature_db.digest_warnings(
+                literature_db.validate_digest(digest)
+            )
+        }
+        for expected in (
+            "summarize long tables",
+            "own locator fields",
+            "split findings",
+            "Copy the value as printed",
+            "Name the model",
+        ):
+            with self.subTest(expected=expected):
+                self.assertTrue(any(expected in message for message in messages))
+        digest = current_digest()
+        digest["facets"][1]["findings"][1]["values"] = [
+            {"name": f"row {index}", "value": index, "status": "measured"}
+            for index in range(151)
+        ]
+        paths = [
+            warning["path"]
+            for warning in literature_db.digest_warnings(
+                literature_db.validate_digest(digest)
+            )
+        ]
+        self.assertIn("facets", paths)
+
+    def test_warnings_flag_numbers_left_in_prose(self):
+        digest = current_digest()
+        findings = digest["facets"][1]["findings"]
+        findings[0]["statement"] = "About 40 percent of bursts in Figure 9 reverse sign."
+        findings[1]["values"] = [
+            {"name": "RM limit", "value": "<0.1", "unit": "rad m^-2", "status": "upper-limit"},
+            {"name": "RM", "value": "0.49 +/- 0.08", "status": "measured"},
+            {"name": "DM span", "value": "100-400", "status": "measured"},
+            {"name": "widths", "value": "0.23, 0.22", "status": "measured"},
+            {"name": "rate", "value": 2, "qualifier": "plus or minus 0.5", "status": "measured"},
+            {"name": "precise", "value": "1.2e-3", "status": "measured"},
+            {"name": "count", "value": "1,076", "status": "measured"},
+        ]
+        warnings = literature_db.digest_warnings(literature_db.validate_digest(digest))
+        self.assertEqual(
+            [warning["path"] for warning in warnings],
+            [
+                "facets[1].findings[0]",
+                *[f"facets[1].findings[1].values[{index}]" for index in range(5)],
+            ],
+        )
 
 
 class LibraryWorkflowTests(unittest.TestCase):
@@ -475,154 +759,6 @@ class LibraryWorkflowTests(unittest.TestCase):
             chosen_digest,
             merge=merge,
             replace_digest=replace_digest,
-        )
-
-    def downgrade_digest_table_to_schema_1(self) -> int:
-        current = self.connection.execute("SELECT * FROM digests").fetchone()
-        assert current is not None
-        current_id = int(current["id"])
-        self.connection.commit()
-        self.connection.execute("PRAGMA foreign_keys = OFF")
-        self.connection.execute("BEGIN IMMEDIATE")
-        self.connection.execute(
-            """
-            CREATE TABLE digests_v1 (
-                id INTEGER PRIMARY KEY,
-                version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
-                revision INTEGER NOT NULL,
-                schema_version INTEGER NOT NULL,
-                language TEXT NOT NULL,
-                overview TEXT NOT NULL,
-                significance TEXT NOT NULL,
-                reading_status TEXT NOT NULL,
-                digest_hash TEXT NOT NULL,
-                digest_json TEXT NOT NULL,
-                is_current INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN (0, 1)),
-                created_at TEXT NOT NULL,
-                UNIQUE(version_id, revision)
-            )
-            """
-        )
-        self.connection.execute(
-            """
-            INSERT INTO digests_v1(
-                id, version_id, revision, schema_version, language, overview,
-                significance, reading_status, digest_hash, digest_json,
-                is_current, created_at
-            )
-            SELECT id, version_id, 2, schema_version, language, overview,
-                   significance, reading_status, digest_hash, digest_json,
-                   1, created_at
-            FROM digests
-            """
-        )
-        self.connection.execute(
-            """
-            INSERT INTO digests_v1(
-                id, version_id, revision, schema_version, language, overview,
-                significance, reading_status, digest_hash, digest_json,
-                is_current, created_at
-            )
-            SELECT id + 1000, version_id, 1, schema_version, language, overview,
-                   significance, reading_status, digest_hash || '-historical',
-                   digest_json, 0, created_at
-            FROM digests
-            """
-        )
-        self.connection.execute("DROP TABLE digests")
-        self.connection.execute("ALTER TABLE digests_v1 RENAME TO digests")
-        self.connection.execute(
-            "CREATE UNIQUE INDEX digests_one_current_idx "
-            "ON digests(version_id) WHERE is_current = 1"
-        )
-        self.connection.execute("PRAGMA user_version = 1")
-        self.connection.commit()
-        self.connection.execute("PRAGMA foreign_keys = ON")
-        return current_id
-
-    def test_fresh_database_physically_enforces_one_digest_per_version(self):
-        columns = {
-            row["name"] for row in self.connection.execute("PRAGMA table_info(digests)")
-        }
-        self.assertEqual(
-            self.connection.execute("PRAGMA user_version").fetchone()[0],
-            literature_db.DATABASE_SCHEMA_VERSION,
-        )
-        self.assertNotIn("revision", columns)
-        self.assertNotIn("is_current", columns)
-        result = self.ingest()
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.connection.execute(
-                """
-                INSERT INTO digests(
-                    version_id, schema_version, language, overview, significance,
-                    reading_status, digest_hash, digest_json, created_at
-                )
-                SELECT version_id, schema_version, language, overview, significance,
-                       reading_status, digest_hash || '-duplicate', digest_json,
-                       created_at
-                FROM digests WHERE id = ?
-                """,
-                (result["digest_id"],),
-            )
-        self.connection.rollback()
-
-    def test_schema_1_migration_removes_digest_history(self):
-        self.ingest()
-        current_id = self.downgrade_digest_table_to_schema_1()
-        self.assertEqual(
-            self.connection.execute("SELECT COUNT(*) FROM digests").fetchone()[0],
-            2,
-        )
-        self.connection.close()
-
-        self.connection, self.fts5 = literature_db.connect_library(self.library, allow_migrate=True)
-
-        columns = {
-            row["name"] for row in self.connection.execute("PRAGMA table_info(digests)")
-        }
-        self.assertEqual(
-            self.connection.execute("PRAGMA user_version").fetchone()[0],
-            literature_db.DATABASE_SCHEMA_VERSION,
-        )
-        self.assertNotIn("revision", columns)
-        self.assertNotIn("is_current", columns)
-        rows = self.connection.execute("SELECT id FROM digests").fetchall()
-        self.assertEqual([int(row["id"]) for row in rows], [current_id])
-        audit = literature_db.audit_library(
-            self.connection, self.fts5, self.library, verify_hashes=True
-        )
-        self.assertEqual(audit["errors"], [])
-        self.assertEqual(audit["counts"]["digests"], 1)
-        self.assertNotIn(
-            "digests_with_history_markers", audit["database"]["relations"]
-        )
-
-    def test_read_command_does_not_migrate_schema_1(self):
-        self.ingest()
-        self.downgrade_digest_table_to_schema_1()
-        self.connection.close()
-        stderr = io.StringIO()
-
-        code = literature_db.run(
-            [
-                "--library-dir",
-                str(self.library),
-                "lookup",
-                "2023ApJ...955..142Z",
-            ],
-            stderr=stderr,
-        )
-
-        self.assertEqual(code, 2)
-        self.assertIn("backup", stderr.getvalue().casefold())
-        self.assertIn("init", stderr.getvalue().casefold())
-        self.connection = sqlite3.connect(self.library / "literature.sqlite3")
-        self.connection.row_factory = sqlite3.Row
-        self.assertEqual(self.connection.execute("PRAGMA user_version").fetchone()[0], 1)
-        self.assertEqual(
-            self.connection.execute("SELECT COUNT(*) FROM digests").fetchone()[0],
-            2,
         )
 
     def test_ingest_copies_fulltext_and_resolves_all_aliases(self):
@@ -695,19 +831,9 @@ class LibraryWorkflowTests(unittest.TestCase):
         digest["reading"].update(
             {
                 "status": "visual",
-                "sections": ["Pages 1-12 scientific content"],
+                "sections": [{"heading": "Pages 1-12 scientific content"}],
                 "visual_page_ranges": ["1-12"],
                 "notes": "All twelve rendered pages were inspected.",
-                "coverage": [
-                    {
-                        "section": "Pages 1-12 scientific content",
-                        "role": "scientific",
-                        "facet_keys": [
-                            facet["key"] for facet in digest["facets"]
-                        ],
-                        "notes": "",
-                    }
-                ],
             }
         )
 
@@ -895,9 +1021,8 @@ class LibraryWorkflowTests(unittest.TestCase):
     def test_new_article_rejects_schema1_digest_before_object_copy(self):
         digest = sample_digest()
         digest["schema_version"] = 1
-        digest["reading"].pop("coverage")
         with self.assertRaisesRegex(
-            literature_db.LiteratureError, "schema_version must be 2"
+            literature_db.LiteratureError, "schema_version must be 4"
         ):
             self.ingest(digest=digest)
         self.assertEqual(list((self.library / "objects").rglob("*")), [])
@@ -1047,8 +1172,6 @@ class LibraryWorkflowTests(unittest.TestCase):
         self.assertEqual(covered["reuse_status"], "reusable")
         self.assertEqual(len(covered["matched_topics"]), 2)
         self.assertIn("digest", covered)
-        self.assertEqual(covered["digest_schema_version"], 2)
-        self.assertNotIn("coverage_upgrade_recommended", covered)
 
     def test_audit_rejects_schema1_digest(self):
         result = self.ingest()
@@ -1057,9 +1180,8 @@ class LibraryWorkflowTests(unittest.TestCase):
         ).fetchone()
         digest = json.loads(row["digest_json"])
         digest["schema_version"] = 1
-        digest["reading"].pop("coverage")
         self.connection.execute(
-            "UPDATE digests SET schema_version = 1, digest_json = ? WHERE id = ?",
+            "UPDATE digests SET digest_json = ? WHERE id = ?",
             (literature_db.json_text(digest), result["digest_id"]),
         )
         self.connection.commit()
@@ -1285,6 +1407,150 @@ class LibraryWorkflowTests(unittest.TestCase):
         self.assertEqual(listed["count"], 1)
         self.assertEqual(listed["results"][0]["version_kind"], "published")
 
+    def test_parameters_flatten_values_with_locators_and_citekeys(self):
+        digest = sample_digest()
+        digest["facets"][1]["findings"][1]["values"][0].update(
+            symbol="RM", status="fitted", dataset="FAST 2022 campaign"
+        )
+        self.ingest(digest=digest)
+
+        everything = literature_db.evidence_table(self.connection, "values")
+        self.assertEqual(everything["count"], 3)
+        self.assertEqual(everything["papers_scanned"], 1)
+
+        rm = literature_db.evidence_table(self.connection, "values", query="RM")
+        self.assertEqual(rm["count"], 1)
+        row = rm["results"][0]
+        self.assertEqual(row["value"], -0.08)
+        self.assertEqual(row["unit"], "rad m^-2")
+        self.assertEqual(row["locator"], {"section": "3.3", "figure": "1"})
+        self.assertEqual(row["citekey"], "2023ApJ...955..142Z")
+        self.assertEqual(row["reading_status"], "full")
+        self.assertEqual(row["facet"], "circular-polarization")
+
+        measured = literature_db.evidence_table(
+            self.connection, "values", statuses=["fitted"]
+        )
+        self.assertEqual(measured["count"], 1)
+        self.assertEqual(
+            literature_db.evidence_table(
+                self.connection, "values", entity="FRB 20220912A"
+            )["count"],
+            3,
+        )
+        self.assertEqual(
+            literature_db.evidence_table(self.connection, "values", entity="Crab")["count"],
+            0,
+        )
+        limited = literature_db.evidence_table(self.connection, "values", limit=2)
+        self.assertEqual(limited["count"], 2)
+        self.assertTrue(limited["truncated"])
+
+        rate = literature_db.evidence_table(self.connection, "values", query="rate")
+        self.assertEqual(
+            [(row["name"], row["match"]) for row in rate["results"]],
+            [("maximum rate", "value"), ("burst count", "context")],
+        )
+        self.assertEqual(
+            literature_db.evidence_table(self.connection, "values", query="ate")["count"], 0
+        )
+        self.assertEqual(
+            literature_db.evidence_table(self.connection, "values", query="事件率")["count"], 2
+        )
+
+        csv_text = literature_db.evidence_csv(rm)
+        header, first = csv_text.splitlines()[:2]
+        self.assertIn("citekey", header)
+        self.assertIn("section 3.3; figure 1", first)
+
+    def test_findings_are_citable_rows_with_attribution(self):
+        digest = sample_digest()
+        rate_finding = digest["facets"][0]["findings"][0]
+        rate_finding["cited_from"] = "Zhou et al. 2022"
+        rate_finding["values"][1]["status"] = "fitted"
+        digest["facets"][1]["findings"][1]["values"][0]["cited_from"] = (
+            "2021ApJ...908L..10H"
+        )
+        digest["facets"][1]["findings"].append(
+            {
+                "statement": "The sign reversals favor a magnetospheric origin.",
+                "kind": "interpretation",
+                "confidence": "medium",
+                "locator": {"section": "4.2"},
+                "values": [],
+                "keywords": ["radiation mechanism"],
+            }
+        )
+        self.ingest(digest=digest)
+
+        everything = literature_db.evidence_table(self.connection, "findings")
+        self.assertEqual(everything["count"], 5)
+        self.assertEqual(everything["unit"], "findings")
+
+        inference = literature_db.evidence_table(
+            self.connection, "findings", kinds=["interpretation"]
+        )
+        self.assertEqual(inference["count"], 1)
+        row = inference["results"][0]
+        self.assertEqual(row["locator"], {"section": "4.2"})
+        self.assertEqual(row["citekey"], "2023ApJ...955..142Z")
+        self.assertEqual(row["values"], [])
+        self.assertIsNone(row["cited_from"])
+
+        origin = literature_db.evidence_table(
+            self.connection, "findings", query="magnetospheric"
+        )
+        self.assertEqual([row["match"] for row in origin["results"]], ["finding"])
+        fitted = literature_db.evidence_table(
+            self.connection, "findings", statuses=["fitted"]
+        )
+        self.assertEqual(fitted["count"], 1)
+        self.assertEqual(fitted["results"][0]["cited_from"], "Zhou et al. 2022")
+
+        values = literature_db.evidence_table(self.connection, "values")
+        attribution = {row["name"]: row["cited_from"] for row in values["results"]}
+        self.assertEqual(
+            attribution,
+            {
+                "burst count": "Zhou et al. 2022",
+                "maximum rate": "Zhou et al. 2022",
+                "mean RM": "2021ApJ...908L..10H",
+            },
+        )
+        self.assertEqual(
+            literature_db.evidence_table(
+                self.connection, "values", kinds=["interpretation"]
+            )["count"],
+            0,
+        )
+
+        csv_text = literature_db.evidence_csv(fitted)
+        header, first = csv_text.splitlines()[:2]
+        self.assertTrue(
+            header.startswith("bibcode,citekey,year,title,facet,finding_id,kind")
+        )
+        self.assertIn("maximum rate = 390 hr^-1 [fitted]", first)
+        self.assertIn("Zhou et al. 2022", first)
+
+    def test_schema_four_digest_ingests_and_counts(self):
+        result = self.ingest(digest=current_digest())
+        self.assertEqual(result["status"], "ingested")
+        stats = literature_db.library_stats(self.connection, self.fts5, self.library)
+        self.assertEqual(stats["digest_schema_version"], 4)
+        self.assertEqual(stats["counts"]["complete_digests"], 1)
+        limitation = literature_db.evidence_table(
+            self.connection, "findings", kinds=["limitation"]
+        )
+        self.assertEqual(limitation["results"][0]["statement"], "The measured rate depends on observing cadence.")
+
+    def test_parameters_report_unknown_and_unread_papers(self):
+        self.ingest()
+        table = literature_db.evidence_table(
+            self.connection, "values", identifiers=["2023ApJ...955..142Z", "2099ApJ...1..1X"]
+        )
+        self.assertEqual(table["missing"], ["2099ApJ...1..1X"])
+        self.assertEqual(table["count"], 3)
+
     def test_duplicate_ingest_is_unchanged(self):
         manifest = sample_manifest(self.source)
         first = self.ingest(manifest=manifest)
@@ -1319,7 +1585,6 @@ class LibraryWorkflowTests(unittest.TestCase):
                 }
             ],
             "methods": ["two-lognormal fit"],
-            "limitations": [],
         }
         incoming = sample_digest(facets=[new_facet])
         incoming["reading"].update(
@@ -1364,7 +1629,6 @@ class LibraryWorkflowTests(unittest.TestCase):
                 }
             ],
             "methods": ["two-lognormal fit"],
-            "limitations": [],
         }
         replacement_facet["findings"].append(
             {
@@ -1587,8 +1851,6 @@ class LibraryWorkflowTests(unittest.TestCase):
     def test_reindex_restores_search_documents(self):
         self.ingest()
         self.connection.execute("DELETE FROM search_documents")
-        if self.fts5:
-            self.connection.execute("DELETE FROM search_fts")
         self.connection.commit()
         rebuilt = literature_db.rebuild_index(self.connection, self.fts5)
         self.assertEqual(rebuilt["documents"], 1)
@@ -1604,6 +1866,676 @@ class LibraryWorkflowTests(unittest.TestCase):
             limit=10,
         )
         self.assertEqual(result["count"], 1)
+
+
+ARTICLE_TEXT = """FAST Observations of FRB 20220912A
+Y. K. Zhang and D. Li
+
+Abstract
+We report FAST observations of the repeating FRB 20220912A.
+
+1 Introduction
+Repeating fast radio bursts probe magnetized environments.
+
+3.1 Burst detections
+Across seventeen sessions we detected 1076 bursts in total, and the peak
+rate reached 390 bursts per hour.
+
+The burst rate varied strongly be-
+tween sessions, as Table 1 lists.
+
+3.3 Polarization
+In many bursts the circular polarization reverses sign across time or frequency.
+
+The rotation measure stays close to zero for the high-quality sample (Figure 1).
+
+4 Discussion
+The measured rate depends on the observing cadence, which limits comparisons.
+
+References
+Hilmarsson, G. et al. 2021, ApJL, 908, L10
+"""
+
+
+def minimal_digest() -> dict:
+    """The smallest complete schema 4 digest: only required layers."""
+    return {
+        "schema_version": literature_db.DIGEST_SCHEMA_VERSION,
+        "language": "en",
+        "overview": {
+            "tldr": "FAST detected 1076 bursts from FRB 20220912A.",
+            "summary": "A FAST campaign measured the burst count of FRB 20220912A.",
+            "questions": ["How active is FRB 20220912A?"],
+            "study_types": ["observational"],
+        },
+        "facets": [
+            {
+                "key": "activity",
+                "label": "Activity",
+                "summary": "The source was highly active.",
+                "findings": [
+                    {
+                        "statement": "The campaign detected 1076 bursts.",
+                        "kind": "measurement",
+                        "confidence": "high",
+                        "locator": {"section": "3.1"},
+                        "quote": "we detected 1076 bursts in total",
+                        "values": [
+                            {"name": "burst count", "value": 1076, "status": "measured"}
+                        ],
+                    }
+                ],
+            }
+        ],
+        "reading": {"status": "full", "sections": ["3.1 Burst detections"]},
+    }
+
+
+class CompactDigestTests(unittest.TestCase):
+    def test_minimal_digest_defaults_optional_layers_and_is_stable(self):
+        validated = literature_db.validate_digest(minimal_digest())
+        for field in literature_db.DIGEST_LIST_FIELDS:
+            self.assertEqual(validated[field], [])
+        self.assertEqual(
+            validated["reading"]["sections"], [{"heading": "3.1 Burst detections"}]
+        )
+        self.assertNotIn("significance", validated["overview"])
+        again = literature_db.validate_digest(json.loads(json.dumps(validated)))
+        self.assertEqual(
+            literature_db.stable_digest(again), literature_db.stable_digest(validated)
+        )
+        self.assertEqual(literature_db.digest_warnings(validated), [])
+
+    def test_sections_accept_headings_and_gists(self):
+        digest = minimal_digest()
+        digest["reading"]["sections"] = [
+            "2 Data",
+            {"heading": "2  data", "gist": "FAST observations."},
+            {"heading": "3.1 Burst detections", "gist": " "},
+        ]
+        sections = literature_db.validate_digest(digest)["reading"]["sections"]
+        self.assertEqual(
+            sections,
+            [
+                {"heading": "2 Data", "gist": "FAST observations."},
+                {"heading": "3.1 Burst detections"},
+            ],
+        )
+        for bad, message in (
+            ([{"heading": "Full paper"}], "real article section"),
+            ([{"heading": "2", "notes": "x"}], "unsupported fields: notes"),
+            ([], "must list the sections"),
+        ):
+            with self.subTest(message=message):
+                digest["reading"]["sections"] = bad
+                with self.assertRaisesRegex(literature_db.LiteratureError, message):
+                    literature_db.validate_digest(digest)
+
+    def test_targeted_digest_needs_only_its_new_facets(self):
+        digest = minimal_digest()
+        digest.pop("overview")
+        digest["reading"] = {
+            "status": "targeted",
+            "sections": ["4 Discussion"],
+            "unread_sections": ["Earlier sections"],
+        }
+        validated = literature_db.validate_digest(digest)
+        self.assertEqual(validated["overview"], {"questions": []})
+        digest["reading"]["status"] = "full"
+        digest["reading"]["unread_sections"] = []
+        with self.assertRaisesRegex(literature_db.LiteratureError, "overview"):
+            literature_db.validate_digest(digest)
+
+    def test_warnings_flag_missing_quotes_and_excess_detail(self):
+        digest = minimal_digest()
+        finding = digest["facets"][0]["findings"][0]
+        finding.pop("quote")
+        finding["statement"] = "The campaign detected 1076 bursts. " * 15
+        digest["facets"][0]["findings"].extend(
+            {
+                "statement": f"Result {index} is stated.",
+                "kind": "interpretation",
+                "confidence": "medium",
+                "locator": {"section": "4"},
+                "quote": "word " * 80,
+            }
+            for index in range(40)
+        )
+        warnings = literature_db.digest_warnings(literature_db.validate_digest(digest))
+        messages = [warning["message"] for warning in warnings]
+        self.assertTrue(any("shorten or split the statement" in m for m in messages))
+        self.assertTrue(any("Shorten the quote" in m for m in messages))
+        self.assertTrue(any("merge findings that are always cited" in m for m in messages))
+        self.assertTrue(any(m.startswith("Add a short verbatim quote to activity.1 ") for m in messages))
+        digest["reading"].update(status="visual", visual_page_ranges=["1-4"])
+        visual = literature_db.digest_warnings(literature_db.validate_digest(digest))
+        self.assertFalse(any("verbatim quote" in w["message"] for w in visual))
+
+    def test_quotes_match_across_extraction_differences(self):
+        text = (
+            "The bursts show Faraday rotation measures bordering 9.3 × 104 rad m−2.\n"
+            "The ﬁtted spectral in-\ndex is steep.\n"
+        )
+        skeleton = literature_db.text_skeleton(text)
+        for quote in (
+            "Faraday rotation measures bordering 9.3 x 10^4 rad m^-2",
+            "the fitted spectral index is steep",
+        ):
+            with self.subTest(quote=quote):
+                hit = literature_db.locate_quote(*skeleton, quote)
+                self.assertIsNotNone(hit)
+                self.assertTrue(hit[2])
+        partial = literature_db.locate_quote(
+            *skeleton, "Faraday rotation measures bordering an entirely different number"
+        )
+        self.assertEqual(partial[2], False)
+        self.assertIsNone(literature_db.locate_quote(*skeleton, "rad m"))
+        self.assertIsNone(literature_db.locate_quote(*skeleton, "a sentence the paper never wrote"))
+
+    def test_quote_anchors_prefer_the_locator_section(self):
+        text = "1 Introduction\nThe RM is near zero.\n\n3 Results\nThe RM is near zero.\n"
+        sections = literature_db.article_sections(text)
+        skeleton = literature_db.text_skeleton(text)
+        results = literature_db.match_section(sections, "Sec. 3")
+        start, _end, _exact = literature_db.locate_quote(
+            *skeleton, "The RM is near zero", within=(results["start"], results["end"])
+        )
+        self.assertGreaterEqual(start, results["start"])
+        digest = minimal_digest()
+        digest["facets"][0]["findings"][0].update(
+            quote="The RM is near zero", locator={"section": "3"}
+        )
+        anchors = literature_db.quote_anchors(literature_db.validate_digest(digest), text)
+        self.assertEqual(anchors, {"quoted": 1, "located": 1, "unlocated": []})
+
+    def test_section_labels_resolve_numbers_prefixes_and_titles(self):
+        sections = literature_db.article_sections(ARTICLE_TEXT)
+        self.assertEqual(sections[0]["heading"], "Front matter")
+        cases = {
+            "3.1": "3.1 Burst detections",
+            "Section 3.3": "3.3 Polarization",
+            "§4": "4 Discussion",
+            "discussion": "4 Discussion",
+            "Sect. 1 (Introduction)": "1 Introduction",
+            "3.3 Polarization": "3.3 Polarization",
+        }
+        for label, heading in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(
+                    literature_db.match_section(sections, label)["heading"], heading
+                )
+        self.assertEqual(
+            literature_db.match_section(sections, "3")["heading"],
+            "3.1 Burst detections",
+        )
+        self.assertIsNone(literature_db.match_section(sections, "7"))
+        self.assertIsNone(literature_db.match_section(sections, ""))
+        self.assertIsNone(literature_db.match_section(sections, "Table 1"))
+
+    def test_paragraphs_rejoin_inline_math_split_by_extraction(self):
+        text = (
+            "4.2 Case studies\n\nThe data allow\n\n$N=5$\n\n–20 and dispersion\n\n"
+            "$\\sigma_\\psi \\sim 22^\\circ$\n\n. Relaxing this gives fewer microshots.\n\n"
+            "A second paragraph starts here.\n"
+        )
+        blocks = [text[a:b] for a, b in literature_db.paragraph_blocks(text, 0, len(text))]
+        self.assertEqual(blocks[0], "4.2 Case studies")
+        self.assertTrue(blocks[1].startswith("The data allow"))
+        self.assertTrue(blocks[1].endswith("Relaxing this gives fewer microshots."))
+        self.assertEqual(blocks[2], "A second paragraph starts here.")
+        start = text.index("fewer")
+        left, right = literature_db.paragraph_span(text, start, start + 5, 0, len(text), 0)
+        self.assertIn("$N=5$", text[left:right])
+
+    def test_compound_stored_locators_resolve_their_section(self):
+        sections = literature_db.article_sections(ARTICLE_TEXT)
+        cases = {
+            "3.1; Table 1": "3.1 Burst detections",
+            "Sections 3.3-4": "3.3 Polarization",
+            "Main text and 4": "4 Discussion",
+            "Table 2, 3.3": "3.3 Polarization",
+        }
+        for label, heading in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(
+                    literature_db.match_section(sections, label)["heading"], heading
+                )
+        roman = literature_db.article_sections(
+            "II Observations\nText.\n\nII.1 Arecibo\nMore.\n\nIII Results\nEnd.\n"
+        )
+        for label, heading in {
+            "II.1": "II.1 Arecibo",
+            "III–IV; Figure 1": "III Results",
+            "Sec. II": "II Observations",
+        }.items():
+            with self.subTest(label=label):
+                self.assertEqual(literature_db.match_section(roman, label)["heading"], heading)
+
+
+class PassageTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.library = self.root / "library"
+        self.source = self.root / "source"
+        self.source.mkdir()
+        self.connection, self.fts5 = literature_db.connect_library(self.library)
+        self.manifest = sample_manifest(self.source, text_body=ARTICLE_TEXT)
+        self.digest = current_digest()
+        self.result = literature_db.ingest_record(
+            self.connection,
+            self.fts5,
+            self.library,
+            self.manifest,
+            self.digest,
+            merge=False,
+        )
+
+    def tearDown(self):
+        self.connection.close()
+        self.temporary.cleanup()
+
+    def passage(self, **kwargs):
+        return literature_db.article_passages(
+            self.connection, "2023ApJ...955..142Z", **kwargs
+        )
+
+    def test_ingest_reports_located_quotes(self):
+        self.assertEqual(
+            self.result["anchors"], {"quoted": 5, "located": 5, "unlocated": []}
+        )
+        self.assertEqual(self.result["warnings"], [])
+
+    def test_finding_returns_its_paragraph(self):
+        result = self.passage(findings=["activity-event-rate.2"])
+        passage = result["passages"][0]
+        self.assertEqual(passage["match"], "quote")
+        self.assertEqual(passage["section"], "3.1 Burst detections")
+        self.assertEqual(passage["text"], "The burst rate varied strongly be-\ntween sessions, as Table 1 lists.")
+        self.assertEqual(passage["finding_id"], "activity-event-rate.2")
+        self.assertFalse(passage["truncated"])
+        self.assertEqual(result["paper"]["citekey"], "2023ApJ...955..142Z")
+        wider = self.passage(findings=["activity-event-rate.2"], context=1)
+        self.assertIn("1076 bursts in total", wider["passages"][0]["text"])
+
+    def test_finding_without_quote_falls_back_to_its_locator(self):
+        digest = json.loads(
+            self.connection.execute(
+                "SELECT digest_json FROM digests WHERE id = ?", (self.result["digest_id"],)
+            ).fetchone()["digest_json"]
+        )
+        digest["facets"][0]["findings"][1].pop("quote")
+        digest["facets"][0]["findings"][1]["locator"] = {"section": "3.1; Table 1"}
+        digest["facets"][1]["findings"][0].pop("quote")
+        digest["facets"][1]["findings"][0]["locator"] = {"section": "3.3"}
+        self.connection.execute(
+            "UPDATE digests SET digest_json = ? WHERE id = ?",
+            (literature_db.json_text(digest), self.result["digest_id"]),
+        )
+        result = self.passage(
+            findings=["activity-event-rate.2", "circular-polarization.1", "missing.9"]
+        )
+        table, section = result["passages"]
+        self.assertEqual(table["match"], "table")
+        self.assertIn("as Table 1 lists", table["text"])
+        self.assertEqual(section["match"], "section")
+        self.assertTrue(section["text"].startswith("3.3 Polarization"))
+        self.assertEqual(result["unresolved"][0]["finding"], "missing.9")
+
+    def test_sections_terms_and_outline_stay_bounded(self):
+        result = self.passage(sections=["3.3", "Appendix Z"], terms=["rotation", "measure"])
+        section, term = result["passages"]
+        self.assertTrue(section["text"].startswith("3.3 Polarization"))
+        self.assertNotIn("4 Discussion", section["text"])
+        self.assertEqual(term["section"], "3.3 Polarization")
+        self.assertEqual(term["match"], "terms")
+        self.assertEqual(result["term_matches"], 1)
+        self.assertEqual(result["unresolved"][0]["section"], "Appendix Z")
+        clipped = self.passage(sections=["3.3"], max_chars=40)["passages"][0]
+        self.assertTrue(clipped["truncated"])
+        self.assertLessEqual(len(clipped["text"]), 40)
+        self.assertEqual(clipped["section_lines"][0], 17)
+        outline = self.passage()["outline"]
+        headings = [entry["heading"] for entry in outline]
+        self.assertEqual(headings[:3], ["Front matter", "Abstract", "1 Introduction"])
+        gists = {entry["heading"]: entry.get("gist") for entry in outline}
+        self.assertEqual(
+            gists["3.1 Burst detections"],
+            "Burst detections and the event rate across sessions.",
+        )
+
+    def test_evidence_rows_carry_finding_ids_and_quotes(self):
+        rows = literature_db.evidence_table(self.connection, "findings")["results"]
+        self.assertEqual(rows[0]["finding_id"], "activity-event-rate.1")
+        self.assertEqual(rows[0]["quote"], "we detected 1076 bursts in total")
+        values = literature_db.evidence_table(self.connection, "values")["results"]
+        self.assertEqual(values[0]["finding_id"], "activity-event-rate.1")
+        self.assertNotIn("quote", values[0])
+
+    def test_changed_text_is_refused(self):
+        Path(self.result["object_paths"]["text"]).write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(literature_db.LiteratureError, "missing or has changed"):
+            self.passage(sections=["3.1"])
+
+    def test_cli_is_read_only(self):
+        self.connection.close()
+        self.connection, self.fts5 = literature_db.connect_library_readonly(self.library)
+        output = io.StringIO()
+        code = literature_db.run(
+            [
+                "--library-dir",
+                str(self.library),
+                "passage",
+                "2023ApJ...955..142Z",
+                "--finding",
+                "circular-polarization.2",
+            ],
+            stdout=output,
+        )
+        self.assertEqual(code, 0)
+        passage = json.loads(output.getvalue())["passages"][0]
+        self.assertIn("rotation measure stays close to zero", passage["text"])
+
+    def test_validate_digest_checks_quotes_against_text(self):
+        digest = current_digest()
+        digest["facets"][1]["findings"][0]["quote"] = "a sentence the paper never wrote"
+        digest_path = self.root / "digest.json"
+        digest_path.write_text(json.dumps(digest), encoding="utf-8")
+        output = io.StringIO()
+        code = literature_db.run(
+            [
+                "--library-dir",
+                str(self.root / "unused"),
+                "validate-digest",
+                str(digest_path),
+                "--text",
+                self.manifest["selected"]["text_path"],
+            ],
+            stdout=output,
+        )
+        self.assertEqual(code, 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["anchors"]["unlocated"], ["circular-polarization.1"])
+        self.assertTrue(
+            any("circular-polarization.1 do not occur" in w["message"] for w in report["warnings"])
+        )
+        self.assertFalse((self.root / "unused").exists())
+
+    def test_targeted_merge_into_schema4_keeps_section_gists(self):
+        incoming = minimal_digest()
+        incoming.pop("overview")
+        incoming["facets"][0].update(key="cadence", label="Cadence")
+        incoming["facets"][0]["findings"][0].update(
+            statement="Comparisons are limited by cadence.",
+            kind="limitation",
+            locator={"section": "4"},
+            quote="which limits comparisons",
+            values=[],
+        )
+        incoming["reading"] = {
+            "status": "targeted",
+            "sections": [
+                {"heading": "3.1", "gist": "A replaced gist."},
+                {"heading": "4", "gist": "Cadence caveats."},
+            ],
+            "unread_sections": ["Other sections"],
+        }
+        result = literature_db.ingest_record(
+            self.connection, self.fts5, self.library, self.manifest, incoming, merge=True
+        )
+        self.assertEqual(result["status"], "updated")
+        self.assertEqual(result["anchors"]["located"], 1)
+        stored = json.loads(
+            self.connection.execute(
+                "SELECT digest_json FROM digests WHERE id = ?", (self.result["digest_id"],)
+            ).fetchone()["digest_json"]
+        )
+        sections = {entry["heading"]: entry.get("gist") for entry in stored["reading"]["sections"]}
+        self.assertEqual(sections["3.1"], "Burst detections and the event rate across sessions.")
+        self.assertEqual(sections["4"], "Cadence caveats.")
+        self.assertEqual(stored["reading"]["status"], "full")
+        self.assertEqual(stored["overview"]["tldr"], self.digest["overview"]["tldr"])
+        found = self.passage(findings=["cadence.1"])["passages"][0]
+        self.assertEqual(found["section"], "4 Discussion")
+
+
+
+class SearchIndexTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.library = self.root / "library"
+        self.source = self.root / "source"
+        self.source.mkdir()
+        self.connection, self.fts5 = literature_db.connect_library(self.library)
+        if not self.fts5:
+            self.skipTest("SQLite lacks FTS5")
+        literature_db.ingest_record(
+            self.connection, self.fts5, self.library, sample_manifest(self.source),
+            sample_digest(), merge=False,
+        )
+
+    def tearDown(self):
+        self.connection.close()
+        self.temporary.cleanup()
+
+    def matches(self, term):
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH ?", (term,)
+        ).fetchone()[0]
+
+    def test_index_follows_search_documents_without_a_second_copy(self):
+        self.assertEqual(self.matches("micropulse"), 1)
+        document = dict(
+            self.connection.execute("SELECT * FROM search_documents").fetchone()
+        )
+        document["full_text"] = "A replacement text about quasiperiodic oscillations."
+        literature_db.replace_search_document(
+            self.connection, {key: str(value) for key, value in document.items()}
+        )
+        self.assertEqual(self.matches("micropulse"), 0)
+        self.assertEqual(self.matches("quasiperiodic"), 1)
+        tables = {
+            row[0]
+            for row in self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        self.assertNotIn("search_fts_content", tables)
+        self.assertNotIn("facets", tables)
+        self.assertNotIn("findings", tables)
+
+    def test_audit_reports_index_rows_missing_from_the_index(self):
+        audit = literature_db.audit_library(
+            self.connection, self.fts5, self.library, verify_hashes=False
+        )
+        self.assertEqual(audit["errors"], [])
+        row = self.connection.execute("SELECT * FROM search_documents").fetchone()
+        columns = ", ".join(literature_db.SEARCH_COLUMNS)
+        self.connection.execute(
+            f"INSERT INTO search_fts(search_fts, rowid, {columns}) VALUES ('delete', ?, "
+            + ", ".join("?" for _ in literature_db.SEARCH_COLUMNS)
+            + ")",
+            (row["id"], *(row[column] for column in literature_db.SEARCH_COLUMNS)),
+        )
+        self.connection.commit()
+        audit = literature_db.audit_library(
+            self.connection, self.fts5, self.library, verify_hashes=False
+        )
+        self.assertIn("fts_document_mismatch", [item["kind"] for item in audit["errors"]])
+        literature_db.rebuild_index(self.connection, self.fts5)
+        self.assertEqual(self.matches("micropulse"), 1)
+
+
+class MigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.library = self.root / "library"
+        self.source = self.root / "source"
+        self.source.mkdir()
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def release_three_library(self, digest: dict) -> None:
+        """A library laid out as release 2.0.1 stored it, holding ``digest``."""
+        connection, fts5 = literature_db.connect_library(self.library)
+        literature_db.ingest_record(
+            connection, fts5, self.library, sample_manifest(self.source),
+            sample_digest(), merge=False,
+        )
+        columns = ", ".join(literature_db.SEARCH_COLUMNS)
+        connection.executescript(
+            f"""
+            DROP TRIGGER search_documents_insert;
+            DROP TRIGGER search_documents_delete;
+            DROP TRIGGER search_documents_update;
+            DROP TABLE search_fts;
+            CREATE VIRTUAL TABLE search_fts USING fts5({columns});
+            INSERT INTO search_fts({columns}) SELECT {columns} FROM search_documents;
+            CREATE TABLE facets (id INTEGER PRIMARY KEY, digest_id INTEGER, key TEXT);
+            CREATE TABLE findings (id INTEGER PRIMARY KEY, facet_id INTEGER, statement TEXT);
+            INSERT INTO facets(digest_id, key) SELECT id, 'activity' FROM digests;
+            ALTER TABLE digests RENAME TO digests_current;
+            CREATE TABLE digests (
+                id INTEGER PRIMARY KEY,
+                version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+                schema_version INTEGER NOT NULL,
+                language TEXT NOT NULL,
+                overview TEXT NOT NULL,
+                significance TEXT NOT NULL,
+                reading_status TEXT NOT NULL,
+                digest_hash TEXT NOT NULL,
+                digest_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(version_id)
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO digests SELECT id, version_id, ?, 'zh-CN', ?, ?, reading_status, "
+            "'legacy', ?, updated_at FROM digests_current",
+            (
+                digest["schema_version"],
+                digest["overview"]["summary"],
+                digest["overview"].get("significance", ""),
+                literature_db.json_text(digest),
+            ),
+        )
+        connection.execute("DROP TABLE digests_current")
+        connection.execute("PRAGMA user_version = 3")
+        connection.commit()
+        connection.close()
+
+    def stored_digest(self, connection) -> dict:
+        return json.loads(
+            connection.execute("SELECT digest_json FROM digests").fetchone()[0]
+        )
+
+    def test_migrate_converts_a_release_three_library(self):
+        self.release_three_library(legacy_digest())
+        with self.assertRaisesRegex(literature_db.LiteratureError, "run literature_db.py migrate"):
+            literature_db.connect_library(self.library)
+        output = io.StringIO()
+        code = literature_db.run(
+            [
+                "--library-dir", str(self.library), "migrate",
+                "--destination", str(self.root / "backup"),
+            ],
+            stdout=output,
+        )
+        self.assertEqual(code, 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["status"], "migrated")
+        self.assertEqual(result["digests"], {"converted": 1, "by_source_schema": {"2": 1}})
+        self.assertEqual(
+            set(result["assigned_by_rule"]),
+            {"value statuses", "entity types", "dataset types", "study types"},
+        )
+        self.assertEqual(result["integrity"], ["ok"])
+        backup = sqlite3.connect(Path(result["backup"]) / "literature.sqlite3")
+        self.assertEqual(backup.execute("PRAGMA user_version").fetchone()[0], 3)
+        backup.close()
+
+        connection, fts5 = literature_db.connect_library(self.library)
+        try:
+            columns = [row[1] for row in connection.execute("PRAGMA table_info(digests)")]
+            self.assertEqual(
+                columns,
+                ["id", "version_id", "reading_status", "digest_hash", "digest_json", "updated_at"],
+            )
+            digest = self.stored_digest(connection)
+            self.assertEqual(digest["schema_version"], 4)
+            self.assertEqual(
+                digest["overview"]["tldr"],
+                "FAST measured the activity and polarization of FRB 20220912A.",
+            )
+            self.assertIn("It links activity and polarization.", digest["overview"]["summary"])
+            self.assertNotIn("significance", digest["overview"])
+            self.assertEqual(digest["overview"]["study_types"], ["observational"])
+            self.assertEqual(digest["entities"][0]["type"], "source")
+            self.assertEqual(digest["datasets"][0]["type"], "observation")
+            self.assertIn("（仪器：FAST；波段：1-1.5 GHz）", digest["datasets"][0]["description"])
+            self.assertTrue(digest["methods"][0]["description"].startswith("Detect bursts."))
+            self.assertNotIn("PRESTO.", digest["methods"][0]["description"][-8:])
+            self.assertIn("PRESTO", digest["keywords"])
+            self.assertIn(
+                "活跃性与事件率：The measured rate depends on observing cadence.",
+                digest["global_limitations"],
+            )
+            polarization = digest["facets"][1]
+            self.assertEqual(polarization["methods"], ["RM synthesis"])
+            self.assertIn("polarization calibration", polarization["keywords"])
+            statuses = {
+                value["name"]: value["status"]
+                for finding in polarization["findings"]
+                for value in finding.get("values", [])
+            }
+            self.assertEqual(statuses, {"mean RM": "measured", "RM upper limit": "upper-limit"})
+            headings = [section["heading"] for section in digest["reading"]["sections"]]
+            self.assertNotIn("References", headings)
+            self.assertIn("由 schema 2 迁移转换", digest["reading"]["notes"])
+            self.assertIn("数值状态", digest["reading"]["notes"])
+            self.assertNotIn("coverage", digest["reading"])
+            found = literature_db.search_library(
+                connection, fts5, "micropulse", scope="fulltext", mode="terms",
+                topics=[], year_from=None, year_to=None, limit=10,
+            )
+            self.assertEqual(found["count"], 1)
+            audit = literature_db.audit_library(connection, fts5, self.library, verify_hashes=True)
+            self.assertEqual(audit["errors"], [])
+        finally:
+            connection.close()
+        again = literature_db.run(["--library-dir", str(self.library), "migrate"], stdout=io.StringIO())
+        self.assertEqual(again, 0)
+
+    def test_schema_three_records_keep_their_content(self):
+        library_migrate = importlib.import_module("library_migrate")
+        digest, assigned = library_migrate.upgrade_digest(schema3_digest(), "A title")
+        self.assertEqual(assigned, {})
+        self.assertNotIn("Converted", digest["reading"].get("notes", ""))
+        self.assertEqual(
+            [section["heading"] for section in digest["reading"]["sections"]],
+            ["1", "2", "3.1", "3.2", "3.3", "4", "5"],
+        )
+        self.assertEqual(literature_db.validate_digest(digest), digest)
+        with self.assertRaisesRegex(literature_db.LiteratureError, "must be 4"):
+            literature_db.validate_digest(schema3_digest())
+
+    def test_first_sentence_skips_abbreviations(self):
+        library_migrate = importlib.import_module("library_migrate")
+        self.assertEqual(
+            library_migrate.first_sentence(
+                "Zhang et al. measured 1076 bursts. They also fit spectra."
+            ),
+            "Zhang et al. measured 1076 bursts.",
+        )
+        self.assertEqual(
+            library_migrate.first_sentence("研究测量了暴发率。随后讨论偏振。"),
+            "研究测量了暴发率。",
+        )
+        self.assertEqual(library_migrate.first_sentence("No terminal stop"), "No terminal stop")
 
 
 class CliTests(unittest.TestCase):
@@ -1670,6 +2602,105 @@ class CliTests(unittest.TestCase):
             result = json.loads(output.getvalue())["results"][0]
             self.assertEqual(result["reuse_status"], "not_found")
             self.assertFalse(library.exists())
+
+    def test_validate_digest_reports_warnings_and_reference_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            digest = current_digest()
+            digest["facets"][1]["findings"][0]["statement"] = "About 40 percent reverse sign."
+            digest_path = Path(temporary) / "digest.json"
+            digest_path.write_text(json.dumps(digest), encoding="utf-8")
+            output = io.StringIO()
+            code = literature_db.run(
+                ["--library-dir", temporary, "validate-digest", str(digest_path)],
+                stdout=output,
+            )
+            self.assertEqual(code, 0)
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["schema_version"], 4)
+            self.assertTrue(report["references_checked"])
+            self.assertEqual(
+                [warning["path"] for warning in report["warnings"]],
+                ["facets[1].findings[0]"],
+            )
+
+    def test_parameters_cli_is_read_only_and_exports_csv(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "library"
+            output = io.StringIO()
+            code = literature_db.run(
+                ["--library-dir", str(library), "parameters", "RM"], stdout=output
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.getvalue())["count"], 0)
+            self.assertFalse(library.exists())
+
+            source = root / "source"
+            source.mkdir()
+            connection, fts5 = literature_db.connect_library(library)
+            try:
+                literature_db.ingest_record(
+                    connection,
+                    fts5,
+                    library,
+                    sample_manifest(source),
+                    sample_digest(),
+                    merge=False,
+                    replace_digest=False,
+                )
+            finally:
+                connection.close()
+            database = library / "literature.sqlite3"
+            before = hashlib.sha256(database.read_bytes()).hexdigest()
+            target = root / "parameters.csv"
+            output = io.StringIO()
+            code = literature_db.run(
+                [
+                    "--library-dir",
+                    str(library),
+                    "parameters",
+                    "--format",
+                    "csv",
+                    "--output",
+                    str(target),
+                ],
+                stdout=output,
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.getvalue())["count"], 3)
+            text = target.read_text(encoding="utf-8-sig")
+            self.assertTrue(text.startswith("bibcode,citekey"))
+            output = io.StringIO()
+            code = literature_db.run(
+                [
+                    "--library-dir",
+                    str(library),
+                    "findings",
+                    "rotation measure",
+                    "--kind",
+                    "measurement",
+                ],
+                stdout=output,
+            )
+            self.assertEqual(code, 0)
+            findings = json.loads(output.getvalue())
+            self.assertEqual(findings["count"], 1)
+            self.assertEqual(findings["results"][0]["match"], "finding")
+            self.assertEqual(hashlib.sha256(database.read_bytes()).hexdigest(), before)
+
+            stderr = io.StringIO()
+            code = literature_db.run(
+                [
+                    "--library-dir",
+                    str(library),
+                    "parameters",
+                    "--output",
+                    str(library / "inside.json"),
+                ],
+                stderr=stderr,
+            )
+            self.assertEqual(code, 2)
+            self.assertIn("outside the managed library", stderr.getvalue())
 
 
 if __name__ == "__main__":

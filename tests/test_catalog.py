@@ -80,7 +80,7 @@ class CatalogTests(unittest.TestCase):
             include_digest=True,
         )
 
-    def test_legacy_manifest_cache_paths_use_verified_durable_objects(self):
+    def test_stored_manifest_cache_paths_use_verified_durable_objects(self):
         result = self.ingest()
         manifest_path = Path(self.lookup()["version"]["manifest_path"])
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -485,7 +485,7 @@ class CatalogTests(unittest.TestCase):
                 self.assertFalse(self.connection.in_transaction)
                 self.assertEqual(tuple(self.connection.iterdump()), before)
         self.assertEqual(
-            self.connection.execute("SELECT COUNT(*) FROM findings").fetchone()[0], 9
+            self.connection.execute("SELECT COUNT(*) FROM digests").fetchone()[0], 2
         )
 
     def test_duplicate_versions_preserve_artifacts_and_arxiv_labels(self):
@@ -1036,14 +1036,14 @@ class CatalogTests(unittest.TestCase):
         addition["reading"]["status"] = "targeted"
         addition["overview"]["summary"] = "Only one requested detail."
         addition["methods"] = [
-            {"name": "burst search", "keywords": ["new method term"]}
+            {"name": "burst search", "assumptions": ["Bursts are independent."]}
         ]
         merged = lib.merge_digests(original, lib.validate_digest(addition))
         self.assertEqual(merged["overview"], original["overview"])
         self.assertEqual(
             merged["methods"][0]["description"], original["methods"][0]["description"]
         )
-        self.assertIn("new method term", merged["methods"][0]["keywords"])
+        self.assertIn("Bursts are independent.", merged["methods"][0]["assumptions"])
 
     def test_stored_manifest_supports_merge_after_download_cache_disappears(self):
         result = self.ingest()
@@ -1100,15 +1100,6 @@ class CatalogTests(unittest.TestCase):
         self.assertIn("update-A", self.lookup()["digest"]["keywords"])
         self.assertIn("update-B", self.lookup()["digest"]["keywords"])
 
-    def test_methods_sections_can_trace_method_facets(self):
-        digest = sample_digest()
-        for coverage in digest["reading"]["coverage"]:
-            if coverage["facet_keys"]:
-                coverage.update(
-                    role="methods", notes="Technical methods and their evidence."
-                )
-        self.assertEqual(lib.validate_digest(digest)["reading"]["status"], "full")
-
     def test_visual_reading_rejects_gaps_invalid_ranges_and_unknown_counts(self):
         manifest = sample_manifest(self.source)
         manifest["status"] = "needs_visual_reading"
@@ -1158,23 +1149,21 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(lib.LiteratureError):
             lib.restore_library(self.root, self.library)
 
-    def test_write_commands_require_explicit_schema_migration(self):
+    def test_unsupported_database_schema_is_refused_unchanged(self):
         self.connection.execute("PRAGMA user_version=2")
         self.connection.commit()
-        with self.assertRaises(lib.LiteratureError):
+        with self.assertRaisesRegex(lib.LiteratureError, "earlier release.*migrate"):
             lib.connect_library(self.library)
+        with self.assertRaisesRegex(lib.LiteratureError, "earlier release.*migrate"):
+            lib.connect_library_readonly(self.library)
+        self.connection.execute("PRAGMA user_version=9")
+        self.connection.commit()
+        with self.assertRaisesRegex(lib.LiteratureError, "newer than this release"):
+            lib.connect_library(self.library)
+        self.connection.execute("PRAGMA user_version=2")
+        self.connection.commit()
         self.assertEqual(
             self.connection.execute("PRAGMA user_version").fetchone()[0], 2
-        )
-        out = io.StringIO()
-        self.assertEqual(
-            lib.run(["--library-dir", str(self.library), "init"], stdout=out), 0
-        )
-        self.assertTrue(
-            Path(json.loads(out.getvalue())["migration_backup"]["destination"]).is_dir()
-        )
-        self.assertEqual(
-            self.connection.execute("PRAGMA user_version").fetchone()[0], 3
         )
 
     def test_unhealthy_audit_returns_nonzero(self):

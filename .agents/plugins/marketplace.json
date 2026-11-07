@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "nasa-ads",
-      "description": "Search SciX (formerly NASA ADS), investigate article content, preserve source metadata, silently build a classified literature library, reuse complete versions, browse and manage the local Web service with adslib, and export citations.",
+      "description": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations.",
       "source": {
         "source": "local",
         "path": "./plugins/nasa-ads"

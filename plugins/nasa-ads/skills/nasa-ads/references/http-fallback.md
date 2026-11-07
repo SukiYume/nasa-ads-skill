@@ -1,6 +1,6 @@
 # Direct HTTP Fallback
 
-Read this file only when Python 3 cannot run the bundled CLI or a requested non-library endpoint, option, or format is outside the CLI.
+Load this reference when Python cannot run the bundled CLI, when a requested endpoint, option, or format is outside the CLI, or for [SciX Libraries](libraries.md), which share these request rules.
 
 ## Safety
 
@@ -12,7 +12,7 @@ Read this file only when Python 3 cannot run the bundled CLI or a requested non-
 - Treat `401`, `403`, `404`, `429`, and server failures as API results. Changing HTTP clients does not correct them.
 - Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 
-When Python is available for a fallback endpoint, apply [screening before capture](literature-memory.md#screening-before-capture), save retained paper metadata, and use `literature_db.py capture --results <file>` with [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion). Include abstracts in metadata requests when available. Apply the shared [Core Invariants](../SKILL.md#core-invariants), including reading scope and the no-library-write exception. When Python is unavailable, preserve screened responses and authored summaries for later import and follow [failure routing](../SKILL.md#failure-routing) for unavailable persistence.
+Paper metadata retrieved this way still enters the library. When Python is available, apply [screening before capture](literature-memory.md#screening-before-capture), request abstracts, save the retained records, and run `literature_db.py capture --results <file>` followed by [summary completion](literature-memory.md#automatic-capture-and-summary-completion). When Python is unavailable, keep screened responses and authored summaries for later import, and report full-text preparation, storage, and Web browsing as unavailable per [failure routing](../SKILL.md#failure-routing).
 
 ## Credential Preflight
 

@@ -1,26 +1,21 @@
 ---
-description: "Research SciX literature with full reading and silent personal-library reuse"
-argument-hint: '<search query, e.g. "author:Einstein gravitational waves">'
+description: "Research a question or SciX query with full reading and silent personal-library reuse"
+argument-hint: '<research question or SciX query, e.g. "repeating FRB polarization since 2022">'
 allowed-tools:
   - Bash
   - Read
   - Write
 ---
 
-# SciX Search
+# SciX Literature Search
 
-Search the NASA Astrophysics Data System for academic papers.
+Research request: $ARGUMENTS
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` and follow its task routing, Core Invariants, and completion criteria.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` and follow its Literature Research workflow, Core Invariants, and completion criteria. Bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`.
 
-## Arguments
-
-The user's search query: $ARGUMENTS
-
-## Instructions
-
-1. Interpret `$ARGUMENTS` as a research question or native SciX query, preserving explicit source, time, and selection constraints. Check reusable local evidence through `references/literature-memory.md`.
-2. Use `references/ads-cli.md` for online discovery when needed. Preview exploratory results with `--no-store`, then apply `references/literature-memory.md` screening before capture. Choose query families, fields, sorting, page sizes, and filters for the task; its commands illustrate syntax. Record the searched scope and distinguish total matches, returned records, and retained candidates.
-3. Follow the shared Literature Research workflow for source summaries, the investigation set, reading, and completion checks. Load `references/research-writing.md` for review or manuscript-specific evidence criteria.
-4. Export citations through the local citation workflow when the task needs them. Use SciX export for additional formats.
-5. Return the requested synthesis, article detail, or search results in a format suited to the question, with traceable sources and relevant evidence limits. A search with no matches reports its queries, filters, and resulting coverage gap. Apply the shared failure routing to unfinished work.
+1. Treat `$ARGUMENTS` as a research question or a native SciX query, keeping its explicit source, time, and selection constraints.
+2. Check local evidence first with `search`, `parameters`, and `lookup` from `references/literature-memory.md`.
+3. Discover missing or current work with `references/ads-cli.md`: preview with `--no-store`, screen, then capture retained records and complete their summaries and topics.
+4. Load `references/research-writing.md` for reviews or manuscript sections.
+5. Read every paper in the investigation set in full, as the Reading Scope requires.
+6. Return the synthesis or results with traceable sources, the searched scope (total matches, returned records, retained candidates), and evidence limits. A search without matches reports its queries, filters, and coverage gap.

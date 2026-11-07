@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "2.0.1",
-  "description": "Search SciX (formerly NASA ADS), investigate article content, preserve source metadata, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations.",
+  "version": "3.0.0",
+  "description": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -27,7 +27,7 @@
   "interface": {
     "displayName": "NASA ADS",
     "shortDescription": "SciX research and a reusable personal literature library",
-    "longDescription": "Search SciX (formerly NASA ADS), investigate article content, preserve source metadata, silently build a classified literature library, reuse complete versions, browse with adslib, and export citations. Research preserves version-specific evidence and reusable article digests across manuscript projects.",
+    "longDescription": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations. Every investigated paper keeps a version-specific digest whose findings and values can be queried later for comparison tables and citations, and the stored article returns the paragraph that states each result.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
@@ -38,7 +38,7 @@
     "defaultPrompt": [
       "Research recent astronomy papers on this question and compare the evidence.",
       "Explain this paper's figure and check the authors' conclusion.",
-      "Open my personal Web library with adslib and export BibTeX for a topic collection."
+      "Collect the fitted parameters stored in my library for this object as a table with citation keys."
     ],
     "brandColor": "#0B3D91"
   }

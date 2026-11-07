@@ -1,13 +1,6 @@
 # SciX Libraries
 
-Use direct HTTP for library operations:
-
-- Resolve `ADS_API_TOKEN`; stop with the token-settings link from `SKILL.md` if it is absent.
-- Send the token only as `Authorization: Bearer <token>` to `https://api.scixplorer.org/v1`.
-- Reject redirects for authenticated requests.
-- Use an available system client, URL-encode query parameters, send documented JSON bodies, and check the HTTP response before interpreting it.
-- Never print the token, use verbose HTTP tracing, or change semantics after an API failure.
-- Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
+Remote SciX libraries live in the user's SciX account and are managed with direct HTTP; the personal SQLite library uses [literature-memory.md](literature-memory.md). Build every request with the [safety rules](http-fallback.md#safety), [credential preflight](http-fallback.md#credential-preflight), client templates, and [response handling](http-fallback.md#response-handling) in the HTTP fallback reference. If `ADS_API_TOKEN` is absent, stop with the token-settings link from [failure routing](../SKILL.md#failure-routing).
 
 ## Safety Boundaries
 

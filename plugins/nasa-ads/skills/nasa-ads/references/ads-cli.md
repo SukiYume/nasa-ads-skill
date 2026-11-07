@@ -1,16 +1,6 @@
 # Bundled SciX API CLI
 
-Load this reference before using `scripts/ads_api.py`. It documents the stable SciX operations exposed by the bundled CLI against `https://api.scixplorer.org/v1`. Research design, full-text reading, evidence judgment, and synthesis remain in `SKILL.md`.
-
-## Launch
-
-Resolve the script relative to `SKILL.md`, then try `python3`, `python`, and `py -3` until one can run it:
-
-```bash
-python3 "<skill-dir>/scripts/ads_api.py" --help
-```
-
-The CLI reads `ADS_API_TOKEN`; it never accepts a token argument. Put global options before the subcommand:
+Load this reference before using `scripts/ads_api.py`, the standard-library client for `https://api.scixplorer.org/v1`. Launch rules and the token boundary are in [Setup](../SKILL.md#setup); the CLI reads `ADS_API_TOKEN` and never accepts a token argument. Global options go before the subcommand:
 
 ```text
 --timeout <1-300 seconds>
@@ -19,9 +9,7 @@ The CLI reads `ADS_API_TOKEN`; it never accepts a token argument. Put global opt
 --no-store
 ```
 
-JSON endpoints print UTF-8 JSON. `export` prints citation text. Check the exit status and actual response shape before interpreting either.
-
-Search and big query capture every returned record by default. Exploratory discovery uses `--no-store` and [screening before capture](literature-memory.md#screening-before-capture); exact metadata retrieval for already selected identifiers can use default capture. The response's `literature` object identifies the run and pending summaries. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for summaries and topic assignments, and the shared [reading scope](../SKILL.md#reading-scope) for content investigation. Storage failure preserves the SciX response and returns a failing exit status; apply [failure routing](../SKILL.md#failure-routing). The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs diagnostics and explicit opt-outs.
+JSON endpoints print UTF-8 JSON and `export` prints citation text. `search` and `bigquery` capture returned records by default and add a `literature` object; use `--no-store` for exploratory previews, then follow [screening before capture](literature-memory.md#screening-before-capture) and [summary completion](literature-memory.md#automatic-capture-and-summary-completion). A storage failure keeps the SciX response and exits nonzero; apply [failure routing](../SKILL.md#failure-routing).
 
 ## Search
 
@@ -100,7 +88,7 @@ Use `--bibcodes-file <path>` for a long list. Use `--start` when a batch exceeds
 
 ## Citation Export
 
-For reusable BibTeX, use `literature_db.py citations <identifiers>` and add `--fetch` to cache official SciX entries. Offline export uses the cached entry or a clearly labeled entry generated from stored metadata. The SciX export command below supports the additional citation formats.
+Reusable BibTeX comes from the [local citation workflow](literature-memory.md#citation-export). Use `export` for other formats, a fresh remote export, or the no-write opt-out.
 
 ```bash
 python3 "<skill-dir>/scripts/ads_api.py" export \
@@ -153,8 +141,8 @@ python3 "<skill-dir>/scripts/ads_api.py" resolve \
   --link-type esource
 ```
 
-Common resolver types include `esource`, `data`, `citations`, `references`, and `associated`. Resolver labels identify candidates but do not prove that access is open. Use `references/fulltext.md` and `fulltext.py` when article content is needed.
+Common resolver types include `esource`, `data`, `citations`, `references`, and `associated`. Resolver labels identify candidates and say nothing about open access; retrieve article content through [fulltext.md](fulltext.md).
 
 ## Unsupported Operations
 
-The CLI does not expose SciX Libraries. Load `references/libraries.md` for those calls. For another unsupported endpoint or a current documented option that the CLI does not expose, load `references/http-fallback.md`. Do not use direct HTTP to bypass a supported CLI error.
+SciX Libraries use [libraries.md](libraries.md). Other endpoints or documented options outside the CLI use [http-fallback.md](http-fallback.md). A CLI error from a supported operation is an API result; direct HTTP does not change it.

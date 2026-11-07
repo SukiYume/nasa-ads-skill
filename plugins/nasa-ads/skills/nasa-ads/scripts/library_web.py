@@ -16,7 +16,7 @@ import fulltext
 import library_catalog
 import literature_db
 
-ASSETS = Path(__file__).resolve().parent.parent / "assets" / "library"
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
 class LibraryHTTPServer(ThreadingHTTPServer):

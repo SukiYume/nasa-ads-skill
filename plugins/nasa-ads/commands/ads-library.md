@@ -1,22 +1,18 @@
 ---
-description: "List, edit, annotate, share, transfer, combine, or delete SciX libraries"
+description: "List, edit, annotate, share, transfer, combine, or delete libraries in the SciX account"
 argument-hint: "[list|view|create|add|remove|update|delete|query-add|query-remove|permissions|grant|note-get|note-set|note-delete|transfer|operate] ..."
 allowed-tools:
   - Bash
+  - Read
 ---
 
 # SciX Library Manager
 
-Manage remote SciX libraries with the documented direct HTTP interface. Personal local collections use `ads-memory`.
+Subcommand and arguments: $ARGUMENTS
 
-## Arguments
+These are remote libraries in the SciX account. The personal local library uses `/nasa-ads:ads-memory`.
 
-The subcommand and arguments: $ARGUMENTS
-
-## Instructions
-
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/libraries.md` completely.
-2. Parse the requested subcommand, library IDs, bibcodes, query, metadata, note content, access type, email, and permission flags.
-3. Follow the documented method, path, body, credential, and response rules. If the token is missing, direct the user to https://scixplorer.org/user/settings/token and ask them to set `ADS_API_TOKEN`.
-4. Check the user's authorization for deleting or emptying a library, bulk or query-based removal, a permission change, replacing or deleting a note, or transferring ownership. Existing explicit authorization covers the named action and scope. Obtain missing authorization after preparing a concrete, reviewable action.
-5. Identify the exact read result or mutation accepted by SciX. Never report success from the request alone.
+1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/libraries.md` completely, together with the request rules it links in `references/http-fallback.md`.
+2. Parse the subcommand, library IDs, bibcodes, query, metadata, note content, access type, email, and permission flags.
+3. Confirm authorization before deleting or emptying a library, bulk or query-based removal, permission changes, replacing or deleting a note, or ownership transfer. An explicit request for the exact action and scope is authorization; otherwise prepare the concrete action and ask.
+4. Report the exact read result or the mutation SciX accepted, verified from the response.

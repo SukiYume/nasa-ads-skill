@@ -1,30 +1,17 @@
 ---
-description: "Get citation metrics (h-index, citations, reads) for one or more SciX bibcodes"
-argument-hint: "<bibcode1> [bibcode2] ..."
+description: "Get citation metrics (h-index, citations, reads) for SciX bibcodes"
+argument-hint: "<bibcode> [bibcode ...]"
 allowed-tools:
   - Bash
+  - Read
 ---
 
 # SciX Metrics
 
-Retrieve citation metrics and bibliometric indicators for papers.
+Bibcodes: $ARGUMENTS
 
-## Arguments
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/ads-cli.md` for launch, token, and the Metrics section.
 
-The bibcode(s): $ARGUMENTS
-
-## Instructions
-
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/ads-cli.md`, then use its bundled CLI, launch order, token boundary, and failure handling.
-
-2. Parse bibcode(s) from `$ARGUMENTS`.
-
-3. Fetch the default basic, citation, and indicator metrics:
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/ads_api.py" metrics \
-  2016PhRvL.116f1102A \
-  2017ApJ...848L..12A
-```
-4. Read the actual response keys before formatting. SciX uses keys containing spaces, including `basic stats`, `basic stats refereed`, `citation stats`, `citation stats refereed`, `indicators`, and `indicators refereed`.
-
-5. Return the metrics relevant to the user's question and present comparisons in a table when useful. State which bibcodes form the metric set; an h-index computed for a subset describes that subset. Preserve missing-value and response errors.
+1. Run `ads_api.py metrics <bibcodes>`.
+2. Interpret the response keys and the paper set as the Metrics section describes.
+3. Return the metrics relevant to the question, in a table for comparisons, and report missing values and response errors.

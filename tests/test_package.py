@@ -49,6 +49,7 @@ class ReleaseSyncTests(unittest.TestCase):
         for readme_name in ("README.md", "README.zh-CN.md"):
             readme = (REPO_ROOT / readme_name).read_text(encoding="utf-8")
             self.assertIn(f"version-{version}-", readme)
+            self.assertIn(f"`{version}`", readme)
 
     def test_all_routed_skill_resources_are_packaged(self):
         plugin = REPO_ROOT / "plugins" / "nasa-ads"
@@ -62,15 +63,17 @@ class ReleaseSyncTests(unittest.TestCase):
             skill / "scripts" / "fulltext.py",
             skill / "scripts" / "literature_db.py",
             skill / "scripts" / "library_catalog.py",
+            skill / "scripts" / "library_migrate.py",
             skill / "scripts" / "library_web.py",
             skill / "scripts" / "adslib.py",
-            skill / "assets" / "library" / "index.html",
-            skill / "assets" / "library" / "style.css",
-            skill / "assets" / "library" / "app.js",
+            skill / "assets" / "index.html",
+            skill / "assets" / "style.css",
+            skill / "assets" / "app.js",
             skill / "references" / "research-writing.md",
             skill / "references" / "ads-cli.md",
             skill / "references" / "fulltext.md",
             skill / "references" / "literature-memory.md",
+            skill / "references" / "library-maintenance.md",
             skill / "references" / "digest-schema.md",
             skill / "references" / "libraries.md",
             skill / "references" / "http-fallback.md",
@@ -111,15 +114,17 @@ class ReleaseSyncTests(unittest.TestCase):
             "scripts/fulltext.py",
             "scripts/literature_db.py",
             "scripts/library_catalog.py",
+            "scripts/library_migrate.py",
             "scripts/library_web.py",
             "scripts/adslib.py",
-            "assets/library/index.html",
-            "assets/library/style.css",
-            "assets/library/app.js",
+            "assets/index.html",
+            "assets/style.css",
+            "assets/app.js",
             "references/research-writing.md",
             "references/ads-cli.md",
             "references/fulltext.md",
             "references/literature-memory.md",
+            "references/library-maintenance.md",
             "references/digest-schema.md",
             "references/libraries.md",
             "references/http-fallback.md",
@@ -134,11 +139,7 @@ class ReleaseSyncTests(unittest.TestCase):
                     self.assertIn(relative_path, install_prompt)
 
     def test_bilingual_readmes_keep_the_same_heading_shape(self):
-        for pair in (
-            ("README.md", "README.zh-CN.md"),
-            ("docs/installation.md", "docs/installation.zh-CN.md"),
-            ("docs/library.md", "docs/library.zh-CN.md"),
-        ):
+        for pair in (("README.md", "README.zh-CN.md"),):
             heading_shapes = []
             for name in pair:
                 lines = (REPO_ROOT / name).read_text(encoding="utf-8").splitlines()
@@ -153,12 +154,15 @@ class ReleaseSyncTests(unittest.TestCase):
                 self.assertEqual(heading_shapes[0], heading_shapes[1])
 
     def test_readme_relative_links_and_internal_anchors(self):
-        for name in (
-            "README.md", "README.zh-CN.md",
-            "docs/installation.md", "docs/installation.zh-CN.md",
-            "docs/library.md", "docs/library.zh-CN.md",
-        ):
+        for name in ("README.md", "README.zh-CN.md"):
             self.assert_markdown_links(REPO_ROOT / name)
+
+    def test_readme_is_the_only_user_document(self):
+        for readme_name in ("README.md", "README.zh-CN.md"):
+            readme = (REPO_ROOT / readme_name).read_text(encoding="utf-8")
+            with self.subTest(readme=readme_name):
+                self.assertNotIn("](docs/", readme)
+                self.assertIn("](.github/images/", readme)
 
     def test_skill_and_reference_relative_links_exist(self):
         skill_root = (

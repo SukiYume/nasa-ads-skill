@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import math
 import os
@@ -11,7 +13,9 @@ import re
 import shutil
 import sqlite3
 import sys
+import unicodedata
 import uuid
+from bisect import bisect_left
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, TextIO
@@ -22,21 +26,92 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "2.0.1"
-DATABASE_SCHEMA_VERSION = 3
-DIGEST_SCHEMA_VERSION = 2
+VERSION = "3.0.0"
+DATABASE_SCHEMA_VERSION = 4
+DIGEST_SCHEMA_VERSION = 4
+DIGEST_REQUIRED_FIELDS = ("schema_version", "language", "facets", "reading")
+DIGEST_LIST_FIELDS = (
+    "keywords",
+    "entities",
+    "datasets",
+    "methods",
+    "global_limitations",
+    "assessment",
+    "data_products",
+)
+DIGEST_FIELDS = {*DIGEST_REQUIRED_FIELDS, "overview", *DIGEST_LIST_FIELDS}
 READING_STATUSES = {"full", "targeted", "visual"}
 READING_STATUS_RANK = {"targeted": 1, "visual": 2, "full": 3}
 FINDING_KINDS = {
     "measurement",
     "constraint",
     "interpretation",
+    "prediction",
     "nondetection",
     "method",
     "comparison",
     "limitation",
 }
 CONFIDENCE_LEVELS = {"high", "medium", "low"}
+STUDY_TYPES = {
+    "observational",
+    "theoretical",
+    "simulation",
+    "laboratory",
+    "instrumentation",
+    "methods",
+    "catalog",
+    "review",
+}
+ENTITY_TYPES = {
+    "source",
+    "instrument",
+    "survey",
+    "catalog",
+    "software",
+    "simulation",
+    "model",
+    "other",
+}
+DATASET_TYPES = {
+    "observation",
+    "survey",
+    "archival",
+    "catalog",
+    "simulation",
+    "laboratory",
+}
+LOCATOR_FIELDS = (
+    "section",
+    "page",
+    "figure",
+    "table",
+    "equation",
+    "appendix",
+    "paragraph",
+)
+VALUE_STATUSES = {
+    "measured",
+    "fitted",
+    "derived",
+    "fixed",
+    "assumed",
+    "predicted",
+    "upper-limit",
+    "lower-limit",
+}
+VALUE_TEXT_FIELDS = (
+    "symbol",
+    "unit",
+    "uncertainty",
+    "qualifier",
+    "model",
+    "dataset",
+    "method",
+    "condition",
+    "cited_from",
+)
+PARAMETER_FIELDS = ("name", "value", "range", "status", *VALUE_TEXT_FIELDS)
 DATA_PRODUCT_TYPES = {"data", "code", "catalog", "table", "software", "other"}
 COVERAGE_ROLES = {
     "scientific",
@@ -148,6 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-digest", help="validate a structured digest JSON file"
     )
     validate.add_argument("digest", help="digest JSON path or - for stdin")
+    validate.add_argument(
+        "--text",
+        help="prepared article text; checks that each finding quote occurs in it",
+    )
 
     ingest = subparsers.add_parser(
         "ingest", help="ingest one full-text manifest and structured digest"
@@ -194,6 +273,62 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lookup.add_argument("--include-digest", action="store_true")
 
+    passage = subparsers.add_parser(
+        "passage",
+        help=(
+            "return bounded passages of a stored article: a finding's paragraph, "
+            "a section, or paragraphs matching terms"
+        ),
+    )
+    passage.add_argument("identifier")
+    passage.add_argument(
+        "--finding",
+        action="append",
+        default=[],
+        help="finding_id from findings or parameters rows; repeat for several",
+    )
+    passage.add_argument(
+        "--section",
+        action="append",
+        default=[],
+        help="section number or heading, such as 2.3 or Discussion; repeat for several",
+    )
+    passage.add_argument(
+        "--grep",
+        action="append",
+        default=[],
+        help="term that every returned paragraph contains; repeat to require several",
+    )
+    passage.add_argument(
+        "--outline",
+        action="store_true",
+        help="list stored section headings with sizes and digest gists",
+    )
+    passage.add_argument(
+        "--sha256",
+        help="select a known artifact, extracted-text, or content SHA256",
+    )
+    passage.add_argument(
+        "--context",
+        type=int,
+        default=0,
+        choices=range(0, 6),
+        metavar="0-5",
+        help="neighboring paragraphs to include on each side (default: 0)",
+    )
+    passage.add_argument(
+        "--max-chars",
+        type=int,
+        default=3000,
+        help="maximum characters per passage; 0 returns complete passages (default: 3000)",
+    )
+    passage.add_argument(
+        "--limit",
+        type=ads_api.positive_int,
+        default=5,
+        help="maximum paragraphs returned for --grep (default: 5)",
+    )
+
     show = subparsers.add_parser("show", help="show a stored paper and its evidence")
     show.add_argument("identifier")
     show.add_argument("--include-fulltext", action="store_true")
@@ -216,7 +351,70 @@ def build_parser() -> argparse.ArgumentParser:
     list_command.add_argument("--year-from", type=int)
     list_command.add_argument("--year-to", type=int)
     list_command.add_argument("--limit", type=ads_api.positive_int, default=50)
-    for command in (search, list_command):
+    findings = subparsers.add_parser(
+        "findings",
+        help=(
+            "list citable findings (measurements, fits, inferences, predictions, "
+            "constraints) from complete digests with locators and citation keys"
+        ),
+    )
+    parameters = subparsers.add_parser(
+        "parameters",
+        help=(
+            "list structured measured, fitted, and derived values from complete "
+            "digests with their evidence locators"
+        ),
+    )
+    for command, matched_text, status_help in (
+        (
+            findings,
+            "finding statements, keywords, values, and attributions",
+            "keep findings reporting a value with this status; repeat for several",
+        ),
+        (
+            parameters,
+            "value names, symbols, models, conditions, and findings",
+            "keep only values with this status; repeat for several",
+        ),
+    ):
+        command.add_argument(
+            "query",
+            nargs="?",
+            default="",
+            help=f"terms matched against {matched_text}",
+        )
+        command.add_argument(
+            "--paper",
+            action="append",
+            default=[],
+            help="restrict to one stored paper identifier; repeat for several",
+        )
+        command.add_argument(
+            "--entity",
+            help="restrict to papers whose digest names this object or alias",
+        )
+        command.add_argument(
+            "--kind",
+            action="append",
+            choices=sorted(FINDING_KINDS),
+            default=[],
+            help="keep only findings of this kind; repeat for several",
+        )
+        command.add_argument(
+            "--status",
+            action="append",
+            choices=sorted(VALUE_STATUSES),
+            default=[],
+            help=status_help,
+        )
+        command.add_argument("--year-from", type=int)
+        command.add_argument("--year-to", type=int)
+        command.add_argument("--limit", type=ads_api.positive_int, default=200)
+        command.add_argument("--format", choices=("json", "csv"), default="json")
+        command.add_argument(
+            "--output", help="write the table to this file outside the managed library"
+        )
+    for command in (search, list_command, findings, parameters):
         command.add_argument("--collection")
         command.add_argument("--role", choices=library_catalog.WRITING_ROLES)
         command.add_argument("--tag")
@@ -239,6 +437,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="new backup directory; defaults to a timestamped sibling backup",
     )
     subparsers.add_parser("reindex", help="rebuild the local search index")
+    migrate = subparsers.add_parser(
+        "migrate",
+        help="back up a library from the previous release and convert it to this release",
+    )
+    migrate.add_argument(
+        "--destination",
+        help="new backup directory; defaults to a timestamped sibling backup",
+    )
     restore = subparsers.add_parser(
         "restore", help="restore a backup to a new library directory"
     )
@@ -248,22 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-DIGEST_TABLE_BODY_SQL = """
-    id INTEGER PRIMARY KEY,
-    version_id INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
-    schema_version INTEGER NOT NULL,
-    language TEXT NOT NULL,
-    overview TEXT NOT NULL,
-    significance TEXT NOT NULL,
-    reading_status TEXT NOT NULL,
-    digest_hash TEXT NOT NULL,
-    digest_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE(version_id)
-"""
-
-
-SCHEMA_SQL = f"""
+SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -336,36 +527,13 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX IF NOT EXISTS artifacts_version_idx ON artifacts(version_id);
 
 CREATE TABLE IF NOT EXISTS digests (
-{DIGEST_TABLE_BODY_SQL}
-);
-
-CREATE TABLE IF NOT EXISTS facets (
     id INTEGER PRIMARY KEY,
-    digest_id INTEGER NOT NULL REFERENCES digests(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    key TEXT NOT NULL,
-    label TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    aliases_json TEXT NOT NULL,
-    keywords_json TEXT NOT NULL,
-    methods_json TEXT NOT NULL,
-    limitations_json TEXT NOT NULL,
-    UNIQUE(digest_id, key)
+    version_id INTEGER NOT NULL UNIQUE REFERENCES versions(id) ON DELETE CASCADE,
+    reading_status TEXT NOT NULL,
+    digest_hash TEXT NOT NULL,
+    digest_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS facets_digest_idx ON facets(digest_id);
-
-CREATE TABLE IF NOT EXISTS findings (
-    id INTEGER PRIMARY KEY,
-    facet_id INTEGER NOT NULL REFERENCES facets(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    kind TEXT NOT NULL,
-    statement TEXT NOT NULL,
-    confidence TEXT NOT NULL,
-    locator_json TEXT NOT NULL,
-    values_json TEXT NOT NULL,
-    keywords_json TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS findings_facet_idx ON findings(facet_id);
 
 CREATE TABLE IF NOT EXISTS search_documents (
     id INTEGER PRIMARY KEY,
@@ -391,130 +559,71 @@ CREATE INDEX IF NOT EXISTS search_documents_paper_idx
 """
 
 
-FTS_SQL = """
-CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-    paper_id UNINDEXED,
-    version_id UNINDEXED,
-    digest_id UNINDEXED,
-    title,
-    authors,
-    abstract,
-    identifiers,
-    entities,
-    topics,
-    overview,
-    facets,
-    findings,
-    methods,
-    limitations,
-    full_text,
-    tokenize = 'unicode61 remove_diacritics 2'
-);
-"""
+FTS_TABLE_SQL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+    "paper_id UNINDEXED, version_id UNINDEXED, digest_id UNINDEXED, "
+    + ", ".join(SEARCH_COLUMNS[3:])
+    + ", content = 'search_documents', content_rowid = 'id', "
+    "tokenize = 'unicode61 remove_diacritics 2')"
+)
+FTS_INSERT_SQL = (
+    f"INSERT INTO search_fts(rowid, {', '.join(SEARCH_COLUMNS)}) VALUES (new.id, "
+    + ", ".join(f"new.{column}" for column in SEARCH_COLUMNS)
+    + ");"
+)
+FTS_DELETE_SQL = (
+    f"INSERT INTO search_fts(search_fts, rowid, {', '.join(SEARCH_COLUMNS)}) "
+    "VALUES ('delete', old.id, "
+    + ", ".join(f"old.{column}" for column in SEARCH_COLUMNS)
+    + ");"
+)
+# The index reads its text from search_documents; these triggers keep it in step.
+FTS_TRIGGERS = {
+    "search_documents_insert": f"AFTER INSERT ON search_documents BEGIN {FTS_INSERT_SQL} END",
+    "search_documents_delete": f"AFTER DELETE ON search_documents BEGIN {FTS_DELETE_SQL} END",
+    "search_documents_update": (
+        f"AFTER UPDATE ON search_documents BEGIN {FTS_DELETE_SQL} {FTS_INSERT_SQL} END"
+    ),
+}
 
 
-def migrate_schema_1_to_2(connection: sqlite3.Connection) -> None:
-    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(digests)")}
-    history_columns = {"revision", "is_current"}
-    if not history_columns.issubset(columns):
-        raise LiteratureError(
-            "Database schema 1 has an unrecognized digests table. Restore the "
-            "pre-migration backup and inspect the database before retrying."
-        )
+def create_search_index(connection: sqlite3.Connection) -> None:
+    connection.execute(FTS_TABLE_SQL)
+    for name, body in FTS_TRIGGERS.items():
+        connection.execute(f"CREATE TRIGGER IF NOT EXISTS {name} {body}")
 
-    connection.commit()
-    connection.execute("PRAGMA foreign_keys = OFF")
-    try:
-        connection.execute("BEGIN IMMEDIATE")
-        connection.execute(
-            "CREATE TEMP TABLE digest_migration_keep(id INTEGER PRIMARY KEY)"
-        )
-        connection.execute(
-            """
-            INSERT INTO digest_migration_keep(id)
-            SELECT candidate.id
-            FROM digests AS candidate
-            WHERE candidate.id = (
-                SELECT ranked.id
-                FROM digests AS ranked
-                WHERE ranked.version_id = candidate.version_id
-                ORDER BY ranked.is_current DESC, ranked.revision DESC, ranked.id DESC
-                LIMIT 1
-            )
-            """
-        )
-        connection.execute(
-            "DELETE FROM findings WHERE facet_id IN ("
-            "SELECT id FROM facets WHERE digest_id NOT IN "
-            "(SELECT id FROM digest_migration_keep))"
-        )
-        connection.execute(
-            "DELETE FROM facets WHERE digest_id NOT IN "
-            "(SELECT id FROM digest_migration_keep)"
-        )
-        connection.execute(
-            "DELETE FROM search_documents WHERE digest_id NOT IN "
-            "(SELECT id FROM digest_migration_keep)"
-        )
-        if connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'"
-        ).fetchone():
-            connection.execute(
-                "DELETE FROM search_fts WHERE digest_id NOT IN "
-                "(SELECT id FROM digest_migration_keep)"
-            )
-        connection.execute(f"CREATE TABLE digests_v2 ({DIGEST_TABLE_BODY_SQL})")
-        connection.execute(
-            """
-            INSERT INTO digests_v2(
-                id, version_id, schema_version, language, overview,
-                significance, reading_status, digest_hash, digest_json, created_at
-            )
-            SELECT id, version_id, schema_version, language, overview,
-                   significance, reading_status, digest_hash, digest_json, created_at
-            FROM digests
-            WHERE id IN (SELECT id FROM digest_migration_keep)
-            """
-        )
-        connection.execute("DROP TABLE digests")
-        connection.execute("ALTER TABLE digests_v2 RENAME TO digests")
-        connection.execute("DROP TABLE digest_migration_keep")
-        connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.execute("PRAGMA foreign_keys = ON")
 
-    violations = list(connection.execute("PRAGMA foreign_key_check"))
-    if violations:
-        raise LiteratureError(
-            "Database schema migration created foreign-key violations. Restore "
-            "the pre-migration backup before retrying."
+def drop_search_index(connection: sqlite3.Connection) -> None:
+    for name in FTS_TRIGGERS:
+        connection.execute(f"DROP TRIGGER IF EXISTS {name}")
+    connection.execute("DROP TABLE IF EXISTS search_fts")
+
+
+def unsupported_schema(version: int) -> LiteratureError:
+    if version < DATABASE_SCHEMA_VERSION:
+        return LiteratureError(
+            f"Database schema {version} comes from an earlier release; run "
+            "literature_db.py migrate, which backs up the library and converts it "
+            f"to schema {DATABASE_SCHEMA_VERSION}.",
+            2,
         )
+    return LiteratureError(
+        f"Database schema {version} is newer than this release, which uses schema "
+        f"{DATABASE_SCHEMA_VERSION}; update the skill.",
+        2,
+    )
 
 
 def initialize_schema(connection: sqlite3.Connection) -> bool:
     version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-    if version > DATABASE_SCHEMA_VERSION:
-        raise LiteratureError(
-            f"Database schema {version} is newer than supported schema "
-            f"{DATABASE_SCHEMA_VERSION}."
-        )
-    if version == 0:
-        connection.executescript(SCHEMA_SQL)
-        connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
-    elif version == 1:
-        migrate_schema_1_to_2(connection)
-        connection.executescript(SCHEMA_SQL)
-    else:
-        connection.executescript(SCHEMA_SQL)
+    if version not in (0, DATABASE_SCHEMA_VERSION):
+        raise unsupported_schema(version)
+    connection.executescript(SCHEMA_SQL)
     connection.executescript(library_catalog.SCHEMA_SQL)
     connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
     fts5 = True
     try:
-        connection.executescript(FTS_SQL)
+        create_search_index(connection)
     except sqlite3.OperationalError as exc:
         if "fts5" not in str(exc).lower():
             raise
@@ -528,38 +637,21 @@ def initialize_schema(connection: sqlite3.Connection) -> bool:
     return fts5
 
 
-def connect_library(
-    library_dir: Path, *, allow_migrate: bool = False
-) -> tuple[sqlite3.Connection, bool]:
+def connect_library(library_dir: Path) -> tuple[sqlite3.Connection, bool]:
     library_dir.mkdir(parents=True, exist_ok=True)
     (library_dir / "objects").mkdir(parents=True, exist_ok=True)
     database_path = library_dir / "literature.sqlite3"
     connection = sqlite3.connect(database_path, timeout=10.0)
     connection.row_factory = sqlite3.Row
     version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-    if version and version != DATABASE_SCHEMA_VERSION and not allow_migrate:
+    if version not in (0, DATABASE_SCHEMA_VERSION):
         connection.close()
-        raise LiteratureError(
-            "Run literature_db.py init explicitly to back up and migrate this library.",
-            2,
-        )
+        raise unsupported_schema(version)
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 10000")
     connection.execute("PRAGMA journal_mode = WAL")
     try:
         fts5 = initialize_schema(connection)
-        if version and version < DATABASE_SCHEMA_VERSION:
-            for row in connection.execute(
-                "SELECT id, manifest_path FROM versions"
-            ).fetchall():
-                path = Path(row["manifest_path"])
-                if path_is_within(path, library_dir / "objects") and path.is_file():
-                    library_catalog.record_version_label(
-                        connection,
-                        row["id"],
-                        json.loads(path.read_text(encoding="utf-8")),
-                    )
-            connection.commit()
         return connection, fts5
     except Exception:
         connection.close()
@@ -567,7 +659,7 @@ def connect_library(
 
 
 def connect_library_readonly(
-    library_dir: Path, *, allow_missing: bool = False, allow_legacy: bool = False
+    library_dir: Path, *, allow_missing: bool = False
 ) -> tuple[sqlite3.Connection, bool]:
     database_path = (library_dir / "literature.sqlite3").resolve()
     if not database_path.is_file():
@@ -587,14 +679,9 @@ def connect_library_readonly(
     connection.execute("PRAGMA query_only = ON")
     connection.execute("PRAGMA busy_timeout = 10000")
     version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-    if version != DATABASE_SCHEMA_VERSION and not (allow_legacy and version in {1, 2}):
+    if version != DATABASE_SCHEMA_VERSION:
         connection.close()
-        raise LiteratureError(
-            f"Database schema {version} does not match supported schema "
-            f"{DATABASE_SCHEMA_VERSION}. Create a backup with the compatible "
-            "pre-update CLI, then run literature_db.py init explicitly.",
-            2,
-        )
+        raise unsupported_schema(version)
     fts_table = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'"
     ).fetchone()
@@ -652,8 +739,14 @@ def validate_optional_string_fields(
     value: dict[str, Any], name: str, fields: Iterable[str]
 ) -> None:
     for field in fields:
-        if field in value and value[field] is not None:
-            value[field] = require_string(value[field], f"{name}.{field}")
+        if value.get(field) is None:
+            value.pop(field, None)
+            continue
+        text = require_string(value[field], f"{name}.{field}", allow_empty=True)
+        if text:
+            value[field] = text
+        else:
+            del value[field]
 
 
 def reject_unknown_fields(
@@ -672,12 +765,15 @@ def validate_named_records(
     *,
     optional_fields: Iterable[str],
     list_fields: Iterable[str] = (),
+    locator: bool = False,
 ) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise LiteratureError(f"{name} must be an array.", 2)
     optional_fields = tuple(optional_fields)
     list_fields = tuple(list_fields)
     allowed = {"name", *optional_fields, *list_fields}
+    if locator:
+        allowed.add("locator")
     result: list[dict[str, Any]] = []
     for index, raw in enumerate(value):
         item_name = f"{name}[{index}]"
@@ -686,30 +782,50 @@ def validate_named_records(
         item["name"] = require_string(item.get("name"), f"{item_name}.name")
         validate_optional_string_fields(item, item_name, optional_fields)
         for field in list_fields:
-            item[field] = string_list(item.get(field, []), f"{item_name}.{field}")
+            values = string_list(item.get(field, []), f"{item_name}.{field}")
+            if values:
+                item[field] = values
+            else:
+                item.pop(field, None)
+        if locator and "locator" in item:
+            raw_locator = item["locator"]
+            if raw_locator is None or (
+                isinstance(raw_locator, dict)
+                and not any(
+                    str(part).strip() for part in raw_locator.values() if part is not None
+                )
+            ):
+                del item["locator"]
+            else:
+                item["locator"] = validate_locator(raw_locator, f"{item_name}.locator")
         result.append(item)
     return result
 
 
+def require_vocabulary(value: Any, name: str, vocabulary: Iterable[str]) -> str:
+    text = require_string(value, name)
+    if text not in vocabulary:
+        raise LiteratureError(
+            f"{name} must be one of {', '.join(sorted(vocabulary))}.", 2
+        )
+    return text
+
+
+def require_reference(
+    value: str, name: str, names: set[str] | None, layer: str
+) -> None:
+    if names is not None and value.casefold() not in names:
+        raise LiteratureError(f"{name} must name an entry of digest.{layer}.", 2)
+
+
 def validate_locator(value: Any, name: str) -> dict[str, Any]:
     locator = require_mapping(value, name)
-    allowed = {
-        "section",
-        "page",
-        "figure",
-        "table",
-        "equation",
-        "appendix",
-        "paragraph",
-    }
-    unknown = set(locator) - allowed
+    unknown = set(locator) - set(LOCATOR_FIELDS)
     if unknown:
         raise LiteratureError(
             f"{name} has unsupported fields: {', '.join(sorted(unknown))}.", 2
         )
-    for key, item in list(locator.items()):
-        if item is not None:
-            locator[key] = require_string(item, f"{name}.{key}")
+    validate_optional_string_fields(locator, name, LOCATOR_FIELDS)
     if not any(locator.values()):
         raise LiteratureError(
             f"{name} must identify a section, page, figure, table, equation, "
@@ -724,173 +840,195 @@ def validate_locator(value: Any, name: str) -> dict[str, Any]:
     return locator
 
 
-def validate_values(value: Any, name: str) -> list[dict[str, Any]]:
+def validate_values(
+    value: Any,
+    name: str,
+    *,
+    datasets: set[str] | None = None,
+    methods: set[str] | None = None,
+) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise LiteratureError(f"{name} must be an array.", 2)
     result: list[dict[str, Any]] = []
     for index, raw in enumerate(value):
         item_name = f"{name}[{index}]"
         item = require_mapping(raw, item_name)
-        reject_unknown_fields(
-            item,
-            item_name,
-            {"name", "value", "unit", "uncertainty", "qualifier"},
-        )
+        reject_unknown_fields(item, item_name, PARAMETER_FIELDS)
         item["name"] = require_string(item.get("name"), f"{item_name}.name")
+        bounds = item.get("range")
+        if bounds is None or bounds == []:
+            item.pop("range", None)
+        else:
+            if (
+                not isinstance(bounds, list)
+                or len(bounds) != 2
+                or any(
+                    isinstance(bound, bool)
+                    or not isinstance(bound, (int, float))
+                    or not math.isfinite(bound)
+                    for bound in bounds
+                )
+            ):
+                raise LiteratureError(
+                    f"{item_name}.range must be [low, high] with two finite numbers.",
+                    2,
+                )
+            if bounds[0] > bounds[1]:
+                raise LiteratureError(f"{item_name}.range low exceeds high.", 2)
         item_value = item.get("value")
-        if isinstance(item_value, bool) or not isinstance(
+        if "range" in item and (
+            item_value is None or (isinstance(item_value, str) and not item_value.strip())
+        ):
+            item.pop("value", None)
+        elif isinstance(item_value, bool) or not isinstance(
             item_value, (str, int, float)
         ):
-            raise LiteratureError(f"{item_name}.value must be a string or number.", 2)
-        if isinstance(item_value, float) and not math.isfinite(item_value):
+            raise LiteratureError(
+                f"{item_name}.value must be a string or number; give a range "
+                "for an interval without a central value.",
+                2,
+            )
+        elif isinstance(item_value, float) and not math.isfinite(item_value):
             raise LiteratureError(f"{item_name}.value must be finite.", 2)
-        validate_optional_string_fields(
-            item, item_name, ("unit", "uncertainty", "qualifier")
-        )
+        validate_optional_string_fields(item, item_name, (*VALUE_TEXT_FIELDS, "status"))
+        status = item.get("status")
+        if status is None:
+            raise LiteratureError(f"{item_name}.status is required.", 2)
+        if status not in VALUE_STATUSES:
+            raise LiteratureError(
+                f"{item_name}.status must be one of "
+                f"{', '.join(sorted(VALUE_STATUSES))}.",
+                2,
+            )
+        if "dataset" in item:
+            require_reference(item["dataset"], f"{item_name}.dataset", datasets, "datasets")
+        if "method" in item:
+            require_reference(item["method"], f"{item_name}.method", methods, "methods")
         result.append(item)
     return result
 
 
-def validate_section_coverage(
-    value: Any,
-    name: str,
-    *,
-    sections: Sequence[str],
-    facet_keys: set[str],
-) -> list[dict[str, Any]]:
-    if not isinstance(value, list) or not value:
-        raise LiteratureError(f"{name} must contain every major read section.", 2)
-    result: list[dict[str, Any]] = []
-    seen_sections: set[str] = set()
-    referenced_facets: set[str] = set()
+def normalized_heading(value: str) -> str:
+    return " ".join(str(value).split()).casefold()
+
+
+def validate_section_entries(value: Any, name: str) -> list[dict[str, str]]:
+    """Validate read sections: a heading string or {heading, gist} each."""
+    if not isinstance(value, list):
+        raise LiteratureError(f"{name} must be an array.", 2)
+    result: list[dict[str, str]] = []
+    positions: dict[str, int] = {}
     for index, raw in enumerate(value):
         item_name = f"{name}[{index}]"
-        item = require_mapping(raw, item_name)
-        reject_unknown_fields(
-            item, item_name, {"section", "role", "facet_keys", "notes"}
+        item = require_mapping({"heading": raw} if isinstance(raw, str) else raw, item_name)
+        reject_unknown_fields(item, item_name, {"heading", "gist"})
+        heading = require_string(item.get("heading"), f"{item_name}.heading")
+        key = normalized_heading(heading)
+        if key in GENERIC_SECTION_LABELS:
+            raise LiteratureError(
+                f"{item_name}.heading must name a real article section.", 2
+            )
+        gist = require_string(
+            item.get("gist") or "", f"{item_name}.gist", allow_empty=True
         )
-        section = require_string(item.get("section"), f"{item_name}.section")
-        normalized_section = " ".join(section.split()).casefold()
-        if normalized_section in GENERIC_SECTION_LABELS:
-            raise LiteratureError(
-                f"{item_name}.section must name a real article section.", 2
-            )
-        if normalized_section in seen_sections:
-            raise LiteratureError(f"duplicate section coverage: {section}.", 2)
-        seen_sections.add(normalized_section)
-        role = require_string(item.get("role"), f"{item_name}.role")
-        if role not in COVERAGE_ROLES:
-            raise LiteratureError(
-                f"{item_name}.role must be one of {', '.join(sorted(COVERAGE_ROLES))}.",
-                2,
-            )
-        mapped = string_list(item.get("facet_keys", []), f"{item_name}.facet_keys")
-        unknown_facets = set(mapped) - facet_keys
-        if unknown_facets:
-            raise LiteratureError(
-                f"{item_name}.facet_keys references unknown facets: "
-                f"{', '.join(sorted(unknown_facets))}.",
-                2,
-            )
-        notes = require_string(
-            item.get("notes", ""), f"{item_name}.notes", allow_empty=True
-        )
-        if role == "scientific" and not mapped:
-            raise LiteratureError(
-                f"{item_name} marks a scientific section without a facet mapping.",
-                2,
-            )
-        if role in {"references", "administrative"} and mapped:
-            raise LiteratureError(
-                f"{item_name} assigns facets to a {role} section. Scientific and technical sections can carry facet mappings.",
-                2,
-            )
-        if role != "scientific" and not notes:
-            raise LiteratureError(
-                f"{item_name} requires notes explaining its {role} disposition.",
-                2,
-            )
-        referenced_facets.update(mapped)
-        result.append(
-            {
-                "section": section,
-                "role": role,
-                "facet_keys": mapped,
-                "notes": notes,
-            }
-        )
-    expected_sections = {" ".join(section.split()).casefold() for section in sections}
-    missing_sections = expected_sections - seen_sections
-    extra_sections = seen_sections - expected_sections
-    if missing_sections or extra_sections:
-        details: list[str] = []
-        if missing_sections:
-            details.append(f"missing {len(missing_sections)} read sections")
-        if extra_sections:
-            details.append(f"contains {len(extra_sections)} unlisted sections")
-        raise LiteratureError(
-            f"{name} must map digest.reading.sections exactly; "
-            + "; ".join(details)
-            + ".",
-            2,
-        )
-    uncovered_facets = facet_keys - referenced_facets
-    if uncovered_facets:
-        raise LiteratureError(
-            f"{name} does not map facets: {', '.join(sorted(uncovered_facets))}.",
-            2,
-        )
+        if key in positions:
+            if gist and "gist" not in result[positions[key]]:
+                result[positions[key]]["gist"] = gist
+            continue
+        entry = {"heading": heading}
+        if gist:
+            entry["gist"] = gist
+        positions[key] = len(result)
+        result.append(entry)
     return result
 
 
-def validate_digest(raw: Any) -> dict[str, Any]:
+def optional_string_list(record: dict[str, Any], field: str, name: str) -> None:
+    """Validate an optional list of strings and drop it when empty."""
+    values = string_list(record.get(field, []), f"{name}.{field}")
+    if values:
+        record[field] = values
+    else:
+        record.pop(field, None)
+
+
+def validate_digest(
+    raw: Any, *, check_references: bool | None = None
+) -> dict[str, Any]:
+    """Validate a digest and return its stored form.
+
+    Complete readings (full, visual) carry the overview; a targeted reading
+    needs only the facets it adds. Cross-references to datasets and methods are
+    checked for complete readings; a targeted digest may reference records that
+    only the stored digest holds, so its references are checked after the merge.
+    Optional fields left empty are dropped.
+    """
     digest = require_mapping(raw, "digest")
-    required = {
-        "schema_version",
-        "language",
-        "overview",
-        "keywords",
-        "entities",
-        "datasets",
-        "methods",
-        "facets",
-        "global_limitations",
-        "data_products",
-        "reading",
-    }
-    missing = required - set(digest)
+    missing = set(DIGEST_REQUIRED_FIELDS) - set(digest)
     if missing:
         raise LiteratureError(
             f"digest is missing required fields: {', '.join(sorted(missing))}.", 2
         )
-    unknown = set(digest) - required
+    unknown = set(digest) - DIGEST_FIELDS
     if unknown:
         raise LiteratureError(
             f"digest has unsupported fields: {', '.join(sorted(unknown))}.", 2
         )
     schema_version = digest["schema_version"]
-    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
-        raise LiteratureError("digest.schema_version must be an integer.", 2)
-    if schema_version != DIGEST_SCHEMA_VERSION:
+    if isinstance(schema_version, bool) or schema_version != DIGEST_SCHEMA_VERSION:
         raise LiteratureError(
-            f"digest.schema_version must be {DIGEST_SCHEMA_VERSION}.",
+            f"digest.schema_version must be {DIGEST_SCHEMA_VERSION}; generate the "
+            "skeleton with literature_db.py template.",
             2,
         )
+    for field in DIGEST_LIST_FIELDS:
+        if digest.get(field) is None:
+            digest[field] = []
+
+    reading = require_mapping(digest["reading"], "digest.reading")
+    status = require_string(reading.get("status"), "digest.reading.status")
+    if status not in READING_STATUSES:
+        raise LiteratureError(
+            "digest.reading.status must be full, targeted, or visual.", 2
+        )
+    complete = status in {"full", "visual"}
+    if check_references is None:
+        check_references = complete
     digest["language"] = require_string(digest["language"], "digest.language")
 
+    if "overview" not in digest:
+        if complete:
+            raise LiteratureError("digest is missing required fields: overview.", 2)
+        digest["overview"] = {}
     overview = require_mapping(digest["overview"], "digest.overview")
     reject_unknown_fields(
-        overview, "digest.overview", {"summary", "significance", "questions"}
+        overview, "digest.overview", {"tldr", "summary", "questions", "study_types"}
     )
-    overview["summary"] = require_string(
-        overview.get("summary"), "digest.overview.summary"
-    )
-    overview["significance"] = require_string(
-        overview.get("significance"), "digest.overview.significance"
-    )
+    for field in ("tldr", "summary"):
+        if complete:
+            overview[field] = require_string(
+                overview.get(field), f"digest.overview.{field}"
+            )
+        else:
+            validate_optional_string_fields(overview, "digest.overview", (field,))
     overview["questions"] = string_list(
         overview.get("questions", []), "digest.overview.questions"
     )
+    study_types = string_list(
+        overview.get("study_types", []), "digest.overview.study_types"
+    )
+    for index, study_type in enumerate(study_types):
+        require_vocabulary(
+            study_type, f"digest.overview.study_types[{index}]", STUDY_TYPES
+        )
+    if complete and not study_types:
+        raise LiteratureError(
+            "digest.overview.study_types must name at least one study type.", 2
+        )
+    if study_types:
+        overview["study_types"] = study_types
+    else:
+        overview.pop("study_types", None)
     digest["overview"] = overview
     digest["keywords"] = string_list(digest["keywords"], "digest.keywords")
 
@@ -903,20 +1041,31 @@ def validate_digest(raw: Any) -> dict[str, Any]:
     digest["datasets"] = validate_named_records(
         digest["datasets"],
         "digest.datasets",
-        optional_fields=(
-            "description",
-            "instrument",
-            "sample",
-            "time_span",
-            "frequency",
-        ),
+        optional_fields=("type", "description", "cited_from"),
         list_fields=("identifiers",),
+        locator=True,
     )
     digest["methods"] = validate_named_records(
         digest["methods"],
         "digest.methods",
-        optional_fields=("description", "purpose"),
-        list_fields=("keywords",),
+        optional_fields=("description", "cited_from"),
+        list_fields=("assumptions",),
+        locator=True,
+    )
+    for layer, vocabulary in (("entities", ENTITY_TYPES), ("datasets", DATASET_TYPES)):
+        for index, record in enumerate(digest[layer]):
+            require_vocabulary(
+                record.get("type"), f"digest.{layer}[{index}].type", vocabulary
+            )
+    dataset_names = (
+        {record["name"].casefold() for record in digest["datasets"]}
+        if check_references
+        else None
+    )
+    method_names = (
+        {record["name"].casefold() for record in digest["methods"]}
+        if check_references
+        else None
     )
 
     facets_raw = digest["facets"]
@@ -930,16 +1079,7 @@ def validate_digest(raw: Any) -> dict[str, Any]:
         reject_unknown_fields(
             facet,
             facet_name,
-            {
-                "key",
-                "label",
-                "summary",
-                "aliases",
-                "keywords",
-                "findings",
-                "methods",
-                "limitations",
-            },
+            {"key", "label", "summary", "aliases", "keywords", "methods", "findings"},
         )
         key = require_string(facet.get("key"), f"{facet_name}.key").lower()
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", key):
@@ -952,18 +1092,12 @@ def validate_digest(raw: Any) -> dict[str, Any]:
         facet["key"] = key
         facet["label"] = require_string(facet.get("label"), f"{facet_name}.label")
         facet["summary"] = require_string(facet.get("summary"), f"{facet_name}.summary")
-        facet["aliases"] = string_list(
-            facet.get("aliases", []), f"{facet_name}.aliases"
-        )
-        facet["keywords"] = string_list(
-            facet.get("keywords", []), f"{facet_name}.keywords"
-        )
-        facet["methods"] = string_list(
-            facet.get("methods", []), f"{facet_name}.methods"
-        )
-        facet["limitations"] = string_list(
-            facet.get("limitations", []), f"{facet_name}.limitations"
-        )
+        for field in ("aliases", "keywords", "methods"):
+            optional_string_list(facet, field, facet_name)
+        for index, method in enumerate(facet.get("methods", [])):
+            require_reference(
+                method, f"{facet_name}.methods[{index}]", method_names, "methods"
+            )
         findings_raw = facet.get("findings")
         if not isinstance(findings_raw, list) or not findings_raw:
             raise LiteratureError(f"{facet_name}.findings cannot be empty.", 2)
@@ -979,45 +1113,48 @@ def validate_digest(raw: Any) -> dict[str, Any]:
                     "kind",
                     "confidence",
                     "locator",
+                    "quote",
                     "values",
                     "keywords",
+                    "cited_from",
+                    "compared_with",
                 },
             )
             finding["statement"] = require_string(
                 finding.get("statement"), f"{finding_name}.statement"
             )
-            kind = require_string(finding.get("kind"), f"{finding_name}.kind")
-            if kind not in FINDING_KINDS:
-                raise LiteratureError(
-                    f"{finding_name}.kind must be one of "
-                    f"{', '.join(sorted(FINDING_KINDS))}.",
-                    2,
-                )
-            finding["kind"] = kind
-            confidence = require_string(
-                finding.get("confidence"), f"{finding_name}.confidence"
+            finding["kind"] = require_vocabulary(
+                finding.get("kind"), f"{finding_name}.kind", FINDING_KINDS
             )
-            if confidence not in CONFIDENCE_LEVELS:
-                raise LiteratureError(
-                    f"{finding_name}.confidence must be high, medium, or low.", 2
-                )
-            finding["confidence"] = confidence
+            finding["confidence"] = require_vocabulary(
+                finding.get("confidence"), f"{finding_name}.confidence", CONFIDENCE_LEVELS
+            )
             finding["locator"] = validate_locator(
                 finding.get("locator"), f"{finding_name}.locator"
             )
-            finding["values"] = validate_values(
-                finding.get("values", []), f"{finding_name}.values"
+            values = validate_values(
+                finding.get("values", []),
+                f"{finding_name}.values",
+                datasets=dataset_names,
+                methods=method_names,
             )
-            finding["keywords"] = string_list(
-                finding.get("keywords", []), f"{finding_name}.keywords"
+            if values:
+                finding["values"] = values
+            else:
+                finding.pop("values", None)
+            for field in ("keywords", "compared_with"):
+                optional_string_list(finding, field, finding_name)
+            validate_optional_string_fields(
+                finding, finding_name, ("cited_from", "quote")
             )
+            if "quote" in finding:
+                finding["quote"] = " ".join(finding["quote"].split())
             findings.append(finding)
         facet["findings"] = findings
         facets.append(facet)
     digest["facets"] = facets
-    digest["global_limitations"] = string_list(
-        digest["global_limitations"], "digest.global_limitations"
-    )
+    for field in ("global_limitations", "assessment"):
+        digest[field] = string_list(digest[field], f"digest.{field}")
 
     products = validate_named_records(
         digest["data_products"],
@@ -1025,66 +1162,37 @@ def validate_digest(raw: Any) -> dict[str, Any]:
         optional_fields=("type", "url", "availability", "locator"),
     )
     for index, product in enumerate(products):
-        product_type = product.get("type", "other")
-        if product_type not in DATA_PRODUCT_TYPES:
-            raise LiteratureError(
-                f"digest.data_products[{index}].type must be one of "
-                f"{', '.join(sorted(DATA_PRODUCT_TYPES))}.",
-                2,
-            )
-        product["type"] = product_type
+        product["type"] = product.get("type", "other")
+        require_vocabulary(
+            product["type"], f"digest.data_products[{index}].type", DATA_PRODUCT_TYPES
+        )
     digest["data_products"] = products
 
-    reading = require_mapping(digest["reading"], "digest.reading")
-    reading_fields = {
-        "status",
-        "sections",
-        "page_ranges",
-        "visual_page_ranges",
-        "unread_sections",
-        "notes",
-    }
-    reading_fields.add("coverage")
-    reject_unknown_fields(reading, "digest.reading", reading_fields)
-    status = require_string(reading.get("status"), "digest.reading.status")
-    if status not in READING_STATUSES:
-        raise LiteratureError(
-            "digest.reading.status must be full, targeted, or visual.", 2
-        )
-    reading["status"] = status
-    for field in (
-        "sections",
-        "page_ranges",
-        "visual_page_ranges",
-        "unread_sections",
-    ):
-        reading[field] = string_list(reading.get(field, []), f"digest.reading.{field}")
-    reading["notes"] = require_string(
-        reading.get("notes", ""), "digest.reading.notes", allow_empty=True
+    reject_unknown_fields(
+        reading,
+        "digest.reading",
+        {"status", "sections", "visual_page_ranges", "unread_sections", "notes"},
     )
-    if status in {"full", "targeted"} and not reading["sections"]:
+    reading["status"] = status
+    reading["sections"] = validate_section_entries(
+        reading.get("sections", []), "digest.reading.sections"
+    )
+    if not reading["sections"]:
         raise LiteratureError(
-            "digest.reading.sections cannot be empty for full or targeted reading.", 2
+            "digest.reading.sections must list the sections that were read.", 2
         )
-    if status == "visual" and not reading["visual_page_ranges"]:
+    for field in ("visual_page_ranges", "unread_sections"):
+        optional_string_list(reading, field, "digest.reading")
+    validate_optional_string_fields(reading, "digest.reading", ("notes",))
+    if status == "visual" and not reading.get("visual_page_ranges"):
         raise LiteratureError(
             "digest.reading.visual_page_ranges cannot be empty for visual reading.", 2
         )
-    if not reading["sections"]:
+    if complete and reading.get("unread_sections"):
         raise LiteratureError(
-            "digest.reading.sections cannot be empty for schema version 2.", 2
+            "A complete full or visual digest cannot list unread sections.", 2
         )
-    reading["coverage"] = validate_section_coverage(
-        reading.get("coverage"),
-        "digest.reading.coverage",
-        sections=reading["sections"],
-        facet_keys=facet_keys,
-    )
-    if status in {"full", "visual"} and reading["unread_sections"]:
-        raise LiteratureError(
-            "A complete schema version 2 digest cannot list unread sections.", 2
-        )
-    if status in {"full", "visual"} and not overview["questions"]:
+    if complete and not overview["questions"]:
         raise LiteratureError(
             "A complete full or visual digest requires at least one research question.",
             2,
@@ -1093,73 +1201,203 @@ def validate_digest(raw: Any) -> dict[str, Any]:
     return digest
 
 
+def finding_id(facet_key: str, index: int) -> str:
+    """Stable reference to the ``index``-th (zero-based) finding of a facet."""
+    return f"{facet_key}.{index + 1}"
+
+
+def iter_findings(
+    digest: Mapping[str, Any],
+) -> Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any]]]:
+    for facet in digest.get("facets", []):
+        for index, finding in enumerate(facet.get("findings", [])):
+            yield finding_id(facet["key"], index), facet, finding
+
+
+STATEMENT_REFERENCE_PATTERN = re.compile(
+    r"\b(?:FRB|PSR|SGR|GRB|AT|SN|XTE|GW|J|B)\s?\d[\w.+-]*"
+    r"|\b(?:19|20)\d{2}[a-z]?\b"
+    r"|\b(?:fig(?:ure)?s?|tab(?:le)?s?|sect(?:ion)?s?|eqs?|equations?|appendix|"
+    r"chapter|paper|model|case|run|component)\.?\s*\(?[a-z]?\d[\d.]*",
+    re.IGNORECASE,
+)
+# A digit right after a comma is a subscript such as \u03a0_L,0, not a reported number.
+STATEMENT_NUMBER_PATTERN = re.compile(r"(?<![\w.,])[-+\u2212]?\d+(?:\.\d+)?")
+RANGE_TEXT_PATTERN = re.compile(
+    r"\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*(?:-|\u2013|\u2014|to|~)\s*"
+    r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*"
+)
+UNCERTAINTY_TEXT_PATTERN = re.compile(
+    r"\u00b1|\+/-|\+-|plus or minus|\+\s*\d[\d.]*\s*/\s*-\s*\d", re.IGNORECASE
+)
+LIMIT_TEXT_PATTERN = re.compile(
+    r"^\s*(?:~\s*)?(?:<|>|\u2264|\u2265|less than|greater than|below|above|at most|at least)",
+    re.IGNORECASE,
+)
+MULTIPLE_NUMBER_PATTERN = re.compile(r"\d\s*;\s*[-+]?\d|\d,\s+[-+]?\d")
+SECTION_LABEL_PATTERN = re.compile(
+    r"\b(?:tab(?:le)?|fig(?:ure)?|eq(?:uation)?)\.?\s*[A-Z]?\d", re.IGNORECASE
+)
+SEVERAL_WORKS_PATTERN = re.compile(r";|；")
+MAX_VALUES_PER_FINDING = 8
+MAX_VALUES_PER_DIGEST = 60
+MAX_FINDINGS_PER_DIGEST = 40
+MAX_STATEMENT_CHARS = 400
+MAX_QUOTE_CHARS = 300
+MIN_QUOTE_ANCHOR_CHARS = 12
+
+
+def looks_computed(value: Any) -> bool:
+    """A float with more significant digits than an article prints."""
+    if not isinstance(value, float):
+        return False
+    digits = re.sub(r"[^0-9]", "", repr(value).split("e")[0]).lstrip("0")
+    return len(digits) >= 15
+
+
+def listed_ids(ids: Sequence[str], limit: int = 12) -> str:
+    shown = ", ".join(ids[:limit])
+    return shown + (f", and {len(ids) - limit} more" if len(ids) > limit else "")
+
+
+def digest_warnings(
+    digest: Mapping[str, Any], anchors: Mapping[str, Any] | None = None
+) -> list[dict[str, str]]:
+    """Flag likely losses of citable structure and excess detail; the reader confirms each."""
+    warnings: list[dict[str, str]] = []
+
+    def warn(path: str, message: str) -> None:
+        warnings.append({"path": path, "message": message})
+
+    total_values = 0
+    total_findings = 0
+    unquoted: list[str] = []
+    for facet_index, facet in enumerate(digest.get("facets", [])):
+        for finding_index, finding in enumerate(facet.get("findings", [])):
+            total_findings += 1
+            path = f"facets[{facet_index}].findings[{finding_index}]"
+            values = finding.get("values", [])
+            total_values += len(values)
+            statement = finding.get("statement", "")
+            stripped = STATEMENT_REFERENCE_PATTERN.sub(" ", statement)
+            if not values and STATEMENT_NUMBER_PATTERN.search(stripped):
+                warn(path, "The statement reports a number that is missing from values.")
+            if len(statement) > MAX_STATEMENT_CHARS:
+                warn(path, "Keep one citable result per finding; shorten or split the statement.")
+            if len(finding.get("quote", "")) > MAX_QUOTE_CHARS:
+                warn(path, "Shorten the quote to the words that state the result.")
+            if not finding.get("quote"):
+                unquoted.append(finding_id(facet["key"], finding_index))
+            if len(values) > MAX_VALUES_PER_FINDING:
+                warn(path, "Keep the numbers a manuscript would quote; summarize long tables with counts and ranges and register the table under data_products.")
+            if SECTION_LABEL_PATTERN.search(finding.get("locator", {}).get("section", "")):
+                warn(path, "Put table, figure, and equation labels in their own locator fields.")
+            if SEVERAL_WORKS_PATTERN.search(finding.get("cited_from", "")):
+                warn(path, "Name one source in cited_from; split findings that draw on several works.")
+            for value_index, value in enumerate(values):
+                value_path = f"{path}.values[{value_index}]"
+                reported = value.get("value")
+                if looks_computed(reported):
+                    warn(value_path, "Copy the value as printed, as a string when it is long or in scientific notation.")
+                if value.get("status") == "fitted" and not value.get("model"):
+                    warn(value_path, "Name the model behind the fitted value.")
+                if SEVERAL_WORKS_PATTERN.search(value.get("cited_from", "")):
+                    warn(value_path, "Name one source in cited_from.")
+                if isinstance(reported, str):
+                    if LIMIT_TEXT_PATTERN.search(reported):
+                        warn(value_path, "Record a limit as status upper-limit or lower-limit with the bound as value.")
+                    elif UNCERTAINTY_TEXT_PATTERN.search(reported):
+                        warn(value_path, "Move the uncertainty from value to uncertainty.")
+                    elif RANGE_TEXT_PATTERN.fullmatch(reported):
+                        warn(value_path, "Record an interval as range [low, high].")
+                    elif MULTIPLE_NUMBER_PATTERN.search(reported):
+                        warn(value_path, "Record each number as its own value with its condition.")
+                if UNCERTAINTY_TEXT_PATTERN.search(str(value.get("qualifier", ""))):
+                    warn(value_path, "Move the uncertainty from qualifier to uncertainty.")
+    if total_values > MAX_VALUES_PER_DIGEST:
+        warn("facets", "Keep the values a manuscript would quote; leave configuration, sample logs, and table rows to the stored article.")
+    if total_findings > MAX_FINDINGS_PER_DIGEST:
+        warn("facets", "Keep the results a manuscript would cite; merge findings that are always cited together.")
+    if digest.get("reading", {}).get("status") == "full" and unquoted:
+        warn(
+            "facets",
+            f"Add a short verbatim quote to {listed_ids(unquoted)} so passage can return the paragraph that states each result.",
+        )
+    if anchors and anchors.get("unlocated"):
+        warn(
+            "facets",
+            "Quotes for "
+            f"{listed_ids(anchors['unlocated'])} do not occur in the article text; "
+            "copy each one verbatim from the prepared text.",
+        )
+    return warnings
+
+
 def digest_template() -> dict[str, Any]:
+    """Return the schema 4 skeleton; blank optional fields are dropped on validation."""
     return {
         "schema_version": DIGEST_SCHEMA_VERSION,
         "language": "zh-CN",
         "overview": {
+            "tldr": "",
             "summary": "",
-            "significance": "",
             "questions": [""],
+            "study_types": ["observational"],
         },
         "keywords": [],
-        "entities": [{"name": "", "type": "", "description": "", "aliases": []}],
+        "entities": [{"name": "", "type": "source", "aliases": []}],
         "datasets": [
             {
                 "name": "",
+                "type": "observation",
                 "description": "",
-                "instrument": "",
-                "sample": "",
-                "time_span": "",
-                "frequency": "",
-                "identifiers": [],
+                "locator": {"section": ""},
             }
         ],
-        "methods": [{"name": "", "description": "", "purpose": "", "keywords": []}],
+        "methods": [
+            {
+                "name": "",
+                "description": "",
+                "assumptions": [],
+                "locator": {"section": ""},
+            }
+        ],
         "facets": [
             {
                 "key": "topic-slug",
                 "label": "",
-                "aliases": [],
                 "summary": "",
-                "keywords": [],
                 "findings": [
                     {
                         "statement": "",
                         "kind": "measurement",
                         "confidence": "high",
                         "locator": {"section": ""},
-                        "values": [],
-                        "keywords": [],
+                        "quote": "",
+                        "values": [
+                            {
+                                "name": "",
+                                "value": "",
+                                "uncertainty": "",
+                                "unit": "",
+                                "status": "measured",
+                            }
+                        ],
+                        "cited_from": "",
                     },
                 ],
-                "methods": [],
-                "limitations": [],
             },
         ],
         "global_limitations": [],
+        "assessment": [],
         "data_products": [],
         "reading": {
             "status": "full",
-            "sections": ["Major scientific section", "Methods and data"],
-            "page_ranges": [],
-            "visual_page_ranges": [],
-            "unread_sections": [],
-            "notes": "",
-            "coverage": [
-                {
-                    "section": "Major scientific section",
-                    "role": "scientific",
-                    "facet_keys": ["topic-slug"],
-                    "notes": "",
-                },
-                {
-                    "section": "Methods and data",
-                    "role": "methods",
-                    "facet_keys": [],
-                    "notes": "Record methods and datasets in their dedicated layers.",
-                },
+            "sections": [
+                {"heading": "1 Introduction", "gist": ""},
+                {"heading": "2 Observations", "gist": ""},
             ],
+            "notes": "",
         },
     }
 
@@ -1231,106 +1469,45 @@ def merge_facets(
         for field in ("label", "summary"):
             if new_facet.get(field):
                 old[field] = new_facet[field]
-        for field in ("aliases", "keywords", "methods", "limitations"):
-            old[field] = merge_string_lists(
-                old.get(field, []), new_facet.get(field, [])
-            )
-        old["findings"] = merge_findings(
-            old.get("findings", []), new_facet.get("findings", [])
-        )
-    return result
-
-
-def merge_section_coverage(
-    current: list[dict[str, Any]], incoming: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    result = [json.loads(json.dumps(item)) for item in current]
-    positions = {
-        str(item.get("section", "")).strip().casefold(): index
-        for index, item in enumerate(result)
-    }
-    for raw in incoming:
-        item = json.loads(json.dumps(raw))
-        key = str(item.get("section", "")).strip().casefold()
-        if key in positions:
-            old = result[positions[key]]
-            old["facet_keys"] = merge_string_lists(
-                old.get("facet_keys", []), item.get("facet_keys", [])
-            )
-            if "scientific" in {old.get("role"), item.get("role")}:
-                old["role"] = "scientific"
-                old["notes"] = ""
-            else:
-                old["role"] = item.get("role") or old.get("role")
-                old_notes = str(old.get("notes", "")).strip()
-                new_notes = str(item.get("notes", "")).strip()
-                old["notes"] = " ".join(
-                    ordered_unique_casefolded_strings([old_notes, new_notes])
-                )
-        else:
-            positions[key] = len(result)
-            result.append(item)
+        for field in ("aliases", "keywords", "methods"):
+            old[field] = merge_string_lists(old.get(field, []), new_facet.get(field, []))
+        old["findings"] = merge_findings(old["findings"], new_facet["findings"])
     return result
 
 
 def merge_digests(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Merge a new reading into the stored digest of the same article version."""
     merged = json.loads(json.dumps(current))
-    if incoming.get("schema_version") != DIGEST_SCHEMA_VERSION:
-        raise LiteratureError(
-            f"Targeted updates require digest schema {DIGEST_SCHEMA_VERSION}.", 2
-        )
-    merged["schema_version"] = DIGEST_SCHEMA_VERSION
     targeted = incoming["reading"]["status"] == "targeted"
-    merged["language"] = (
-        merged["language"]
-        if targeted
-        else incoming.get("language") or merged["language"]
-    )
-    for field in ("summary", "significance"):
-        if incoming["overview"].get(field) and not targeted:
-            merged["overview"][field] = incoming["overview"][field]
-    merged["overview"]["questions"] = merge_string_lists(
-        merged["overview"].get("questions", []),
-        incoming["overview"].get("questions", []),
-    )
-    merged["keywords"] = merge_string_lists(
-        merged.get("keywords", []), incoming.get("keywords", [])
-    )
+    if not targeted:
+        merged["language"] = incoming["language"]
+        for field in ("tldr", "summary"):
+            if incoming["overview"].get(field):
+                merged["overview"][field] = incoming["overview"][field]
+    for field in ("questions", "study_types"):
+        merged["overview"][field] = merge_string_lists(
+            merged["overview"].get(field, []), incoming["overview"].get(field, [])
+        )
+    for field in ("keywords", "global_limitations", "assessment"):
+        merged[field] = merge_string_lists(merged[field], incoming[field])
     for field in ("entities", "datasets", "methods", "data_products"):
-        merged[field] = merge_record_lists(
-            merged.get(field, []), incoming.get(field, []), "name"
-        )
-    merged["facets"] = merge_facets(
-        merged.get("facets", []), incoming.get("facets", [])
+        merged[field] = merge_record_lists(merged[field], incoming[field], "name")
+    merged["facets"] = merge_facets(merged["facets"], incoming["facets"])
+    reading = merged["reading"]
+    new_reading = incoming["reading"]
+    was_complete = reading["status"] in {"full", "visual"}
+    if READING_STATUS_RANK[new_reading["status"]] > READING_STATUS_RANK[reading["status"]]:
+        reading["status"] = new_reading["status"]
+    reading["visual_page_ranges"] = merge_string_lists(
+        reading.get("visual_page_ranges", []), new_reading.get("visual_page_ranges", [])
     )
-    merged["global_limitations"] = merge_string_lists(
-        merged.get("global_limitations", []),
-        incoming.get("global_limitations", []),
-    )
-    current_reading = merged["reading"]
-    incoming_reading = incoming["reading"]
-    current_was_complete = current_reading["status"] in {"full", "visual"}
-    if (
-        READING_STATUS_RANK[incoming_reading["status"]]
-        > READING_STATUS_RANK[current_reading["status"]]
-    ):
-        current_reading["status"] = incoming_reading["status"]
-    for field in ("sections", "page_ranges", "visual_page_ranges"):
-        current_reading[field] = merge_string_lists(
-            current_reading.get(field, []), incoming_reading.get(field, [])
-        )
-    current_reading["coverage"] = merge_section_coverage(
-        current_reading.get("coverage", []), incoming_reading.get("coverage", [])
-    )
-    if not current_was_complete:
-        current_reading["unread_sections"] = incoming_reading.get(
-            "unread_sections", current_reading.get("unread_sections", [])
-        )
-    incoming_notes = incoming_reading.get("notes", "").strip()
-    if incoming_notes and incoming_notes not in current_reading.get("notes", ""):
-        current_notes = current_reading.get("notes", "").strip()
-        current_reading["notes"] = "\n".join(
-            part for part in (current_notes, incoming_notes) if part
+    reading["sections"] = [*reading["sections"], *new_reading["sections"]]
+    if not was_complete:
+        reading["unread_sections"] = new_reading.get("unread_sections", [])
+    new_notes = new_reading.get("notes", "")
+    if new_notes and new_notes not in reading.get("notes", ""):
+        reading["notes"] = "\n".join(
+            part for part in (reading.get("notes", ""), new_notes) if part
         )
     return validate_digest(merged)
 
@@ -1439,7 +1616,7 @@ def validate_visual_coverage(selected: dict[str, Any], digest: dict[str, Any]) -
             "Visual completeness requires a verified positive page count.", 2
         )
     covered: set[int] = set()
-    for value in digest["reading"]["visual_page_ranges"]:
+    for value in digest["reading"].get("visual_page_ranges", []):
         match = re.fullmatch(r"(\d+)(?:\s*-\s*(\d+))?", value.strip())
         if not match:
             raise LiteratureError(
@@ -1467,7 +1644,8 @@ def validate_ingest_manifest(manifest: dict[str, Any], digest: dict[str, Any]) -
             2,
         )
     selected = require_mapping(manifest.get("selected"), "manifest.selected")
-    # Older object-store manifests retained cache paths in selected.
+    # A stored manifest keeps download-cache paths in selected and names the
+    # durable object-store copies in database_object.
     objects = manifest.get("database_object") or {}
     if isinstance(objects, dict) and objects.get("artifact_sha256") == selected.get(
         "sha256"
@@ -1710,9 +1888,6 @@ def merge_papers(connection: sqlite3.Connection, paper_ids: Iterable[int]) -> in
         survivor,
     )
     target = survivor["id"]
-    fts_table = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'"
-    ).fetchone()
     metadata = json.loads(survivor["metadata_json"])
     for row in others:
         source = row["id"]
@@ -1740,11 +1915,6 @@ def merge_papers(connection: sqlite3.Connection, paper_ids: Iterable[int]) -> in
                 connection.execute(
                     "DELETE FROM search_documents WHERE version_id = ?", (version["id"],)
                 )
-                if fts_table:
-                    connection.execute(
-                        "DELETE FROM search_fts WHERE version_id = ?",
-                        (str(version["id"]),),
-                    )
                 connection.execute("DELETE FROM versions WHERE id = ?", (version["id"],))
             else:
                 connection.execute(
@@ -1755,11 +1925,6 @@ def merge_papers(connection: sqlite3.Connection, paper_ids: Iterable[int]) -> in
             "UPDATE search_documents SET paper_id = ? WHERE paper_id = ?",
             (target, source),
         )
-        if fts_table:
-            connection.execute(
-                "UPDATE search_fts SET paper_id = ? WHERE paper_id = ?",
-                (str(target), str(source)),
-            )
         connection.execute(
             "UPDATE OR IGNORE search_hits SET paper_id = ? WHERE paper_id = ?",
             (target, source),
@@ -1834,9 +1999,7 @@ def merge_papers(connection: sqlite3.Connection, paper_ids: Iterable[int]) -> in
     return target
 
 
-def reindex_paper_documents(
-    connection: sqlite3.Connection, fts5: bool, paper_id: int
-) -> int:
+def reindex_paper_documents(connection: sqlite3.Connection, paper_id: int) -> int:
     rows = connection.execute(
         """
         SELECT v.id AS version_id, v.text_path, d.id AS digest_id, d.digest_json
@@ -1861,7 +2024,7 @@ def reindex_paper_documents(
             json.loads(row["digest_json"]),
             full_text_value,
         )
-        replace_search_document(connection, document, fts5)
+        replace_search_document(connection, document)
     return len(rows)
 
 
@@ -2251,95 +2414,25 @@ def insert_digest(
     stored_digest = stored_digest_row(connection, version_id)
     if stored_digest and stored_digest["digest_hash"] == digest_hash:
         return int(stored_digest["id"]), False, False
-    now = fulltext.utc_now()
+    values = (
+        digest["reading"]["status"],
+        digest_hash,
+        json_text(digest),
+        fulltext.utc_now(),
+    )
     if stored_digest:
-        digest_id = int(stored_digest["id"])
-        connection.execute("DELETE FROM facets WHERE digest_id = ?", (digest_id,))
         connection.execute(
-            """
-            UPDATE digests
-            SET schema_version = ?, language = ?, overview = ?,
-                significance = ?, reading_status = ?, digest_hash = ?,
-                digest_json = ?, created_at = ?
-            WHERE id = ?
-            """,
-            (
-                digest["schema_version"],
-                digest["language"],
-                digest["overview"]["summary"],
-                digest["overview"]["significance"],
-                digest["reading"]["status"],
-                digest_hash,
-                json_text(digest),
-                now,
-                digest_id,
-            ),
+            "UPDATE digests SET reading_status = ?, digest_hash = ?, digest_json = ?, "
+            "updated_at = ? WHERE id = ?",
+            (*values, stored_digest["id"]),
         )
-        digest_created = False
-    else:
-        cursor = connection.execute(
-            """
-            INSERT INTO digests(
-                version_id, schema_version, language, overview,
-                significance, reading_status, digest_hash, digest_json,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                version_id,
-                digest["schema_version"],
-                digest["language"],
-                digest["overview"]["summary"],
-                digest["overview"]["significance"],
-                digest["reading"]["status"],
-                digest_hash,
-                json_text(digest),
-                now,
-            ),
-        )
-        digest_id = int(cursor.lastrowid)
-        digest_created = True
-    for facet_index, facet in enumerate(digest["facets"]):
-        facet_cursor = connection.execute(
-            """
-            INSERT INTO facets(
-                digest_id, ordinal, key, label, summary, aliases_json,
-                keywords_json, methods_json, limitations_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                digest_id,
-                facet_index,
-                facet["key"],
-                facet["label"],
-                facet["summary"],
-                json_text(facet["aliases"]),
-                json_text(facet["keywords"]),
-                json_text(facet["methods"]),
-                json_text(facet["limitations"]),
-            ),
-        )
-        facet_id = int(facet_cursor.lastrowid)
-        for finding_index, finding in enumerate(facet["findings"]):
-            connection.execute(
-                """
-                INSERT INTO findings(
-                    facet_id, ordinal, kind, statement, confidence,
-                    locator_json, values_json, keywords_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    facet_id,
-                    finding_index,
-                    finding["kind"],
-                    finding["statement"],
-                    finding["confidence"],
-                    json_text(finding["locator"]),
-                    json_text(finding["values"]),
-                    json_text(finding["keywords"]),
-                ),
-            )
-    return digest_id, True, digest_created
+        return int(stored_digest["id"]), True, False
+    cursor = connection.execute(
+        "INSERT INTO digests(version_id, reading_status, digest_hash, digest_json, "
+        "updated_at) VALUES (?, ?, ?, ?, ?)",
+        (version_id, *values),
+    )
+    return int(cursor.lastrowid), True, True
 
 
 def join_record_text(records: Iterable[Mapping[str, Any]]) -> str:
@@ -2383,28 +2476,31 @@ def build_search_document(
     ]
     facet_parts: list[str] = []
     finding_parts: list[str] = []
-    limitations: list[str] = list(digest["global_limitations"])
+    limitations: list[str] = [
+        *digest["global_limitations"],
+        *digest.get("assessment", []),
+    ]
     for facet in digest["facets"]:
         topics.extend(
             [
                 facet["key"],
                 facet["label"],
-                *facet["aliases"],
-                *facet["keywords"],
+                *facet.get("aliases", []),
+                *facet.get("keywords", []),
             ]
         )
         facet_parts.extend(
-            [
-                facet["label"],
-                facet["summary"],
-                *facet["methods"],
-            ]
+            [facet["label"], facet["summary"], *facet.get("methods", [])]
         )
-        limitations.extend(facet["limitations"])
         for finding in facet["findings"]:
             finding_parts.append(finding["statement"])
-            finding_parts.append(join_record_text(finding["values"]))
-            finding_parts.extend(finding["keywords"])
+            finding_parts.append(join_record_text(finding.get("values", [])))
+            finding_parts.extend(finding.get("keywords", []))
+            finding_parts.append(finding.get("cited_from", ""))
+            finding_parts.extend(finding.get("compared_with", []))
+    facet_parts.extend(
+        section["gist"] for section in digest["reading"]["sections"] if "gist" in section
+    )
     overview = digest["overview"]
     return {
         "paper_id": str(paper_id),
@@ -2419,7 +2515,7 @@ def build_search_document(
         "entities": join_record_text(digest["entities"]),
         "topics": "\n".join(ordered_unique_casefolded_strings(topics)),
         "overview": "\n".join(
-            [overview["summary"], overview["significance"], *overview["questions"]]
+            [overview["tldr"], overview["summary"], *overview["questions"]]
         ),
         "facets": "\n".join(facet_parts),
         "findings": "\n".join(finding_parts),
@@ -2432,27 +2528,17 @@ def build_search_document(
 
 
 def replace_search_document(
-    connection: sqlite3.Connection,
-    document: Mapping[str, str],
-    fts5: bool,
+    connection: sqlite3.Connection, document: Mapping[str, str]
 ) -> None:
-    version_id = document["version_id"]
     connection.execute(
-        "DELETE FROM search_documents WHERE version_id = ?", (version_id,)
+        "DELETE FROM search_documents WHERE version_id = ?", (document["version_id"],)
     )
     placeholders = ", ".join("?" for _ in SEARCH_COLUMNS)
-    columns = ", ".join(SEARCH_COLUMNS)
-    values = [document[column] for column in SEARCH_COLUMNS]
     connection.execute(
-        f"INSERT INTO search_documents({columns}, updated_at) "
+        f"INSERT INTO search_documents({', '.join(SEARCH_COLUMNS)}, updated_at) "
         f"VALUES ({placeholders}, ?)",
-        (*values, fulltext.utc_now()),
+        (*(document[column] for column in SEARCH_COLUMNS), fulltext.utc_now()),
     )
-    if fts5:
-        connection.execute("DELETE FROM search_fts WHERE version_id = ?", (version_id,))
-        connection.execute(
-            f"INSERT INTO search_fts({columns}) VALUES ({placeholders})", values
-        )
 
 
 def prepare_ingest_digest(
@@ -2526,6 +2612,7 @@ def ingest_record(
     replace_digest: bool = False,
 ) -> dict[str, Any]:
     digest = validate_digest(digest)
+    incoming = digest
     aliases = validate_ingest_metadata(manifest)
     content_sha256 = validate_ingest_manifest(manifest, digest)
     prepare_ingest_digest(
@@ -2538,6 +2625,15 @@ def ingest_record(
         replace_digest=replace_digest,
     )
     stored = store_objects(library_dir, manifest)
+    anchors = None
+    if stored.get("text_path"):
+        article_text = Path(stored["text_path"]).read_text(
+            encoding="utf-8", errors="replace"
+        )
+        anchors = quote_anchors(
+            incoming, article_text, article_sections(article_text, manifest)
+        )
+    warnings = digest_warnings(incoming, anchors)
     try:
         connection.execute("BEGIN IMMEDIATE")
         matching_papers = resolve_paper_identity(connection, aliases)
@@ -2557,7 +2653,7 @@ def ingest_record(
         digest_id, digest_changed, digest_created = insert_digest(
             connection, version_id, digest
         )
-        reindex_paper_documents(connection, fts5, paper_id)
+        reindex_paper_documents(connection, paper_id)
         stored_paper = connection.execute(
             "SELECT canonical_key FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
@@ -2592,6 +2688,8 @@ def ingest_record(
         },
         "reading_status": digest["reading"]["status"],
         "facets": [facet["key"] for facet in digest["facets"]],
+        **({"anchors": anchors} if anchors is not None else {}),
+        "warnings": warnings,
         "classification_status": "complete"
         if library_catalog.paper_organization(connection, paper_id)["collections"]
         else "pending",
@@ -2615,7 +2713,7 @@ def enrich_paper_metadata(
         paper_id = upsert_paper(connection, manifest, aliases, refresh_metadata=True)
         if paper_id != expected_paper_id:
             raise LiteratureError("Metadata enrichment changed paper identity.")
-        versions_reindexed = reindex_paper_documents(connection, fts5, paper_id)
+        versions_reindexed = reindex_paper_documents(connection, paper_id)
         paper = connection.execute(
             "SELECT * FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
@@ -2672,7 +2770,7 @@ def preferred_version(
     return connection.execute(
         f"""
         SELECT v.*, d.id AS digest_id, d.digest_json, d.reading_status,
-               d.created_at AS digest_updated_at
+               d.updated_at AS digest_updated_at
         FROM versions v
         LEFT JOIN digests d ON d.version_id = v.id
         WHERE v.paper_id = ? {hash_clause}
@@ -2702,8 +2800,14 @@ def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
         [
             str(facet.get("key", "")),
             str(facet.get("label", "")),
+            str(facet.get("summary", "")),
             *[str(value) for value in facet.get("aliases", [])],
             *[str(value) for value in facet.get("keywords", [])],
+            *[
+                str(part)
+                for finding in facet.get("findings", [])
+                for part in (finding.get("statement", ""), *finding.get("keywords", []))
+            ],
         ]
     ).casefold()
     return needle in haystack or all(token in haystack for token in needle.split())
@@ -2774,7 +2878,6 @@ def reuse_assessment(
             "missing_topics": list(topics),
             **article_open_gate("needs_reading"),
         }
-    digest_schema_version = int(digest["schema_version"])
     matched: list[str] = []
     missing: list[str] = []
     for topic in topics:
@@ -2794,7 +2897,6 @@ def reuse_assessment(
         "matched_topics": matched,
         "missing_topics": missing,
         "reading_status": reading_status,
-        "digest_schema_version": digest_schema_version,
         **article_open_gate(status),
     }
 
@@ -2864,7 +2966,11 @@ def lookup_one(
         if version["digest_id"] and "reason" not in assessment:
             digest = json.loads(version["digest_json"])
             result["facet_labels"] = [
-                {"key": facet["key"], "label": facet["label"]}
+                {
+                    "key": facet["key"],
+                    "label": facet["label"],
+                    "findings": len(facet["findings"]),
+                }
                 for facet in digest["facets"]
             ]
             result["overview"] = digest["overview"]
@@ -2877,10 +2983,8 @@ def digest_details(digest_row: sqlite3.Row) -> dict[str, Any]:
     digest = json.loads(digest_row["digest_json"])
     return {
         "id": digest_row["id"],
-        "schema_version": digest_row["schema_version"],
-        "language": digest_row["language"],
         "reading_status": digest_row["reading_status"],
-        "updated_at": digest_row["created_at"],
+        "updated_at": digest_row["updated_at"],
         "digest": digest,
     }
 
@@ -2962,6 +3066,558 @@ def show_paper(
     }
 
 
+SECTION_PREFIX_PATTERN = re.compile(
+    r"^(?:(?:sections?|sects?|secs?)(?![a-z])\.?|§)\s*", re.IGNORECASE
+)
+HEADING_NUMBER_PATTERN = re.compile(
+    r"^(?:§\s*)?((?:appendix|supplement)\s+[a-z0-9]+|[a-z]?\d+(?:\.\d+)*"
+    r"|[a-z](?:\.\d+)+|[ivxlc]+(?:\.\d+)*)[.):]?(?=\s|$)",
+    re.IGNORECASE,
+)
+LOCATOR_LABEL_PATTERNS = {
+    "table": r"tab(?:le)?\.?",
+    "figure": r"fig(?:ure)?s?\.?",
+    "equation": r"eq(?:uation)?s?\.?",
+}
+LOCATOR_PART_PATTERN = re.compile(r"\s*(?:[;,]|\band\b)\s*", re.IGNORECASE)
+LOCATOR_RANGE_PATTERN = re.compile(
+    r"^((?:§\s*)?(?:[a-z]?\d+(?:\.\d+)*|[ivxlc]+))\s*[-\u2013\u2014]\s*\S+$",
+    re.IGNORECASE,
+)
+SECTION_TEXT_LABEL_PATTERN = re.compile(
+    r"\b(tab(?:le)?|fig(?:ure)?s?|eq(?:uation)?s?)\.?\s*([A-Z]?\d+[a-z]?)",
+    re.IGNORECASE,
+)
+
+
+def text_skeleton(text: str) -> tuple[str, list[int]]:
+    """Casefolded letters and digits of ``text`` with their source offsets.
+
+    Matching on this skeleton tolerates the whitespace, hyphenation, ligature,
+    and punctuation differences between a copied quote and extracted text.
+    """
+    characters: list[str] = []
+    offsets: list[int] = []
+    for index, character in enumerate(text):
+        if character.isascii():
+            if character.isalnum():
+                characters.append(character.lower())
+                offsets.append(index)
+            continue
+        if character == "×":
+            character = "x"
+        for piece in unicodedata.normalize("NFKC", character).casefold():
+            if piece.isalnum():
+                characters.append(piece)
+                offsets.append(index)
+    return "".join(characters), offsets
+
+
+def locate_quote(
+    skeleton: str,
+    offsets: Sequence[int],
+    quote: str,
+    *,
+    within: tuple[int, int] | None = None,
+) -> tuple[int, int, bool] | None:
+    """Find a quote's source span, preferring the given section span."""
+    needle = text_skeleton(quote)[0]
+    if len(needle) < MIN_QUOTE_ANCHOR_CHARS:
+        return None
+    pieces = [(needle, True)]
+    if len(needle) >= 40:
+        half = len(needle) // 2
+        pieces.extend([(needle[:half], False), (needle[half:], False)])
+    for piece, exact in pieces:
+        position = -1
+        if within:
+            position = skeleton.find(
+                piece, bisect_left(offsets, within[0]), bisect_left(offsets, within[1])
+            )
+        if position < 0:
+            position = skeleton.find(piece)
+        if position >= 0:
+            return offsets[position], offsets[position + len(piece) - 1] + 1, exact
+    return None
+
+
+def heading_number(heading: str) -> str | None:
+    match = HEADING_NUMBER_PATTERN.match(" ".join(heading.split()))
+    return match.group(1).casefold() if match else None
+
+
+def match_section(
+    sections: Sequence[Mapping[str, Any]], label: str | None
+) -> Mapping[str, Any] | None:
+    """Resolve a locator or user label such as ``2.3``, ``Sec. 4``, or a heading.
+
+    Compound labels such as ``2; Table 1`` or ``III-IV`` resolve through their
+    first part that names a section.
+    """
+    found = match_section_label(sections, label)
+    if found is not None or not label:
+        return found
+    for part in LOCATOR_PART_PATTERN.split(label):
+        part = SECTION_PREFIX_PATTERN.sub("", part.strip())
+        ranged = LOCATOR_RANGE_PATTERN.match(part)
+        for candidate in (part, ranged.group(1) if ranged else ""):
+            if candidate and candidate != label:
+                found = match_section_label(sections, candidate)
+                if found is not None:
+                    return found
+    return None
+
+
+def match_section_label(
+    sections: Sequence[Mapping[str, Any]], label: str | None
+) -> Mapping[str, Any] | None:
+    key = normalized_heading(label or "")
+    if not key or SECTION_TEXT_LABEL_PATTERN.fullmatch(key):
+        return None
+    for section in sections:
+        if normalized_heading(section["heading"]) == key:
+            return section
+    bare = SECTION_PREFIX_PATTERN.sub("", key).strip()
+    number = heading_number(bare)
+    if number and HEADING_NUMBER_PATTERN.fullmatch(bare):
+        numbered = [
+            (heading_number(section["heading"]) or "", section) for section in sections
+        ]
+        for candidate, section in numbered:
+            if candidate == number:
+                return section
+        for candidate, section in numbered:
+            if candidate.startswith(number + "."):
+                return section
+        return None
+    for section in sections:
+        if bare and bare in normalized_heading(section["heading"]):
+            return section
+    for section in sections:
+        title = HEADING_NUMBER_PATTERN.sub("", normalized_heading(section["heading"]))
+        title = title.strip(" .:)")
+        if len(title) >= 4 and title in bare:
+            return section
+    return None
+
+
+def article_sections(
+    text: str, manifest: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Section spans of stored text, from the manifest outline or inferred headings."""
+    return fulltext.article_outline(text, manifest)
+
+
+def section_at(
+    sections: Sequence[Mapping[str, Any]], offset: int
+) -> Mapping[str, Any] | None:
+    for section in sections:
+        if section["start"] <= offset < section["end"]:
+            return section
+    return sections[-1] if sections else None
+
+
+def quote_anchors(
+    digest: Mapping[str, Any],
+    text: str,
+    sections: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Check that each finding's quote occurs in the article text."""
+    sections = sections if sections is not None else article_sections(text)
+    skeleton, offsets = text_skeleton(text)
+    located = 0
+    quoted = 0
+    unlocated: list[str] = []
+    for identifier, _facet, finding in iter_findings(digest):
+        if not finding.get("quote"):
+            continue
+        quoted += 1
+        section = match_section(sections, finding.get("locator", {}).get("section"))
+        span = (section["start"], section["end"]) if section else None
+        if locate_quote(skeleton, offsets, finding["quote"], within=span):
+            located += 1
+        else:
+            unlocated.append(identifier)
+    return {"quoted": quoted, "located": located, "unlocated": unlocated}
+
+
+def line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def bounded_window(
+    text: str, start: int, end: int, floor: int, ceiling: int, max_chars: int
+) -> tuple[int, int, bool]:
+    """Clip ``[floor, ceiling)`` to at most ``max_chars`` around ``[start, end)``."""
+    if not max_chars or ceiling - floor <= max_chars:
+        return floor, ceiling, False
+    span = min(end - start, max_chars)
+    left = max(floor, min(start - (max_chars - span) // 2, ceiling - max_chars))
+    right = min(ceiling, left + max_chars)
+    if left > floor:
+        boundary = text.find(" ", left, start) if start > left else -1
+        left = boundary + 1 if boundary >= 0 else left
+    if right < ceiling:
+        boundary = text.rfind(" ", max(end, left), right)
+        right = boundary if boundary > left else right
+    return left, right, True
+
+
+PARAGRAPH_END_PATTERN = re.compile(r"[.!?:]['\")\]]*$")
+PARAGRAPH_CONTINUATION_PATTERN = re.compile(r"^[a-z$\\,.;:)\]\u2013\u2014-]")
+
+
+def paragraph_blocks(text: str, floor: int, ceiling: int) -> list[tuple[int, int]]:
+    """Logical paragraphs of ``text[floor:ceiling]``.
+
+    Extracted HTML often isolates inline math between blank lines, so a block
+    joins the next one unless it ends a sentence and the next starts a new one.
+    """
+    blocks: list[tuple[int, int]] = []
+    for match in re.finditer(r"(?:[^\n]|\n(?!\n))+", text[floor:ceiling]):
+        chunk = match.group()
+        if not chunk.strip():
+            continue
+        start = floor + match.start() + len(chunk) - len(chunk.lstrip())
+        end = floor + match.end() - (len(chunk) - len(chunk.rstrip()))
+        if blocks:
+            previous = text[blocks[-1][0] : blocks[-1][1]].strip()
+            following = text[start:end].lstrip()
+            last_line = previous.rsplit("\n", 1)[-1].strip()
+            heading = (
+                len(last_line) <= 150
+                and re.match(r"[A-Z0-9§]", last_line)
+                and not PARAGRAPH_END_PATTERN.search(last_line)
+                and re.match(r"[A-Z]", following)
+            )
+            if not heading and (
+                not PARAGRAPH_END_PATTERN.search(previous)
+                or PARAGRAPH_CONTINUATION_PATTERN.match(following)
+            ):
+                blocks[-1] = (blocks[-1][0], end)
+                continue
+        blocks.append((start, end))
+    return blocks
+
+
+def paragraph_span(
+    text: str, start: int, end: int, floor: int, ceiling: int, context: int
+) -> tuple[int, int]:
+    """The logical paragraph holding ``[start, end)`` plus ``context`` neighbors."""
+    blocks = paragraph_blocks(text, floor, ceiling)
+    if not blocks:
+        return floor, ceiling
+    index = next(
+        (position for position, (_left, right) in enumerate(blocks) if start < right),
+        len(blocks) - 1,
+    )
+    last = index
+    while last + 1 < len(blocks) and blocks[last][1] < end:
+        last += 1
+    first = max(index - context, 0)
+    last = min(last + context, len(blocks) - 1)
+    return blocks[first][0], blocks[last][1]
+
+
+def passage_record(
+    text: str,
+    sections: Sequence[Mapping[str, Any]],
+    left: int,
+    right: int,
+    *,
+    match: str,
+    truncated: bool,
+) -> dict[str, Any]:
+    section = section_at(sections, left)
+    return {
+        "section": section["heading"] if section else None,
+        "match": match,
+        "lines": [line_number(text, left), line_number(text, max(right - 1, left))],
+        "truncated": truncated,
+        "text": text[left:right].strip(),
+    }
+
+
+def paragraph_chunks(text: str, max_chars: int) -> list[tuple[int, int]]:
+    """Logical paragraphs; overlong ones are cut at line breaks."""
+    chunks: list[tuple[int, int]] = []
+    limit = max(max_chars, 1500) if max_chars else 0
+    for start, end in paragraph_blocks(text, 0, len(text)):
+        while limit and end - start > limit:
+            cut = text.rfind("\n", start, start + limit)
+            cut = cut if cut > start else start + limit
+            chunks.append((start, cut))
+            start = cut
+        chunks.append((start, end))
+    return chunks
+
+
+def first_term_offset(chunk: str, term: str) -> int:
+    folded = chunk.casefold()
+    if re.match(r"[0-9a-z]", term):
+        found = re.search(r"(?<![0-9a-z])" + re.escape(term), folded)
+        return found.start() if found else 0
+    position = folded.find(term)
+    return max(position, 0)
+
+
+def label_terms(kind: str, label: str) -> re.Pattern[str]:
+    number = re.escape(re.sub(r"^\D+", "", label.strip()) or label.strip())
+    return re.compile(
+        rf"(?<![0-9A-Za-z]){LOCATOR_LABEL_PATTERNS[kind]}\s*{number}(?![0-9])",
+        re.IGNORECASE,
+    )
+
+
+def article_passages(
+    connection: sqlite3.Connection,
+    identifier: str,
+    *,
+    findings: Sequence[str] = (),
+    sections: Sequence[str] = (),
+    terms: Sequence[str] = (),
+    outline: bool = False,
+    artifact_hash: str | None = None,
+    context: int = 0,
+    max_chars: int = 3000,
+    limit: int = 5,
+) -> dict[str, Any]:
+    """Return bounded passages of a stored article instead of its whole text."""
+    paper = find_paper_by_identifier(connection, identifier)
+    if paper is None:
+        raise LiteratureError(f"Paper is not in the literature database: {identifier}", 2)
+    paper_id = int(paper["id"])
+    version = preferred_version(connection, paper_id, artifact_hash, identifier)
+    if version is None:
+        raise LiteratureError(f"No stored article version matches {identifier}.", 2)
+    digest = json.loads(version["digest_json"]) if version["digest_json"] else None
+    text = ""
+    text_path = Path(version["text_path"]) if version["text_path"] else None
+    if text_path is not None:
+        if (
+            not text_path.is_file()
+            or fulltext.sha256_file(text_path) != version["text_sha256"]
+        ):
+            raise LiteratureError(
+                "Stored article text is missing or has changed; restore a backup "
+                "or retrieve the exact version again.",
+                2,
+            )
+        text = text_path.read_text(encoding="utf-8", errors="replace")
+    manifest: dict[str, Any] = {}
+    try:
+        manifest = json.loads(Path(version["manifest_path"]).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        manifest = {}
+    spans = article_sections(text, manifest) if text else []
+    result: dict[str, Any] = {
+        "paper": {
+            "canonical_key": paper["canonical_key"],
+            "bibcode": paper["bibcode"],
+            "citekey": library_catalog.citation_for_paper(connection, paper_id)["citekey"],
+            "title": paper["title"],
+        },
+        "version": {
+            "id": version["id"],
+            "version_kind": version["version_kind"],
+            "format": version["format"],
+            "reading_status": version["reading_status"],
+            "text_path": version["text_path"],
+            "artifact_path": version["artifact_path"],
+        },
+        "passages": [],
+        "unresolved": [],
+    }
+    if not (findings or sections or terms):
+        outline = True
+    if outline:
+        if spans:
+            gists: dict[int, str] = {}
+            for entry in digest["reading"]["sections"] if digest else []:
+                span = match_section(spans, entry["heading"])
+                if span is not None and entry.get("gist"):
+                    gists.setdefault(span["start"], entry["gist"])
+            result["outline"] = []
+            for span in spans:
+                entry = {
+                    "heading": span["heading"],
+                    "line": span["line"],
+                    "words": fulltext.count_words(text[span["start"] : span["end"]]),
+                }
+                if span["start"] in gists:
+                    entry["gist"] = gists[span["start"]]
+                result["outline"].append(entry)
+        else:
+            result["outline"] = digest["reading"]["sections"] if digest else []
+    if not text and (findings or sections or terms):
+        result["unresolved"].append(
+            {
+                "reason": "This version has no extracted text; inspect the artifact "
+                "at the recorded pages.",
+                "artifact_path": version["artifact_path"],
+            }
+        )
+        if digest:
+            for requested in findings:
+                for found_id, _facet, finding in iter_findings(digest):
+                    if found_id == requested:
+                        result["unresolved"][-1].setdefault("locators", {})[
+                            requested
+                        ] = finding["locator"]
+        return result
+    skeleton: tuple[str, list[int]] | None = None
+    by_id = {found_id: finding for found_id, _facet, finding in iter_findings(digest or {})}
+    for requested in findings:
+        finding = by_id.get(requested)
+        if finding is None:
+            result["unresolved"].append(
+                {
+                    "finding": requested,
+                    "reason": "No finding has this id; findings and parameters rows list each finding_id.",
+                }
+            )
+            continue
+        summary = {
+            "finding_id": requested,
+            "statement": finding["statement"],
+            "kind": finding["kind"],
+            "locator": finding["locator"],
+        }
+        locator = finding["locator"]
+        section = match_section(spans, locator.get("section"))
+        hit = None
+        if finding.get("quote"):
+            if skeleton is None:
+                skeleton = text_skeleton(text)
+            hit = locate_quote(
+                *skeleton,
+                finding["quote"],
+                within=(section["start"], section["end"]) if section else None,
+            )
+        if hit:
+            start, end, exact = hit
+            holder = section_at(spans, start)
+            floor, ceiling = (holder["start"], holder["end"]) if holder else (0, len(text))
+            left, right = paragraph_span(text, start, end, floor, ceiling, context)
+            left, right, truncated = bounded_window(text, start, end, left, right, max_chars)
+            result["passages"].append(
+                {
+                    **summary,
+                    **passage_record(
+                        text,
+                        spans,
+                        left,
+                        right,
+                        match="quote" if exact else "partial-quote",
+                        truncated=truncated,
+                    ),
+                }
+            )
+            continue
+        labelled = None
+        labels = [
+            (kind, str(locator[kind]))
+            for kind in ("table", "figure", "equation")
+            if locator.get(kind)
+        ]
+        for word, number in SECTION_TEXT_LABEL_PATTERN.findall(locator.get("section", "")):
+            kind = "table" if word.lower().startswith("tab") else (
+                "figure" if word.lower().startswith("fig") else "equation"
+            )
+            labels.append((kind, number))
+        for kind, value in labels:
+            if value:
+                pattern = label_terms(kind, value)
+                floor, ceiling = (section["start"], section["end"]) if section else (0, len(text))
+                found = pattern.search(text, floor, ceiling) or pattern.search(text)
+                if found:
+                    labelled = (found.start(), found.end(), kind)
+                    break
+        if labelled:
+            start, end, kind = labelled
+            holder = section_at(spans, start)
+            floor, ceiling = (holder["start"], holder["end"]) if holder else (0, len(text))
+            left, right = paragraph_span(text, start, end, floor, ceiling, context)
+            left, right, truncated = bounded_window(text, start, end, left, right, max_chars)
+            result["passages"].append(
+                {
+                    **summary,
+                    **passage_record(
+                        text, spans, left, right, match=kind, truncated=truncated
+                    ),
+                }
+            )
+        elif section:
+            left, right, truncated = bounded_window(
+                text, section["start"], section["start"], section["start"], section["end"], max_chars
+            )
+            result["passages"].append(
+                {
+                    **summary,
+                    **passage_record(
+                        text, spans, left, right, match="section", truncated=truncated
+                    ),
+                }
+            )
+        else:
+            result["unresolved"].append(
+                {
+                    **summary,
+                    "reason": "Neither the quote nor the locator resolves in the stored text; "
+                    "search it with --grep or read the artifact at the locator.",
+                }
+            )
+    for label in sections:
+        section = match_section(spans, label)
+        if section is None:
+            result["unresolved"].append(
+                {
+                    "section": label,
+                    "reason": "No stored section matches; run passage --outline for headings.",
+                }
+            )
+            continue
+        left, right, truncated = bounded_window(
+            text, section["start"], section["start"], section["start"], section["end"], max_chars
+        )
+        result["passages"].append(
+            {
+                "request": {"section": label},
+                **passage_record(text, spans, left, right, match="section", truncated=truncated),
+            }
+        )
+        if truncated:
+            result["passages"][-1]["section_lines"] = [
+                section["line"],
+                section["line"] + section["lines"] - 1,
+            ]
+    if terms:
+        folded = [term.casefold() for term in terms if term.strip()]
+        matchers = [term_matcher(term) for term in folded]
+        total = 0
+        for start, end in paragraph_chunks(text, max_chars):
+            chunk = text[start:end]
+            if not all(matcher(chunk) for matcher in matchers):
+                continue
+            total += 1
+            if total > limit:
+                continue
+            anchor = start + first_term_offset(chunk, folded[0])
+            left, right, truncated = bounded_window(
+                text, anchor, anchor + len(folded[0]), start, end, max_chars
+            )
+            result["passages"].append(
+                {
+                    "request": {"grep": list(terms)},
+                    **passage_record(text, spans, left, right, match="terms", truncated=truncated),
+                }
+            )
+        result["term_matches"] = total
+        if total > limit:
+            result["truncated"] = True
+    return result
+
+
 def fts_quote(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
@@ -3007,11 +3663,15 @@ def topic_filter_matches(
 def facets_for_digest(
     connection: sqlite3.Connection, digest_id: int
 ) -> list[dict[str, str]]:
-    rows = connection.execute(
-        "SELECT key, label, summary FROM facets WHERE digest_id = ? ORDER BY ordinal",
-        (digest_id,),
-    ).fetchall()
-    return [dict(row) for row in rows]
+    row = connection.execute(
+        "SELECT digest_json FROM digests WHERE id = ?", (digest_id,)
+    ).fetchone()
+    if row is None:
+        return []
+    return [
+        {"key": facet["key"], "label": facet["label"], "summary": facet["summary"]}
+        for facet in json.loads(row["digest_json"])["facets"]
+    ]
 
 
 def query_terms(query: str, mode: str) -> list[str]:
@@ -3043,11 +3703,10 @@ def matched_facets_for_query(
             [
                 facet["key"],
                 facet["label"],
-                *facet["aliases"],
+                *facet.get("aliases", []),
                 facet["summary"],
-                *facet["keywords"],
-                *facet["methods"],
-                *facet["limitations"],
+                *facet.get("keywords", []),
+                *facet.get("methods", []),
                 *[join_record_text([finding]) for finding in facet["findings"]],
             ]
         )
@@ -3068,7 +3727,7 @@ def matched_facets_for_query(
                         "statement": finding["statement"],
                         "confidence": finding["confidence"],
                         "locator": finding["locator"],
-                        "values": finding["values"],
+                        "values": finding.get("values", []),
                         "matched_terms": finding_terms,
                     }
                 )
@@ -3312,6 +3971,316 @@ def list_library(
     return {"count": len(results), "topics": list(topics), "results": results}
 
 
+EVIDENCE_UNITS = ("findings", "values")
+EVIDENCE_CSV_COLUMNS = {
+    "findings": (
+        "bibcode",
+        "citekey",
+        "year",
+        "title",
+        "facet",
+        "finding_id",
+        "kind",
+        "confidence",
+        "statement",
+        "locator",
+        "quote",
+        "cited_from",
+        "compared_with",
+        "values",
+        "version_kind",
+        "reading_status",
+    ),
+    "values": (
+        "bibcode",
+        "citekey",
+        "year",
+        "title",
+        "facet",
+        "finding_id",
+        "statement",
+        "kind",
+        "confidence",
+        "locator",
+        *PARAMETER_FIELDS,
+        "version_kind",
+        "reading_status",
+    ),
+}
+
+
+def locator_text(locator: Mapping[str, Any]) -> str:
+    return "; ".join(
+        f"{key} {locator[key]}" for key in LOCATOR_FIELDS if locator.get(key)
+    )
+
+
+def value_text(value: Mapping[str, Any]) -> str:
+    label = str(value.get("name", ""))
+    if value.get("symbol"):
+        label += f" ({value['symbol']})"
+    uncertainty = str(value.get("uncertainty") or "")
+    if uncertainty and uncertainty[0] not in "+-±":
+        uncertainty = f"± {uncertainty}"
+    amount = " ".join(
+        str(part) for part in (value.get("value"), uncertainty) if part not in (None, "")
+    )
+    if value.get("range"):
+        low, high = value["range"]
+        amount = f"{amount} [{low}, {high}]".strip()
+    if value.get("unit"):
+        amount = f"{amount} {value['unit']}".strip()
+    context = [
+        str(value[field])
+        for field in ("status", "qualifier", "condition")
+        if value.get(field)
+    ]
+    return f"{label} = {amount}" + (f" [{', '.join(context)}]" if context else "")
+
+
+def term_matcher(term: str):
+    """Match Latin terms at a word start and other scripts as substrings."""
+    if re.match(r"[0-9a-z]", term):
+        pattern = re.compile(r"(?<![0-9a-z])" + re.escape(term))
+        return lambda text: bool(pattern.search(text.casefold()))
+    return lambda text: term in text.casefold()
+
+
+def digest_names_entity(digest: Mapping[str, Any], needle: str) -> bool:
+    names = [
+        name
+        for entity in digest.get("entities", [])
+        for name in (entity.get("name", ""), *entity.get("aliases", []))
+    ]
+    names.extend(
+        identifier
+        for dataset in digest.get("datasets", [])
+        for identifier in dataset.get("identifiers", [])
+    )
+    return any(needle in " ".join(str(name).split()).casefold() for name in names)
+
+
+def evidence_table(
+    connection: sqlite3.Connection,
+    unit: str,
+    *,
+    query: str = "",
+    identifiers: Sequence[str] = (),
+    entity: str | None = None,
+    kinds: Sequence[str] = (),
+    statuses: Sequence[str] = (),
+    collection: str | None = None,
+    role: str | None = None,
+    tag: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Flatten complete digests into citable finding or value rows with locators."""
+    if unit not in EVIDENCE_UNITS:
+        raise LiteratureError(f"Unknown evidence unit: {unit}.", 2)
+    if year_from is not None and year_to is not None and year_from > year_to:
+        raise LiteratureError("year-from must be at most year-to.", 2)
+    terms = [term.casefold() for term in query_terms(query, "terms")]
+    entity_needle = " ".join((entity or "").split()).casefold()
+    missing: list[str] = []
+    candidates: list[tuple[sqlite3.Row, str | None]] = []
+    if identifiers:
+        for identifier in identifiers:
+            paper = find_paper_by_identifier(connection, identifier)
+            if paper is None:
+                missing.append(identifier)
+            else:
+                candidates.append((paper, identifier))
+    else:
+        candidates = [
+            (paper, None)
+            for paper in connection.execute(
+                "SELECT * FROM papers ORDER BY year DESC, title"
+            )
+        ]
+    matchers = [term_matcher(term) for term in terms]
+    matched: list[tuple[int, int, dict[str, Any]]] = []
+    without_digest: list[str] = []
+    papers_scanned = 0
+    seen_papers: set[int] = set()
+    for paper, identifier in candidates:
+        paper_id = int(paper["id"])
+        if paper_id in seen_papers:
+            continue
+        seen_papers.add(paper_id)
+        year = paper["year"]
+        if year_from is not None and (year is None or year < year_from):
+            continue
+        if year_to is not None and (year is None or year > year_to):
+            continue
+        if not library_catalog.matches_organization(
+            connection, paper_id, collection=collection, role=role, tag=tag
+        ):
+            continue
+        version = preferred_version(connection, paper_id, identifier=identifier)
+        if version is None or version["digest_id"] is None:
+            if identifiers:
+                without_digest.append(identifier or paper["bibcode"] or str(paper_id))
+            continue
+        digest = json.loads(version["digest_json"])
+        if entity_needle and not digest_names_entity(digest, entity_needle):
+            continue
+        papers_scanned += 1
+        for facet in digest["facets"]:
+            facet_text = "\n".join(
+                [
+                    facet["key"],
+                    facet["label"],
+                    *facet.get("aliases", []),
+                    *facet.get("keywords", []),
+                ]
+            )
+            for finding_index, finding in enumerate(facet["findings"]):
+                if kinds and finding["kind"] not in kinds:
+                    continue
+                values = finding.get("values", [])
+                finding_text = "\n".join(
+                    [
+                        finding["statement"],
+                        *finding.get("keywords", []),
+                        finding.get("cited_from") or "",
+                        *finding.get("compared_with", []),
+                    ]
+                )
+                base = {
+                    "paper_id": paper_id,
+                    "bibcode": paper["bibcode"],
+                    "citekey": None,
+                    "title": paper["title"],
+                    "year": year,
+                    "version_id": int(version["id"]),
+                    "version_kind": version["version_kind"],
+                    "reading_status": version["reading_status"],
+                    "facet": facet["key"],
+                    "facet_label": facet["label"],
+                    "finding_id": finding_id(facet["key"], finding_index),
+                    "statement": finding["statement"],
+                    "kind": finding["kind"],
+                    "confidence": finding["confidence"],
+                    "locator": finding["locator"],
+                    "cited_from": finding.get("cited_from"),
+                    "compared_with": finding.get("compared_with", []),
+                }
+                if unit == "findings":
+                    if statuses and not any(
+                        value.get("status") in statuses for value in values
+                    ):
+                        continue
+                    own_text = "\n".join([finding_text, join_record_text(values)])
+                    candidates_for_finding = [
+                        (
+                            own_text,
+                            {
+                                **base,
+                                "quote": finding.get("quote"),
+                                "keywords": finding.get("keywords", []),
+                                "values": values,
+                            },
+                        )
+                    ]
+                else:
+                    candidates_for_finding = []
+                    for value in values:
+                        if statuses and value.get("status") not in statuses:
+                            continue
+                        own_text = "\n".join(
+                            str(value[field])
+                            for field in PARAMETER_FIELDS
+                            if field not in {"value", "range"}
+                            and value.get(field) is not None
+                        )
+                        candidates_for_finding.append(
+                            (
+                                own_text,
+                                {
+                                    **base,
+                                    **{
+                                        field: value.get(field)
+                                        for field in PARAMETER_FIELDS
+                                    },
+                                    "cited_from": value.get("cited_from")
+                                    or finding.get("cited_from"),
+                                    "_context": "\n".join(
+                                        [str(value.get("value")), finding_text]
+                                    ),
+                                },
+                            )
+                        )
+                for own_text, row in candidates_for_finding:
+                    context = "\n".join(
+                        [own_text, row.pop("_context", ""), facet_text]
+                    )
+                    if not all(matcher(context) for matcher in matchers):
+                        continue
+                    rank = 0 if all(matcher(own_text) for matcher in matchers) else 1
+                    matched.append((rank, len(matched), row))
+    matched.sort(key=lambda item: (item[0], item[1]))
+    truncated = len(matched) > limit
+    own_label = "finding" if unit == "findings" else "value"
+    rows = []
+    citekeys: dict[int, str] = {}
+    for rank, _order, row in matched[:limit]:
+        row["match"] = "all" if not terms else "context" if rank else own_label
+        if row["paper_id"] not in citekeys:
+            citekeys[row["paper_id"]] = library_catalog.citation_for_paper(
+                connection, row["paper_id"]
+            )["citekey"]
+        row["citekey"] = citekeys[row["paper_id"]]
+        rows.append(row)
+    return {
+        "query": query,
+        "unit": unit,
+        "filters": {
+            "papers": list(identifiers),
+            "entity": entity,
+            "kind": list(kinds),
+            "status": list(statuses),
+            "collection": collection,
+            "role": role,
+            "tag": tag,
+            "year_from": year_from,
+            "year_to": year_to,
+        },
+        "papers_scanned": papers_scanned,
+        "count": len(rows),
+        "truncated": truncated,
+        "missing": missing,
+        "without_complete_digest": without_digest,
+        "results": rows,
+    }
+
+
+def evidence_csv(table: Mapping[str, Any]) -> str:
+    columns = EVIDENCE_CSV_COLUMNS[table["unit"]]
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(columns)
+    for row in table["results"]:
+        cells = []
+        for column in columns:
+            if column == "locator":
+                cells.append(locator_text(row["locator"]))
+            elif column == "values":
+                cells.append("; ".join(value_text(value) for value in row["values"]))
+            elif column == "compared_with":
+                cells.append("; ".join(row["compared_with"]))
+            elif column == "range":
+                bounds = row.get("range")
+                cells.append(f"[{bounds[0]}, {bounds[1]}]" if bounds else "")
+            elif row.get(column) is None:
+                cells.append("")
+            else:
+                cells.append(row[column])
+        writer.writerow(cells)
+    return buffer.getvalue()
+
+
 def library_stats(
     connection: sqlite3.Connection, fts5: bool, library_dir: Path
 ) -> dict[str, Any]:
@@ -3328,8 +4297,6 @@ def library_stats(
             "versions",
             "artifacts",
             "digests",
-            "facets",
-            "findings",
             "briefs",
             "search_runs",
             "collections",
@@ -3341,19 +4308,11 @@ def library_stats(
         table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
         for table in tables
     }
-    complete = int(
-        connection.execute(
-            "SELECT COUNT(*) FROM digests "
-            "WHERE schema_version = ? AND reading_status IN ('full', 'visual')",
-            (DIGEST_SCHEMA_VERSION,),
-        ).fetchone()[0]
-    )
     reading_rows = connection.execute(
-        "SELECT reading_status, COUNT(*) AS count FROM digests "
-        "WHERE schema_version = ? "
-        "GROUP BY reading_status",
-        (DIGEST_SCHEMA_VERSION,),
+        "SELECT reading_status, COUNT(*) AS count FROM digests GROUP BY reading_status"
     ).fetchall()
+    reading = {row["reading_status"]: row["count"] for row in reading_rows}
+    complete = reading.get("full", 0) + reading.get("visual", 0)
     object_bytes = 0
     object_files = 0
     objects_dir = library_dir / "objects"
@@ -3372,7 +4331,7 @@ def library_stats(
         "database_path": str(library_dir / "literature.sqlite3"),
         "fts5": fts5,
         "counts": {**counts, "complete_digests": complete},
-        "reading_status": {row["reading_status"]: row["count"] for row in reading_rows},
+        "reading_status": reading,
         "objects": {"files": object_files, "bytes": object_bytes},
     }
 
@@ -3725,7 +4684,7 @@ def audit_library(
         if digest is not None:
             if (
                 digest["reading"]["status"] not in {"full", "visual"}
-                or digest["reading"]["unread_sections"]
+                or digest["reading"].get("unread_sections")
             ):
                 incomplete_reading.append(key)
 
@@ -3872,23 +4831,15 @@ def audit_library(
 
     fts_mismatches: list[str] = []
     if fts5:
-        duplicate_fts = connection.execute(
-            "SELECT version_id FROM search_fts GROUP BY version_id HAVING COUNT(*) > 1"
-        ).fetchall()
-        extra_fts = connection.execute(
-            "SELECT version_id FROM search_fts WHERE CAST(version_id AS INTEGER) NOT IN (SELECT version_id FROM search_documents)"
-        ).fetchall()
-        fts_mismatches.extend(str(row[0]) for row in [*duplicate_fts, *extra_fts])
-        for document in connection.execute("SELECT * FROM search_documents"):
-            fts_row = connection.execute(
-                "SELECT * FROM search_fts WHERE version_id = ?",
-                (str(document["version_id"]),),
-            ).fetchone()
-            if fts_row is None or any(
-                str(fts_row[column]) != str(document[column])
-                for column in SEARCH_COLUMNS
-            ):
-                fts_mismatches.append(str(document["version_id"]))
+        fts_mismatches = [
+            str(row[0])
+            for row in connection.execute(
+                "SELECT sd.version_id FROM search_documents sd "
+                "WHERE sd.id NOT IN (SELECT id FROM search_fts_docsize) "
+                "UNION SELECT 'index row ' || id FROM search_fts_docsize "
+                "WHERE id NOT IN (SELECT id FROM search_documents)"
+            )
+        ]
 
     if invalid_digests:
         errors.append({"kind": "invalid_digests", "items": invalid_digests})
@@ -3952,9 +4903,9 @@ def rebuild_index(connection: sqlite3.Connection, fts5: bool) -> dict[str, Any]:
     ).fetchall()
     connection.execute("BEGIN IMMEDIATE")
     try:
-        connection.execute("DELETE FROM search_documents")
         if fts5:
-            connection.execute("DELETE FROM search_fts")
+            drop_search_index(connection)
+        connection.execute("DELETE FROM search_documents")
         for row in rows:
             full_text_value = ""
             if row["text_path"] and Path(row["text_path"]).is_file():
@@ -3969,7 +4920,10 @@ def rebuild_index(connection: sqlite3.Connection, fts5: bool) -> dict[str, Any]:
                 json.loads(row["digest_json"]),
                 full_text_value,
             )
-            replace_search_document(connection, document, fts5)
+            replace_search_document(connection, document)
+        if fts5:
+            create_search_index(connection)
+            connection.execute("INSERT INTO search_fts(search_fts) VALUES('rebuild')")
         connection.commit()
     except Exception:
         connection.rollback()
@@ -3989,19 +4943,31 @@ def execute(
         return 0
     if args.command == "validate-digest":
         digest = validate_digest(load_json(args.digest, stdin))
-        stdout.write(
-            pretty_json(
-                {
-                    "status": "valid",
-                    "schema_version": digest["schema_version"],
-                    "reading_status": digest["reading"]["status"],
-                    "facets": len(digest["facets"]),
-                    "findings": sum(
-                        len(facet["findings"]) for facet in digest["facets"]
-                    ),
-                }
-            )
-        )
+        anchors = None
+        if args.text:
+            text_path = Path(args.text).expanduser()
+            try:
+                text = text_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                raise LiteratureError(f"Unable to read article text: {exc}", 2) from exc
+            anchors = quote_anchors(digest, text)
+        report: dict[str, Any] = {
+            "status": "valid",
+            "schema_version": digest["schema_version"],
+            "reading_status": digest["reading"]["status"],
+            "facets": len(digest["facets"]),
+            "findings": sum(len(facet["findings"]) for facet in digest["facets"]),
+            "values": sum(
+                len(finding.get("values", []))
+                for facet in digest["facets"]
+                for finding in facet["findings"]
+            ),
+            "references_checked": digest["reading"]["status"] != "targeted",
+        }
+        if anchors is not None:
+            report["anchors"] = anchors
+        report["warnings"] = digest_warnings(digest, anchors)
+        stdout.write(pretty_json(report))
         return 0
     if args.command == "restore":
         stdout.write(
@@ -4014,31 +4980,26 @@ def execute(
         if args.library_dir
         else default_library_dir(environ)
     )
+    if args.command == "migrate":
+        import library_migrate
+
+        stdout.write(
+            pretty_json(library_migrate.migrate_library(library_dir, args.destination))
+        )
+        return 0
     if args.command == "serve":
         import library_web
 
         library_web.serve(library_dir, args.port, stdout)
         return 0
-    migration_backup = None
-    if args.command == "init" and (library_dir / "literature.sqlite3").is_file():
-        previous, previous_fts = connect_library_readonly(
-            library_dir, allow_legacy=True
-        )
-        try:
-            if (
-                int(previous.execute("PRAGMA user_version").fetchone()[0])
-                < DATABASE_SCHEMA_VERSION
-            ):
-                migration_backup = create_library_backup(
-                    previous, previous_fts, library_dir, None
-                )
-        finally:
-            previous.close()
     read_commands = {
         "lookup",
+        "passage",
         "show",
         "search",
         "list",
+        "findings",
+        "parameters",
         "stats",
         "audit",
         "backup",
@@ -4055,18 +5016,14 @@ def execute(
         connection, fts5 = connect_library_readonly(
             library_dir,
             allow_missing=args.command not in {"audit", "backup"},
-            allow_legacy=args.command == "backup",
         )
     else:
-        connection, fts5 = connect_library(
-            library_dir, allow_migrate=args.command == "init"
-        )
+        connection, fts5 = connect_library(library_dir)
     try:
         if args.command == "init":
             result = {
                 "status": "initialized",
                 **library_stats(connection, fts5, library_dir),
-                "migration_backup": migration_backup,
             }
         elif args.command == "ingest":
             manifest_payload = load_json(args.manifest, stdin)
@@ -4098,6 +5055,21 @@ def execute(
                     for identifier in args.identifiers
                 ]
             }
+        elif args.command == "passage":
+            if args.max_chars < 0:
+                raise LiteratureError("--max-chars must be zero or positive.", 2)
+            result = article_passages(
+                connection,
+                args.identifier,
+                findings=args.finding,
+                sections=args.section,
+                terms=args.grep,
+                outline=args.outline,
+                artifact_hash=args.sha256,
+                context=args.context,
+                max_chars=args.max_chars,
+                limit=args.limit,
+            )
         elif args.command == "show":
             result = show_paper(
                 connection,
@@ -4141,6 +5113,43 @@ def execute(
                 year_to=args.year_to,
                 limit=args.limit,
             )
+        elif args.command in ("findings", "parameters"):
+            table = evidence_table(
+                connection,
+                "findings" if args.command == "findings" else "values",
+                query=args.query,
+                identifiers=args.paper,
+                entity=args.entity,
+                kinds=args.kind,
+                statuses=args.status,
+                collection=args.collection,
+                role=args.role,
+                tag=args.tag,
+                year_from=args.year_from,
+                year_to=args.year_to,
+                limit=args.limit,
+            )
+            text = (
+                evidence_csv(table) if args.format == "csv" else pretty_json(table)
+            )
+            if args.output:
+                output = Path(args.output).expanduser().resolve()
+                if path_is_within(output, library_dir):
+                    raise LiteratureError(
+                        "Evidence output must be outside the managed library.", 2
+                    )
+                fulltext.atomic_write_text(
+                    output, ("﻿" + text) if args.format == "csv" else text
+                )
+                result = {
+                    "status": "exported",
+                    "format": args.format,
+                    "count": table["count"],
+                    "truncated": table["truncated"],
+                    "path": str(output),
+                }
+            else:
+                result = text
         elif args.command == "stats":
             result = library_stats(connection, fts5, library_dir)
         elif args.command == "audit":

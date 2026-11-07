@@ -330,7 +330,7 @@ def capture_search(
                     "summary_status": "complete" if brief["summary"] else "pending",
                 }
             )
-            library.reindex_paper_documents(connection, fts5, paper_id)
+            library.reindex_paper_documents(connection, paper_id)
     unique = list({item["paper_id"]: item for item in captured}.values())
     return {
         "status": "captured",
@@ -784,9 +784,11 @@ def browse(
         digest_summary = ""
         if preferred:
             digest_row = connection.execute(
-                "SELECT overview FROM digests WHERE version_id = ?", (preferred["id"],)
+                "SELECT digest_json FROM digests WHERE version_id = ?", (preferred["id"],)
             ).fetchone()
-            digest_summary = digest_row[0] if digest_row else ""
+            digest_summary = (
+                json.loads(digest_row[0])["overview"].get("summary", "") if digest_row else ""
+            )
         results.append(
             {
                 **item,

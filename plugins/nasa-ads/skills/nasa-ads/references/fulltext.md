@@ -1,14 +1,10 @@
 # Full-Text Retrieval and Reading
 
-Load this reference when a task fetches or reads article content. Load [literature-memory.md](literature-memory.md) before opening content and load [digest-schema.md](digest-schema.md) when the exact version requires ingest.
-
-Apply the shared [reading scope](../SKILL.md#reading-scope) to determine complete reading and local reuse. This reference covers retrieval, source verification, and article reading.
+Load this reference when a task fetches or reads article content. Run [local lookup](literature-memory.md#local-lookup-and-reading) first, apply the shared [reading scope](../SKILL.md#reading-scope), and load [digest-schema.md](digest-schema.md) when the exact version needs a digest.
 
 ## Bundled Full-Text CLI
 
-Resolve `scripts/fulltext.py` relative to `SKILL.md`. Use the working Python 3 command selected for the bundled CLIs.
-
-Fetch bibcodes, DOIs, arXiv IDs, or arXiv URLs:
+Fetch bibcodes, DOIs, arXiv IDs, or arXiv URLs, each as a separate shell-quoted argument:
 
 ```bash
 python3 "<skill-dir>/scripts/fulltext.py" fetch \
@@ -34,19 +30,17 @@ Useful options:
 
 `--format auto` selects validated structured HTML within the best available version and falls back to PDF. Use `--format pdf` for equations, figures, tables, pagination, or visual review. Explicit format requests validate the response format.
 
-Fetch captures available article metadata and abstracts by default, including an abstract-only result. Follow [source-summary completion](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`. A local persistence failure preserves prepared files and reports a failing exit status; apply the shared [failure routing](../SKILL.md#failure-routing).
-
-The no-library-write exception in [Core Invariants](../SKILL.md#core-invariants) governs explicit opt-outs. Article preparation still uses the download cache.
+Fetch captures available article metadata and abstracts by default, including an abstract-only result. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
 
 After a text-bearing fetch, inventory the article structure:
 
 ```bash
 python3 "<skill-dir>/scripts/fulltext.py" outline \
-  "<selected.text_path>" \
+  "<manifest_path>" \
   --limit 200
 ```
 
-The outline reports inferred headings. Reconcile noisy, duplicated, or missing headings against the artifact. It supplies the reading map and section names for digest coverage.
+Pass the result's `manifest_path` so the outline can use the headings of an HTML source, or `selected.text_path` for the text alone. The outline lists each inferred section with its `heading`, starting `line`, length in `lines`, and `words`; text before the first heading appears as `Front matter`. Reconcile noisy, duplicated, or missing headings against the artifact. The line numbers let a reader open one section at a time and skip the reference list, and the headings become the digest's `reading.sections`.
 
 `--use-unpaywall` requires `UNPAYWALL_EMAIL`. The address is sent to the Unpaywall API as its required query parameter.
 
@@ -70,7 +64,7 @@ Automatic ranking uses two dimensions:
 1. Version authority: open published version, accepted author manuscript, submitted/preprint version, ADS scan.
 2. Machine readability within that version: structured HTML, text-bearing PDF, scan requiring visual reading.
 
-The CLI validates every downloaded candidate. Validation covers content type, size, safe HTTPS redirects, access or challenge pages, landing-page strength, title identity, and PDF extraction. Resolver links remain candidates until validation succeeds.
+The CLI validates every downloaded candidate. Validation covers content type, size, safe HTTPS redirects, access or challenge pages, subscription previews that show an abstract and references without the article body, landing-page strength, title identity, and PDF extraction. A rejected publisher page falls through to the next candidate, such as the arXiv preprint. Resolver links remain candidates until validation succeeds.
 
 SciX bearer credentials travel only to `api.scixplorer.org`. External article requests carry no SciX authorization header. Retrieval uses lawful public access and bounded redirects.
 
@@ -116,16 +110,16 @@ Identifier, credential, network, or input processing failed before a complete ma
 
 ## Reading Procedure
 
-For an exact version requiring complete ingest:
+For an exact version requiring complete ingest, read the body once and write the digest while reading:
 
 1. Confirm title, authorship, identifiers, document type, and selected version.
 2. Run `outline` and reconcile headings with the artifact.
-3. Read the abstract for orientation, followed by every applicable introduction, data, methods, results, discussion, conclusions, limitations, material appendices, references, and data/code statement.
-4. Search prepared text for task terms and read their complete surrounding sections.
-5. Verify decisive numerical values, equations, figures, tables, and layout-sensitive evidence in the artifact.
-6. Separate measurements, interpretations, assumptions, cited background, and future work in the digest.
-7. Record exact article headings, evidence locators, selected version, and complete section-to-facet coverage.
-8. Follow [digest-schema.md](digest-schema.md) to validate and ingest the completed record.
+3. Read the sections in order by line range: front matter and abstract, introduction, data, methods, results, discussion, conclusions, and every appendix carrying results, validation, or data and code statements. Skip the reference list, acknowledgments, author lists, and affiliations; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
+4. After each section, add its findings at [citation granularity](digest-schema.md#granularity), each with a locator and a quote copied from the text just read; the section heading with a gist where the heading is uninformative; and any new entity, dataset, or method. Keep restated content under `cited_from` and the reader's evaluation in `assessment`.
+5. For tables and figures, read the captions and the rows or panels the text discusses. A long table becomes one finding with counts and ranges plus a `data_products` entry; only headline numbers become [values](digest-schema.md#values).
+6. Open the artifact where text extraction leaves a decisive value, sign, exponent, equation, or table cell ambiguous, and copy the value as printed.
+7. Write `overview.tldr` and `overview.summary` last, from the drafted findings.
+8. Follow [digest-schema.md](digest-schema.md#validation-and-ingest) to review, validate with `--text`, and ingest the record.
 
 Verify the task's investigation set with [reading-check](literature-memory.md#local-lookup-and-reading) and apply the shared [handoff criteria](../SKILL.md#completion-and-handoff).
 

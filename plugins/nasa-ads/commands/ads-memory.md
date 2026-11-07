@@ -1,42 +1,28 @@
 ---
-description: "Search, inspect, maintain, and update the personal literature library"
-argument-hint: '<lookup, search, collections, annotate, organize, pending, summarize, check, serve, citations, backup, restore, or paper topics>'
+description: "Search, reuse, organize, and maintain the personal literature library, including stored findings and parameters"
+argument-hint: '<lookup, search, findings, parameters, passage, show, collections, annotate, citations, adslib, check, audit, backup, or a request>'
 allowed-tools:
   - Bash
   - Read
   - Write
 ---
 
-# SciX Literature Memory
+# Personal Literature Library
 
-Use the persistent literature database for: $ARGUMENTS
+Request: $ARGUMENTS
 
-## Instructions
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` for routing and Core Invariants. Run `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/literature_db.py` with the first working Python command; manage the database and object store only through this CLI. Local operations need no SciX token.
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` for shared task routing and Core Invariants, then the relevant sections of `references/literature-memory.md` for the command below. Load `references/digest-schema.md` for digest work. Local browsing, search, and cached citation export work without a SciX token.
-2. Try `python3`, `python`, then `py -3` to run `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/literature_db.py`. Manage the SQLite database and object store exclusively through this CLI.
-3. Map the request to the narrow command:
-   - known paper plus scientific topics: `lookup <identifier> --topic '<topic>' ...`
-   - local concept or finding: `search '<query>' --scope summary`
-   - exact article phrase or unmodeled detail: `search '<query>' --scope fulltext`
-   - complete stored digest and provenance: `show <identifier>`
-   - hierarchy and topic summaries: `collections` or `collections --create <path> --description <summary>`
-   - paper classification and personal notes: `annotate <identifier> --collection <path> --role methods --tag <tag> --note <note>`
-   - unfinished source snapshots, including historical ones: `pending`, followed by source-grounded `summarize --summaries <json>`
-   - reviewed bulk classifications: `organize --annotations <json>`
-   - summary and classification completion: `check --run-id <id>`; plain `check` for whole-library maintenance
-   - search history: `runs`
-   - reading completion for the investigation set: `reading-check <identifiers>` or `reading-check --identifiers-file <list.txt>`
-   - local Web reader: run the registered `adslib` command or bundled `scripts/adslib.py`; use `open`, `start`, `status`, `stop`, `restart`, or `serve` for the requested operation and verify the active service
-   - register the Web command during installation or explicit setup: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/adslib.py" install`
-   - offline citations: `citations <identifiers>`; add `--fetch` for official SciX entries
-   - cache an unedited SciX export: `import-citations --bibtex <scix-export.bib>`
-   - restoration into a new library directory: `restore <snapshot> --destination <new-directory>`
-   - collection health and counts: `stats`
-   - full read-only health review: `audit`
-   - recoverable maintenance snapshot: `backup`
-   - refreshed metadata for an existing record: `enrich --manifest '<manifest.json>'`
-   - whole-library SciX metadata refresh: follow the refresh procedure in the library reference's maintenance section
-4. Apply the shared reading scope when the request investigates article content. Follow the library reference's lookup states into `references/fulltext.md` and `references/digest-schema.md` as needed.
-5. Match the handoff to the task. For Web, return its URL, directory, paper count, and stop instructions. For citations, return the requested entries or file with provenance. For scientific lookup, return matching papers, reading coverage, evidence locators, and useful stored paths. Cite the original paper in scientific answers. Run whole-library completion checks during requested maintenance; focused requests keep their own completion scope.
-6. The bundled CLI exposes no delete operation. A repair or relocation starts with a CLI backup. Perform destructive operations within the user's explicit authorization. Existing authorization covers the stated action and scope.
+Map the request to the narrowest operation and load its reference section:
+
+| Need | Commands | Reference |
+|---|---|---|
+| Find stored papers, findings, or text | `lookup`, `show`, `search`, `list`, `passage` | `references/literature-memory.md` (Local Lookup, Read Stored Passages, Query Stored Evidence) |
+| Reuse or cite a stored result, inference, or value | `findings "<topic>"`, `parameters "<quantity>"`, `--paper`, `--entity`, `--kind`, `--status`, `--format csv`; `passage --finding <finding_id>` to recheck the source paragraph | `references/literature-memory.md` (Query Stored Evidence, Read Stored Passages) |
+| Finish summaries and reading | `pending`, `summarize`, `check --run-id`, `reading-check` | `references/literature-memory.md` |
+| Organize | `collections`, `annotate`, `organize` | `references/literature-memory.md` (Classification) |
+| Citations | `citations`, `--fetch`, `--output` | `references/literature-memory.md` (Citation Export) |
+| Web library | `adslib` or `scripts/adslib.py`; `install` registers the command | `references/literature-memory.md` (Web Library) |
+| Health, backup, restore, metadata refresh, duplicates, upgrade from the previous release | `stats`, `audit`, `backup`, `restore`, `enrich`, `import-citations`, `reindex`, `migrate` | `references/library-maintenance.md` |
+
+Content questions follow the Reading Scope with `references/fulltext.md` and `references/digest-schema.md`. Return the handoff from Completion and Handoff in `SKILL.md`.
