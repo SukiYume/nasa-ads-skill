@@ -135,6 +135,47 @@ def source_snapshot(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def summary_source(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """The source content an agent-authored summary paraphrases.
+
+    A summary rests on the title and abstract, so it stays valid when a later
+    snapshot changes only bibliographic locators such as volume, page, or date.
+    A metadata-only identity summary also names the authors and venue.
+    """
+
+    def text(value: Any) -> str:
+        return " ".join(str(fulltext.first_value(value) or "").split()).casefold()
+
+    source: dict[str, Any] = {
+        "title": text(snapshot.get("title")),
+        "abstract": text(snapshot.get("abstract")),
+    }
+    if not source["abstract"]:
+        source.update(
+            author=[
+                " ".join(name.split()).casefold()
+                for name in fulltext.list_value(snapshot.get("author"))
+            ],
+            pub=text(snapshot.get("pub")),
+            year=text(snapshot.get("year")),
+            doctype=text(snapshot.get("doctype")),
+        )
+    return source
+
+
+def equivalent_summary(connection, paper_id: int, snapshot: dict, brief_id: int):
+    """A completed summary of the same source content for this paper, if any."""
+    wanted = summary_source(snapshot)
+    for row in connection.execute(
+        "SELECT * FROM briefs WHERE paper_id = ? AND id != ? AND summary != '' "
+        "ORDER BY updated_at DESC, id DESC",
+        (paper_id, brief_id),
+    ):
+        if summary_source(json.loads(row["source_json"])) == wanted:
+            return row
+    return None
+
+
 def collection_path(value: str) -> str:
     parts = [part.strip() for part in value.strip().split("/")]
     if (
@@ -316,6 +357,18 @@ def capture_search(
                 "SELECT * FROM briefs WHERE paper_id = ? AND source_hash = ?",
                 (paper_id, source_hash),
             ).fetchone()
+            reused_from = None
+            if not brief["summary"]:
+                match = equivalent_summary(connection, paper_id, snapshot, brief["id"])
+                if match is not None:
+                    connection.execute(
+                        "UPDATE briefs SET summary = ?, keywords_json = ? WHERE id = ?",
+                        (match["summary"], match["keywords_json"], brief["id"]),
+                    )
+                    reused_from = match["source_hash"]
+                    brief = connection.execute(
+                        "SELECT * FROM briefs WHERE id = ?", (brief["id"],)
+                    ).fetchone()
             connection.execute(
                 "INSERT OR IGNORE INTO search_hits VALUES (?, ?, ?, ?)",
                 (run_id, paper_id, brief["id"], position),
@@ -328,6 +381,7 @@ def capture_search(
                     "source_hash": source_hash,
                     "evidence_level": level,
                     "summary_status": "complete" if brief["summary"] else "pending",
+                    **({"summary_reused_from": reused_from} if reused_from else {}),
                 }
             )
             library.reindex_paper_documents(connection, paper_id)
@@ -431,11 +485,13 @@ def summarize(connection, raw: Any) -> dict:
                 2,
             )
         prepared.append((paper["id"], brief["id"], summary, keywords, record))
+    reused = 0
     with connection:
         connection.execute("BEGIN IMMEDIATE")
         for paper_id, brief_id, summary, keywords, record in prepared:
             current = connection.execute(
-                "SELECT summary, keywords_json FROM briefs WHERE id = ?", (brief_id,)
+                "SELECT summary, keywords_json, source_json FROM briefs WHERE id = ?",
+                (brief_id,),
             ).fetchone()
             if current["summary"] and (
                 current["summary"] != summary
@@ -449,6 +505,19 @@ def summarize(connection, raw: Any) -> dict:
                 "UPDATE briefs SET summary = ?, keywords_json = ? WHERE id = ?",
                 (summary, library.json_text(keywords), brief_id),
             )
+            # Pending snapshots of the same title and abstract share the summary.
+            source = summary_source(json.loads(current["source_json"]))
+            for other in connection.execute(
+                "SELECT id, source_json FROM briefs "
+                "WHERE paper_id = ? AND id != ? AND summary = ''",
+                (paper_id, brief_id),
+            ).fetchall():
+                if summary_source(json.loads(other["source_json"])) == source:
+                    connection.execute(
+                        "UPDATE briefs SET summary = ?, keywords_json = ? WHERE id = ?",
+                        (summary, library.json_text(keywords), other["id"]),
+                    )
+                    reused += 1
             annotate_paper(
                 connection,
                 paper_id,
@@ -457,7 +526,7 @@ def summarize(connection, raw: Any) -> dict:
                 roles=record.get("roles", []),
                 note=record.get("note", ""),
             )
-    return {"status": "summarized", "count": len(prepared)}
+    return {"status": "summarized", "count": len(prepared), "reused": reused}
 
 
 def completion_report(connection, *, run_id=None) -> dict:
@@ -824,6 +893,24 @@ def bibtex_escape(value: Any) -> str:
     )
 
 
+BIBTEX_MAX_AUTHORS = 10
+
+
+def bibtex_authors(names: list[str]) -> str:
+    """BibTeX author field in SciX style: ten names, then ``others`` (et al.).
+
+    A collaboration or other name without a ``Last, First`` comma is braced so
+    BibTeX keeps it whole even when it contains the word ``and``.
+    """
+    formatted = []
+    for name in names[:BIBTEX_MAX_AUTHORS]:
+        escaped = bibtex_escape(name)
+        formatted.append(escaped if "," in name else "{" + escaped + "}")
+    if len(names) > BIBTEX_MAX_AUTHORS:
+        formatted.append("others")
+    return " and ".join(formatted)
+
+
 def citation_for_paper(connection, paper_id: int) -> dict:
     paper = connection.execute(
         "SELECT * FROM papers WHERE id = ?", (paper_id,)
@@ -855,9 +942,14 @@ def citation_for_paper(connection, paper_id: int) -> dict:
         f"arxiv:{arxiv_id}" if arxiv_id else "doi:" + (doi or str(paper_id))
     )
     key = re.sub(r"[\s,{}\\]", "-", key)
+    authors = [
+        " ".join(str(name).split())
+        for name in json.loads(paper["authors_json"])
+        if str(name).strip()
+    ]
     fields = {
         "title": paper["title"],
-        "author": " and ".join(json.loads(paper["authors_json"])),
+        "author": bibtex_authors(authors) or None,
         "year": paper["year"],
         "journal": paper["pub"],
         "doi": doi,
@@ -877,8 +969,15 @@ def citation_for_paper(connection, paper_id: int) -> dict:
         else "https://arxiv.org/abs/" + quote(arxiv_id, safe="/")
     )
     entry_type = "article" if paper["pub"] and paper["doctype"] != "eprint" else "misc"
+    def field_text(name: str, value: Any) -> str:
+        if name == "author":
+            return value  # Escaped name by name in bibtex_authors.
+        if name == "title":
+            return "{" + bibtex_escape(value) + "}"
+        return bibtex_escape(value)
+
     body = ",\n".join(
-        f"  {name} = {{{'{' + bibtex_escape(value) + '}' if name == 'title' else bibtex_escape(value)}}}"
+        f"  {name} = {{{field_text(name, value)}}}"
         for name, value in fields.items()
         if value is not None and value != ""
     )

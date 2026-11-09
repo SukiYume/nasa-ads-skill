@@ -286,6 +286,84 @@ class RequestTests(unittest.TestCase):
             )
         )
 
+    def test_reference_resolution_batches_and_nulls_unresolved_bibcodes(self):
+        references = [f"Author, A. 20{index:02d}, ApJ, {index}, 1" for index in range(17)]
+        bodies = []
+        for batch in (references[:16], references[16:]):
+            entries = [
+                {"refstring": value, "score": "1.0", "bibcode": f"2000ApJ.....{i}...1A"}
+                for i, value in enumerate(batch)
+            ]
+            bodies.append(entries)
+        bodies[1][0].update(score="0.0", bibcode="...................")
+        responses = iter(
+            FakeResponse(json.dumps({"resolved": entries}).encode()) for entries in bodies
+        )
+
+        class SequenceOpener(RecordingOpener):
+            def __call__(self, request, timeout):
+                self.requests.append(request)
+                self.timeouts.append(timeout)
+                return next(responses)
+
+        opener = SequenceOpener(FakeResponse(b""))
+        stdout = io.StringIO()
+        code = ads_api.run(
+            ["reference", "--references-file", "-"],
+            environ={"ADS_API_TOKEN": "test-secret"},
+            stdin=io.StringIO("\n".join(references) + "\n"),
+            stdout=stdout,
+            stderr=io.StringIO(),
+            opener=opener,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            [len(json.loads(request.data)["reference"]) for request in opener.requests],
+            [16, 1],
+        )
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/reference/text"))
+        self.assertEqual(opener.requests[0].get_header("Accept"), "application/json")
+        self.assertEqual(opener.timeouts, [120.0, 120.0])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual((payload["count"], payload["resolved_count"]), (17, 16))
+        self.assertIsNone(payload["resolved"][16]["bibcode"])
+
+    def test_reference_resolution_requires_input(self):
+        code, _, stderr, opener = run_cli(["reference"], FakeResponse(b"{}"))
+        self.assertEqual(code, 2)
+        self.assertIn("at least one reference", stderr)
+        self.assertEqual(opener.requests, [])
+
+    def test_objects_resolve_names_or_translate_queries(self):
+        response = FakeResponse(b"{}")
+        code, _, _, opener = run_cli(["objects", "M31", "Crab Nebula"], response)
+        self.assertEqual(code, 0)
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/objects"))
+        self.assertEqual(
+            json.loads(opener.requests[0].data), {"identifiers": ["M31", "Crab Nebula"]}
+        )
+        self.assertEqual(opener.timeouts, [30.0])
+        code, _, _, opener = run_cli(["objects", "--query", "object:M31"], response)
+        self.assertEqual(code, 0)
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/objects/query"))
+        self.assertEqual(json.loads(opener.requests[0].data), {"query": ["object:M31"]})
+        code, _, stderr, opener = run_cli(
+            ["objects", "M31", "--query", "object:M31"], response
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(opener.requests, [])
+
+    def test_journals_search_and_summary_paths(self):
+        response = FakeResponse(b'{"journal": []}')
+        code, _, _, opener = run_cli(["journals", "Monthly Notices"], response)
+        self.assertEqual(code, 0)
+        self.assertTrue(
+            opener.requests[0].full_url.endswith("/v1/journals/journal/Monthly%20Notices")
+        )
+        code, _, _, opener = run_cli(["journals", "A&A", "--summary"], response)
+        self.assertEqual(code, 0)
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/journals/summary/A%26A"))
+
     def test_rate_limit_headers_are_optional_stderr_metadata(self):
         response = FakeResponse(
             b'{"response":{"numFound":0,"docs":[]}}',
@@ -410,6 +488,301 @@ class ErrorTests(unittest.TestCase):
         self.assertIn("[redacted] exhausted", stderr.getvalue())
         self.assertIn("X-RateLimit-Remaining=0", stderr.getvalue())
         self.assertNotIn("test-secret", stderr.getvalue())
+
+
+def json_body(request):
+    return json.loads(request.data.decode("utf-8"))
+
+
+class LiteratureServiceTests(unittest.TestCase):
+    def test_search_highlights_use_quoted_phrases_and_map_ids_to_bibcodes(self):
+        response = FakeResponse(
+            json.dumps(
+                {
+                    "response": {
+                        "numFound": 2,
+                        "docs": [
+                            {"id": "11", "bibcode": "2017ApJ...834..199L"},
+                            {"id": "12", "bibcode": "2018ApJ...111..222X"},
+                        ],
+                    },
+                    "highlighting": {
+                        "11": {"body": ["the <em>Schwinger mechanism</em> powers"]},
+                        "12": {},
+                    },
+                }
+            ).encode()
+        )
+        code, stdout, _, opener = run_cli(
+            [
+                "search",
+                "--query",
+                'full:"Schwinger mechanism" year:2017',
+                "--fields",
+                "bibcode",
+                "--highlight",
+                "body",
+                "--param",
+                "hl.fragsize=300",
+            ],
+            response,
+        )
+        self.assertEqual(code, 0)
+        query = parse_qs(urlsplit(opener.requests[0].full_url).query)
+        self.assertEqual(query["fl"], ["bibcode,id"])
+        self.assertEqual(query["hl"], ["true"])
+        self.assertEqual(query["hl.fl"], ["body"])
+        self.assertEqual(query["hl.q"], ['"Schwinger mechanism"'])
+        self.assertEqual(query["hl.snippets"], ["3"])
+        self.assertEqual(query["hl.fragsize"], ["300"])
+        self.assertEqual(
+            json.loads(stdout)["highlights"],
+            [
+                {
+                    "bibcode": "2017ApJ...834..199L",
+                    "id": "11",
+                    "fields": {"body": ["the <em>Schwinger mechanism</em> powers"]},
+                }
+            ],
+        )
+
+    def test_highlights_need_terms(self):
+        response = FakeResponse(b'{"response":{"numFound":0,"docs":[]}}')
+        code, _, stderr, opener = run_cli(
+            ["search", "--query", "year:2017", "--highlight", "abstract"], response
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("--highlight-query", stderr)
+        self.assertEqual(opener.requests, [])
+        code, _, _, opener = run_cli(
+            [
+                "search",
+                "--query",
+                "year:2017",
+                "--highlight",
+                "abstract",
+                "--highlight-query",
+                "magnetar",
+            ],
+            response,
+        )
+        self.assertEqual(code, 0)
+        query = parse_qs(urlsplit(opener.requests[0].full_url).query)
+        self.assertEqual(query["hl.q"], ["magnetar"])
+
+    def test_each_facet_and_statistics_field_gets_its_own_request(self):
+        # The SciX gateway keeps one value per facet or statistics field.
+        response = FakeResponse(
+            json.dumps(
+                {
+                    "response": {"numFound": 5031, "docs": []},
+                    "facet_counts": {
+                        "facet_fields": {
+                            "year": ["2025", 672],
+                            "bibstem_facet": ["ApJ", 474],
+                        }
+                    },
+                    "stats": {
+                        "stats_fields": {
+                            "citation_count": {"max": 1268.0},
+                            "read_count": {"max": 900.0},
+                        }
+                    },
+                }
+            ).encode()
+        )
+        code, stdout, _, opener = run_cli(
+            [
+                "search",
+                "--query",
+                'abs:"fast radio burst"',
+                "--rows",
+                "0",
+                "--fq",
+                "year:2020",
+                "--facet",
+                "year",
+                "--facet",
+                "bibstem_facet",
+                "--facet-limit",
+                "5",
+                "--stats",
+                "citation_count",
+                "--stats",
+                "read_count",
+                "--param",
+                "facet.mincount=2",
+            ],
+            response,
+        )
+        self.assertEqual(code, 0)
+        queries = [parse_qs(urlsplit(request.full_url).query) for request in opener.requests]
+        self.assertEqual(len(queries), 3)
+        self.assertEqual(queries[0]["rows"], ["0"])
+        self.assertEqual(queries[0]["facet.field"], ["year"])
+        self.assertEqual(queries[0]["stats.field"], ["citation_count"])
+        self.assertEqual(queries[0]["facet.mincount"], ["2"])
+        self.assertEqual(queries[1]["facet.field"], ["bibstem_facet"])
+        self.assertEqual(queries[1]["facet.limit"], ["5"])
+        self.assertEqual(queries[1]["facet.mincount"], ["2"])
+        self.assertEqual(queries[1]["fq"], ["year:2020"])
+        self.assertEqual(queries[1]["rows"], ["0"])
+        self.assertEqual(queries[2]["stats.field"], ["read_count"])
+        self.assertNotIn("facet", queries[2])
+        merged = json.loads(stdout)
+        self.assertEqual(
+            sorted(merged["facet_counts"]["facet_fields"]), ["bibstem_facet", "year"]
+        )
+        self.assertEqual(
+            sorted(merged["stats"]["stats_fields"]), ["citation_count", "read_count"]
+        )
+
+    def test_count_only_search_writes_nothing_to_the_library(self):
+        import tempfile
+
+        response = FakeResponse(b'{"response":{"numFound":7,"docs":[]}}')
+        with tempfile.TemporaryDirectory() as temporary:
+            library = Path(temporary) / "library"
+            stdout = io.StringIO()
+            code = ads_api.run(
+                ["--library-dir", str(library), "search", "-q", "stars", "--rows", "0"],
+                environ={"ADS_API_TOKEN": "test-secret"},
+                stdin=io.StringIO(),
+                stdout=stdout,
+                stderr=io.StringIO(),
+                opener=RecordingOpener(response),
+            )
+            self.assertEqual(code, 0)
+            self.assertNotIn("literature", json.loads(stdout.getvalue()))
+            self.assertFalse(library.exists())
+
+    def test_passthrough_parameters_cannot_replace_managed_options(self):
+        response = FakeResponse(b'{"response":{"numFound":0,"docs":[]}}')
+        for item in ("rows=5", "fq=year:2020", "facet.limit"):
+            with self.subTest(item=item):
+                code, _, stderr, opener = run_cli(
+                    ["search", "--query", "stars", "--param", item], response
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(opener.requests, [])
+
+    def test_csl_and_custom_exports_post_their_formats(self):
+        response = FakeResponse(b'{"msg":"ok","export":"Abbott, B. P. 2016, PhRvL"}')
+        code, stdout, _, opener = run_cli(
+            [
+                "export",
+                "2016PhRvL.116f1102A",
+                "--format",
+                "csl",
+                "--style",
+                "aastex",
+                "--csl-format",
+                "latex",
+                "--journal-format",
+                "full",
+            ],
+            response,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, "Abbott, B. P. 2016, PhRvL\n")
+        request = opener.requests[0]
+        self.assertEqual(request.method, "POST")
+        self.assertTrue(request.full_url.endswith("/v1/export/csl"))
+        self.assertEqual(
+            json_body(request),
+            {
+                "bibcode": ["2016PhRvL.116f1102A"],
+                "style": "aastex",
+                "format": 3,
+                "journalformat": 3,
+            },
+        )
+        code, _, _, opener = run_cli(
+            ["export", "2016PhRvL.116f1102A", "--format", "custom", "--custom-format", "%R"],
+            response,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            json_body(opener.requests[0]),
+            {"bibcode": ["2016PhRvL.116f1102A"], "format": "%R"},
+        )
+
+    def test_export_options_match_their_format(self):
+        response = FakeResponse(b'{"export":""}')
+        for args in (
+            ["--format", "csl"],
+            ["--format", "custom"],
+            ["--format", "bibtex", "--style", "mnras"],
+            ["--format", "bibtex", "--custom-format", "%R"],
+            ["--format", "csl", "--style", "mnras", "--journal-format", "full"],
+        ):
+            with self.subTest(args=args):
+                code, _, _, opener = run_cli(
+                    ["export", "2016PhRvL.116f1102A", *args], response
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(opener.requests, [])
+
+    def test_network_and_word_cloud_requests(self):
+        graph = FakeResponse(
+            b'{"msg":{"numFound":2},"data":{"summaryGraph":{"nodes":[]},"fullGraph":{"nodes":[1,2]}}}'
+        )
+        code, stdout, _, opener = run_cli(
+            ["network", "paper", "2016PhRvL.116f1102A", "2017ApJ...848L..12A"], graph
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/vis/paper-network"))
+        self.assertEqual(opener.timeouts, [120.0])
+        self.assertEqual(
+            json_body(opener.requests[0]),
+            {"bibcodes": ["2016PhRvL.116f1102A", "2017ApJ...848L..12A"]},
+        )
+        trimmed = json.loads(stdout)
+        self.assertNotIn("fullGraph", trimmed["data"])
+        self.assertEqual(trimmed["omitted"], ["data.fullGraph"])
+        code, stdout, _, _ = run_cli(
+            ["network", "paper", "2016PhRvL.116f1102A", "--full"], graph
+        )
+        self.assertIn("fullGraph", json.loads(stdout)["data"])
+        ungrouped = FakeResponse(b'{"msg":{"numFound":2},"data":{"fullGraph":{"nodes":[1]}}}')
+        code, stdout, _, _ = run_cli(
+            ["network", "paper", "2016PhRvL.116f1102A", "2017ApJ...848L..12A"], ungrouped
+        )
+        self.assertIn("fullGraph", json.loads(stdout)["data"])
+        code, _, _, opener = run_cli(
+            ["network", "author", "2016PhRvL.116f1102A"], graph
+        )
+        self.assertTrue(opener.requests[0].full_url.endswith("/v1/vis/author-network"))
+        cloud = FakeResponse(b'{"magnetar":{"idf":2.1,"record_count":4}}')
+        code, _, _, opener = run_cli(
+            ["wordcloud", "--query", "abs:magnetar", "--rows", "50", "--sort", "date desc"],
+            cloud,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            json_body(opener.requests[0]),
+            {"q": ["abs:magnetar"], "rows": [50], "sort": ["date desc"]},
+        )
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            ads_api.build_parser().parse_args(["wordcloud", "-q", "x", "--rows", "501"])
+
+    def test_journal_summary_omits_completeness_unless_requested(self):
+        summary = {
+            "summary": {
+                "master": {"bibstem": "MNRAS", "completeness_details": [{"volume": 1}]},
+                "idents": [],
+            }
+        }
+        response = FakeResponse(json.dumps(summary).encode())
+        code, stdout, _, _ = run_cli(["journals", "MNRAS", "--summary"], response)
+        self.assertEqual(code, 0)
+        trimmed = json.loads(stdout)
+        self.assertEqual(trimmed["summary"]["master"], {"bibstem": "MNRAS"})
+        self.assertEqual(trimmed["omitted"], ["summary.master.completeness_details"])
+        code, stdout, _, _ = run_cli(
+            ["journals", "MNRAS", "--summary", "--completeness"], response
+        )
+        self.assertIn("completeness_details", json.loads(stdout)["summary"]["master"])
 
 
 if __name__ == "__main__":

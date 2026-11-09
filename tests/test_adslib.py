@@ -446,6 +446,29 @@ class LauncherTests(unittest.TestCase):
             self.cli("stop", "--port", port)
         self.assertIsNotNone(adslib.running_library(int(port), self.root / "other"))
 
+    def test_commands_without_a_port_find_the_library_service(self):
+        self.cli("start", "--port", "0", "--no-open")
+        try:
+            port = adslib.find_service(self.library, 0)["port"]
+            self.assertIn(f"127.0.0.1:{port}", self.cli("status"))
+            self.assertIn("Using the running library service", self.cli("open", "--no-open"))
+            self.assertEqual(len(adslib.managed_services(self.library)), 1)
+        finally:
+            self.cli("stop")
+        self.cli("status", expected=3)
+
+    def test_portless_lookup_among_several_services(self):
+        records = [
+            {"port": 9001, "requested_port": 0},
+            {"port": 9002, "requested_port": 0},
+        ]
+        with patch.object(adslib, "managed_services", return_value=records):
+            with self.assertRaisesRegex(ValueError, "choose one with --port: 9001, 9002"):
+                adslib.find_service(self.library, None)
+        default = {"port": adslib.DEFAULT_PORT, "requested_port": adslib.DEFAULT_PORT}
+        with patch.object(adslib, "managed_services", return_value=[*records, default]):
+            self.assertEqual(adslib.find_service(self.library, None), default)
+
     def test_stale_and_malformed_records_are_ignored(self):
         directory = adslib.runtime_dir()
         directory.mkdir()

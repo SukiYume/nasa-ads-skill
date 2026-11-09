@@ -4,7 +4,7 @@ Load this reference for literature reviews and for manuscript introduction, meth
 
 ## Evidence Standard for Writing
 
-Manuscript claims rest on complete readings. A citation often targets one specific result rather than a paper's abstract or conclusion: a measurement, a fitted value, a derived constraint, a model prediction, or one inference in the paper's argument, wherever it appears in the article. Complete digests record each of these as a finding with its locator, so a sentence that states what a paper measured, fitted, assumed, predicted, observed, or inferred cites that finding and article version. Abstracts and metadata serve discovery and screening; when a cited paper is still at the abstract level, read it fully before the claim enters the manuscript, or flag the claim as abstract-level with the access gap.
+Manuscript claims rest on complete readings. A citation often targets one specific result: a measurement, a fitted value, a derived constraint, a model prediction, or one inference in the paper's argument, wherever it appears in the article. Complete digests record each of these as a finding with its locator, so a sentence that states what a paper measured, fitted, assumed, predicted, observed, or inferred cites that finding and article version. Abstracts and metadata serve discovery and screening; when a cited paper is still at the abstract level, read it fully before the claim enters the manuscript, or flag the claim as abstract-level with the access gap.
 
 Numbers in a manuscript come from stored values or from the article itself, never from memory or an abstract paraphrase.
 

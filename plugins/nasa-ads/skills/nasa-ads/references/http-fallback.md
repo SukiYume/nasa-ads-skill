@@ -1,6 +1,6 @@
 # Direct HTTP Fallback
 
-Load this reference when Python cannot run the bundled CLI, when a requested endpoint, option, or format is outside the CLI, or for [SciX Libraries](libraries.md), which share these request rules.
+Load this reference when Python cannot run the bundled CLI, when a requested bibliographic endpoint, option, or format is outside the CLI, or for [SciX Libraries](libraries.md), which share these request rules. Other account services stay outside the skill, as [Setup](../SKILL.md#setup) states.
 
 ## Safety
 
@@ -8,7 +8,7 @@ Load this reference when Python cannot run the bundled CLI, when a requested end
 - Send the token only in `Authorization: Bearer <token>` to `https://api.scixplorer.org/v1`.
 - Reject redirects for authenticated requests.
 - Never print the token or place it in a URL, source file, or verbose HTTP trace.
-- Use the current [SciX API documentation](https://scixplorer.org/scixhelp/api/) for an unsupported endpoint’s method and body.
+- Find a bibliographic endpoint’s method and body in the machine-readable [OpenAPI specification](https://github.com/adsabs/adsabs-dev-api/tree/master/openapi), whose `services/*.yaml` files describe each service, or in the [SciX API documentation](https://scixplorer.org/scixhelp/api/). Paths are relative to `https://api.scixplorer.org/v1`.
 - Treat `401`, `403`, `404`, `429`, and server failures as API results. Changing HTTP clients does not correct them.
 - Treat a top-level `Error` or `error` response as a failed operation even when the HTTP status is `200`.
 

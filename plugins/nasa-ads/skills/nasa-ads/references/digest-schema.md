@@ -1,5 +1,7 @@
 # Article Digest and Ingest
 
+Contents: [What a digest retains](#what-a-digest-retains) · [Granularity](#granularity) · [Template](#template) · [Overview and context layers](#overview-and-context-layers) · [Facets and findings](#facets-and-findings) · [Values](#values) · [Limitations, assessment, and data products](#limitations-assessment-and-data-products) · [Reading coverage](#reading-coverage) · [Validation and ingest](#validation-and-ingest)
+
 Load this reference when an investigated article version needs a new digest, a targeted merge, validation, ingest, or an approved replacement. Apply the shared [reading scope](../SKILL.md#reading-scope). Under the no-write opt-out in [Core Invariants](../SKILL.md#core-invariants), keep the same reading coverage and evidence traceability in the answer and skip ingest.
 
 ## What a Digest Retains
@@ -89,7 +91,7 @@ Each finding records one citable result:
 | `method` | A methodological fact that conditions results | adopted, validated |
 | `limitation` | A caveat or limitation the authors state | noted |
 
-The quote anchors [`passage`](literature-memory.md#read-stored-passages): matching ignores case, spacing, line-break hyphenation, ligatures, and punctuation, and prefers the locator's section. Copy it from the prepared text while reading that section. A scan read visually can leave quotes empty; its findings rely on page locators, and so do findings without a quote, which `passage` resolves through their section, table, figure, or equation.
+The quote anchors [`passage`](literature-memory.md#read-stored-passages): matching ignores case, spacing, line-break hyphenation, ligatures, and punctuation, and prefers the locator's section. Copy it from the prepared text while reading that section, including any TeX it carries; the `^{}` and `_{}` marks of exponents and indices can be kept or dropped. A scan read visually can leave quotes empty; its findings rely on page locators, and so do findings without a quote, which `passage` resolves through their section, table, figure, or equation.
 
 Each finding is referenced as `<facet key>.<position>`, such as `polarization.2`. `findings` and `parameters` rows report this `finding_id`, and targeted merges append new findings so earlier ids stay valid.
 
@@ -102,7 +104,7 @@ Record the numbers a manuscript would quote, one quantity per entry: headline me
 | `name` | Required; the quantity in the article's terminology |
 | `symbol` | The article's symbol, such as `RM` or `α` |
 | `value` | The reported number, or a string that preserves the written form, such as `"0.10"` or `"1.2e-3"` |
-| `range` | `[low, high]` for an interval or span; `value` is optional when `range` is given |
+| `range` | `[low, high]` for an interval or span, each bound a number or a number written as a string; `value` is optional when `range` is given |
 | `uncertainty` | As written: `"0.05"` for symmetric, `"+0.05/-0.04"` for asymmetric |
 | `unit` | As written |
 | `qualifier` | Interval type, confidence level, estimator, significance, or `approximately` |
@@ -118,7 +120,7 @@ These representation rules keep values comparable across papers:
 - An uncertainty goes in `uncertainty`, and `value` holds the central value alone.
 - An interval or span goes in `range`. A best fit with a credible interval can carry both `value` and `range`, with the interval type in `qualifier`.
 - Several numbers become several entries, each with its `condition`.
-- A value is copied as printed, in the article's units. Long decimals such as MJDs and numbers in scientific notation are strings, such as `"57175.743510388"` or `"7.4e27"`, so no digits are lost or invented.
+- A value is copied as printed, in the article's units. Long decimals such as MJDs and numbers in scientific notation are strings, such as `"57175.743510388"` or `"7.4e27"`, so no digits are lost or invented; `range` bounds follow the same rule, such as `["5e-3", "6e-3"]`.
 
 Values from the same fit share one finding so the parameter set stays together, with the table or equation in its locator.
 
@@ -136,7 +138,7 @@ Values from the same fit share one finding so the parameter set stays together, 
 - `visual`: every page of a scan or sparse-text PDF was inspected, listed in `visual_page_ranges`;
 - `targeted`: complete sections relevant to new topics were read for a version that already has a complete digest; `unread_sections` describes the rest.
 
-`reading.sections` lists each read section with its article heading and an optional one-sentence `gist` of what it contributes, written when the heading alone leaves that unclear:
+`reading.sections` lists each read section with its article heading, copied with its number as printed so `passage --section` can locate it in the stored text, and an optional one-sentence `gist` of what it contributes, written when the heading alone leaves that unclear:
 
 ```json
 "sections": [

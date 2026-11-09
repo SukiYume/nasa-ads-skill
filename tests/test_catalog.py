@@ -285,6 +285,19 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(citation["citekey"], "2023ApJ...955..142Z")
         self.assertEqual(citation["source"], "stored-metadata")
 
+    def test_generated_citation_lists_ten_authors_and_keeps_collaborations_whole(self):
+        authors = [f"Author{index}, A." for index in range(12)]
+        self.capture([{**source_record(), "author": authors}])
+        citation = catalog.citation_for_paper(self.connection, 1)
+        expected = " and ".join(authors[:10]) + " and others"
+        self.assertIn(f"author = {{{expected}}}", citation["bibtex"])
+        self.assertEqual(
+            catalog.bibtex_authors(
+                ["Abbott, B. P.", "LIGO Scientific Collaboration and Virgo Collaboration"]
+            ),
+            "Abbott, B. P. and {LIGO Scientific Collaboration and Virgo Collaboration}",
+        )
+
     def test_generated_citation_uses_refreshed_journal_fields(self):
         record = source_record()
         self.capture([record])
@@ -617,6 +630,118 @@ class CatalogTests(unittest.TestCase):
             limit=20,
         )
         self.assertEqual(found["results"][0]["reading_status"], "full")
+
+    def fetched_record(self, **changes):
+        """The record a full-text fetch captured before it carried journal locators."""
+        record = {
+            key: value
+            for key, value in source_record().items()
+            if key not in {"volume", "page", "identifier"}
+        }
+        record.update(title=record["title"][0], arxiv_ids=["2304.14665"], **changes)
+        return record
+
+    def test_full_text_capture_reuses_the_summary_of_the_same_abstract(self):
+        first = self.capture()["records"][0]
+        catalog.summarize(
+            self.connection,
+            [
+                {
+                    "identifier": first["identifier"],
+                    "source_hash": first["source_hash"],
+                    "summary": "FAST 观测约束了该源的爆发统计与圆偏振。",
+                    "keywords": ["圆偏振"],
+                    "collections": ["FRB/Polarization"],
+                }
+            ],
+        )
+        fetched = self.capture([self.fetched_record()], refresh_metadata=False)
+        self.assertEqual(
+            (fetched["pending_summaries"], fetched["reused_summaries"]), (0, 1)
+        )
+        self.assertEqual(
+            fetched["records"][0]["summary_reused_from"], first["source_hash"]
+        )
+        rows = self.connection.execute(
+            "SELECT summary, keywords_json FROM briefs ORDER BY id"
+        ).fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(tuple(rows[0]), tuple(rows[1]))
+        # A changed abstract is a different source and needs its own summary.
+        revised = self.capture(
+            [{**source_record(), "abstract": "Revised polarization fractions."}]
+        )
+        self.assertEqual(revised["pending_summaries"], 1)
+
+    def test_summary_fills_pending_snapshots_of_the_same_source(self):
+        first = self.capture()["records"][0]
+        second = self.capture([self.fetched_record()], refresh_metadata=False)
+        self.assertEqual(second["pending_summaries"], 1)
+        result = catalog.summarize(
+            self.connection,
+            [
+                {
+                    "identifier": first["identifier"],
+                    "source_hash": first["source_hash"],
+                    "summary": "A source-grounded summary.",
+                    "collections": ["FRB/Polarization"],
+                }
+            ],
+        )
+        self.assertEqual(result["reused"], 1)
+        self.assertEqual(catalog.pending_summaries(self.connection)["count"], 0)
+
+    def test_metadata_only_summary_requires_the_same_identity(self):
+        bare = {**source_record(), "abstract": ""}
+        first = self.capture([bare])["records"][0]
+        catalog.summarize(
+            self.connection,
+            [
+                {
+                    "identifier": first["identifier"],
+                    "source_hash": first["source_hash"],
+                    "summary": "Metadata only: a FAST study in ApJ.",
+                    "collections": ["FRB/Polarization"],
+                }
+            ],
+        )
+        moved = self.capture([{**bare, "pub": "Nature", "volume": "1"}])
+        self.assertEqual(moved["pending_summaries"], 1)
+
+    def test_imported_local_copy_is_ingested_as_a_user_supplied_version(self):
+        body = " ".join(["The fitted model describes the data well."] * 60)
+        html = (
+            "<html><head><title>FAST Observations of FRB 20220912A</title></head>"
+            "<body><article><h1>FAST Observations of FRB 20220912A</h1>"
+            "<h2>Abstract</h2><p>FAST observations measure burst statistics and "
+            "circular polarization.</p><h2>1 Introduction</h2>"
+            f"<p>{body} In total we detected 1076 bursts in total.</p>"
+            "</article></body></html>"
+        )
+        path = self.root / "article.html"
+        path.write_text(html, encoding="utf-8")
+        discovered = {
+            **catalog.metadata_manifest(source_record()),
+            "input": "2023ApJ...955..142Z",
+            "candidates": [],
+            "warnings": [],
+        }
+        with patch.object(lib.fulltext, "discover", return_value=discovered):
+            manifest = lib.fulltext.import_local(
+                path,
+                "2023ApJ...955..142Z",
+                version="published",
+                source_url=None,
+                cache_root=self.root / "cache",
+                timeout=5,
+                max_bytes=10_000_000,
+                environ={},
+            )
+        result = self.ingest(manifest, sample_digest())
+        self.assertEqual(result["status"], "ingested")
+        version = self.lookup()["version"]
+        self.assertEqual((version["source"], version["version_kind"]), ("user", "published"))
+        self.assertEqual(self.lookup()["reuse_status"], "reusable")
 
     def test_summarize_and_repeat_capture_reuse_without_fabricated_full_reading(self):
         result = self.capture()

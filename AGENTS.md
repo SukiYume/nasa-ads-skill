@@ -30,13 +30,15 @@ Reference responsibilities:
 | Reference | Scope |
 |---|---|
 | `research-writing.md` | Reviews and manuscript evidence, citing specific results, claim-to-evidence handoff |
-| `ads-cli.md` | SciX API CLI: search, big query, export, metrics, citation helper, resolver |
-| `fulltext.md` | Lawful retrieval, manifest states, reading procedure |
+| `ads-cli.md` | SciX API CLI: search with highlights, facets, and statistics, big query, export, metrics, citation helper, resolver, reference strings, objects, journals, networks, word clouds |
+| `fulltext.md` | Lawful retrieval, import of user-supplied copies, manifest states, prepared text, reading procedure |
 | `digest-schema.md` | What a digest retains, layers and vocabularies, values, validation warnings, ingest, merge |
 | `literature-memory.md` | Capture, summaries, lookup, stored passages, search, `findings`, `parameters`, classification, citations, Web library |
 | `library-maintenance.md` | Audit, backup, restore, identity merges, metadata refresh |
 | `libraries.md` | Remote SciX account libraries |
 | `http-fallback.md` | Direct HTTP rules and clients |
+
+The skill uses the public bibliographic SciX services and SciX account libraries; other account services, such as myADS notifications, reading-history recommendations, and ORCID, stay outside it.
 
 Claude commands are namespaced by plugin id: `/nasa-ads:ads-search`, `/nasa-ads:ads-fulltext`, `/nasa-ads:ads-memory`, `/nasa-ads:ads-bibtex`, `/nasa-ads:ads-cite`, `/nasa-ads:ads-metrics`, `/nasa-ads:ads-library`.
 
@@ -71,5 +73,5 @@ Before committing:
 3. `python -m unittest discover -s tests` and compile every bundled Python module; `node --check` the Web script.
 4. Parse every JSON manifest; check README links, Markdown anchors, and bilingual heading structure (covered by `tests/test_package.py`).
 5. Test the documented Codex and Claude marketplace installs with disposable entries; record the prior state and remove only the test entries.
-6. Run read-only SciX smoke tests for search, big query, export, metrics, citation helper, and resolver when a token is available.
+6. Run read-only SciX smoke tests for search (with highlights, facets, and statistics), big query, export (including `csl` and `custom`), metrics, citation helper, resolver, reference, objects, journals, network, and wordcloud when a token is available.
 7. `git diff --check`, then review the complete diff.

@@ -1,5 +1,7 @@
 # SciX Libraries
 
+Contents: [Safety boundaries](#safety-boundaries) · [Operations](#operations) · [Results](#results)
+
 Remote SciX libraries live in the user's SciX account and are managed with direct HTTP; the personal SQLite library uses [literature-memory.md](literature-memory.md). Build every request with the [safety rules](http-fallback.md#safety), [credential preflight](http-fallback.md#credential-preflight), client templates, and [response handling](http-fallback.md#response-handling) in the HTTP fallback reference. If `ADS_API_TOKEN` is absent, stop with the token-settings link from [failure routing](../SKILL.md#failure-routing).
 
 ## Safety Boundaries

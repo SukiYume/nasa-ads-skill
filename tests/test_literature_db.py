@@ -630,7 +630,22 @@ class DigestSchemaFourTests(unittest.TestCase):
             literature_db.value_text(added),
             "dispersion measure span = [100, 400] pc cm^-3 [measured]",
         )
-        for bad in ([400, 100], [1], [1, "2"], "100-400"):
+        # Bounds written as strings keep their printed digits.
+        values[-1]["range"] = [" 57175.743510388", "5.7176e4"]
+        printed = literature_db.validate_digest(digest)["facets"][0]["findings"][0][
+            "values"
+        ][-1]
+        self.assertEqual(printed["range"], ["57175.743510388", "5.7176e4"])
+        self.assertIn("[57175.743510388, 5.7176e4]", literature_db.value_text(printed))
+        for bad in (
+            [400, 100],
+            ["6e-3", "5e-3"],
+            [1],
+            [1, "about 2"],
+            ["nan", 1],
+            [True, 2],
+            "100-400",
+        ):
             with self.subTest(bad=bad):
                 values[-1]["range"] = bad
                 with self.assertRaisesRegex(literature_db.LiteratureError, "range"):
@@ -806,6 +821,36 @@ class LibraryWorkflowTests(unittest.TestCase):
         self.assertEqual(uncovered["reuse_status"], "targeted_reading")
         self.assertEqual(uncovered["open_gate_action"], "targeted_merge")
         self.assertFalse(uncovered["complete_ingest_required"])
+
+    def test_lookup_topics_match_values_quotes_and_named_objects(self):
+        digest = sample_digest()
+        digest["facets"][0]["findings"][0]["values"].append(
+            {
+                "name": "spin-down timescale",
+                "value": "5e-3",
+                "unit": "s",
+                "status": "predicted",
+                "model": "pair cascade",
+            }
+        )
+        self.ingest(digest=digest)
+        for topic in ("spin-down", "pair cascade", "1076 bursts in total", "FRB 20220912A"):
+            with self.subTest(topic=topic):
+                result = literature_db.lookup_one(
+                    self.connection,
+                    "2023ApJ...955..142Z",
+                    topics=[topic],
+                    artifact_hash=None,
+                    include_digest=False,
+                )
+                self.assertEqual(result["reuse_status"], "reusable")
+                self.assertEqual(result["matched_topics"], [topic])
+
+    def test_quote_anchors_ignore_exponent_markup(self):
+        self.assertEqual(
+            literature_db.text_skeleton("2 × 10^{16} G s^{−1}")[0],
+            literature_db.text_skeleton("2 × 1016 G s−1")[0],
+        )
 
     def test_visual_ingest_keeps_raw_artifact_content_identity(self):
         manifest = sample_manifest(self.source)
@@ -2110,6 +2155,32 @@ class CompactDigestTests(unittest.TestCase):
         }.items():
             with self.subTest(label=label):
                 self.assertEqual(literature_db.match_section(roman, label)["heading"], heading)
+
+    def test_digest_headings_locate_sections_the_outline_missed(self):
+        # PDF text keeps a paragraph on one line, joining a heading to its prose.
+        searches = (
+            "V. SEARCHES We present the analysis of the coincident data, "
+            + "and the false alarm rate bound follows from the background. " * 4
+        )
+        text = f"I. INTRODUCTION\nIntro text.\n{searches}\nVI. SOURCE DISCUSSION\nEnd.\n"
+        digest = minimal_digest()
+        digest["reading"]["sections"] = [
+            {"heading": "I. Introduction"},
+            {"heading": "V. Searches"},
+            {"heading": "VI. Source Discussion"},
+        ]
+        digest["facets"][0]["findings"][0].update(
+            quote="the false alarm rate bound follows from the background",
+            locator={"section": "V. Searches"},
+        )
+        without = literature_db.article_sections(text)
+        self.assertIsNone(literature_db.match_section(without, "Searches"))
+        sections = literature_db.article_sections(text, None, digest)
+        self.assertEqual(
+            literature_db.match_section(sections, "Searches")["heading"], "V. Searches"
+        )
+        anchors = literature_db.quote_anchors(literature_db.validate_digest(digest), text)
+        self.assertEqual(anchors["located"], 1)
 
 
 class PassageTests(unittest.TestCase):

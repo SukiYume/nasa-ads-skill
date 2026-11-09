@@ -1,5 +1,7 @@
 # Full-Text Retrieval and Reading
 
+Contents: [Bundled full-text CLI](#bundled-full-text-cli) · [Import a local copy](#import-a-local-copy) · [Source discovery and ranking](#source-discovery-and-ranking) · [Manifest results](#manifest-results) · [Reading procedure](#reading-procedure) · [Optional local helpers](#optional-local-helpers)
+
 Load this reference when a task fetches or reads article content. Run [local lookup](literature-memory.md#local-lookup-and-reading) first, apply the shared [reading scope](../SKILL.md#reading-scope), and load [digest-schema.md](digest-schema.md) when the exact version needs a digest.
 
 ## Bundled Full-Text CLI
@@ -44,7 +46,20 @@ Pass the result's `manifest_path` so the outline can use the headings of an HTML
 
 `--use-unpaywall` requires `UNPAYWALL_EMAIL`. The address is sent to the Unpaywall API as its required query parameter.
 
-The default cache root is `%LOCALAPPDATA%\nasa-ads\fulltext` on Windows and `${XDG_CACHE_HOME:-~/.cache}/nasa-ads/fulltext` elsewhere. `NASA_ADS_CACHE_DIR` selects another root. Content-hash filenames preserve every validated artifact. Cached manifests remain reusable while their artifact and extracted-text hashes verify. `--refresh` performs a current source check and reports failed or lower-authority refresh attempts without displacing a stronger cached result.
+The default cache root is `%LOCALAPPDATA%\nasa-ads\fulltext` on Windows and `${XDG_CACHE_HOME:-~/.cache}/nasa-ads/fulltext` elsewhere. `NASA_ADS_CACHE_DIR` selects another root. Content-hash filenames preserve every validated artifact. Cached manifests remain reusable while their artifact and extracted-text hashes verify and their text comes from the current extraction. A cached artifact with text from an earlier extraction is prepared again from the cached file, with the warning `text_prepared_again_from_cached_artifact`; a selection that then fails validation is retrieved again. `--refresh` performs a current source check and reports failed or lower-authority refresh attempts without displacing a stronger cached result.
+
+## Import a Local Copy
+
+When lawful retrieval returns `abstract_only` or a weaker version, the user can supply a PDF or HTML copy obtained through their own access. Import it with the paper's identifier and the version the file holds:
+
+```bash
+python3 "<skill-dir>/scripts/fulltext.py" import "<paper.pdf>" \
+  --identifier 2019MNRAS.489..176M \
+  --version published \
+  --source-url "https://doi.org/10.1093/mnras/stz1521"
+```
+
+`--version` is `published`, `accepted`, `preprint`, or `scan`; confirm it from the file itself, such as journal typesetting or an arXiv stamp. `--source-url` optionally records an HTTPS address the file came from. The file passes the same format, extraction, and title-identity checks as a download, and the result is a manifest with `selected.candidate.source` `user` and the warning `user_supplied_artifact`. Metadata capture, `outline`, reading, validation, and ingest then proceed as for `fetch`. Bibcodes and DOIs need `ADS_API_TOKEN` for metadata; the local file path stays out of the manifest.
 
 ## Source Discovery and Ranking
 
@@ -64,7 +79,7 @@ Automatic ranking uses two dimensions:
 1. Version authority: open published version, accepted author manuscript, submitted/preprint version, ADS scan.
 2. Machine readability within that version: structured HTML, text-bearing PDF, scan requiring visual reading.
 
-The CLI validates every downloaded candidate. Validation covers content type, size, safe HTTPS redirects, access or challenge pages, subscription previews that show an abstract and references without the article body, landing-page strength, title identity, and PDF extraction. A rejected publisher page falls through to the next candidate, such as the arXiv preprint. Resolver links remain candidates until validation succeeds.
+The CLI validates every downloaded candidate. Validation covers content type, size, safe HTTPS redirects, access or challenge pages, subscription previews that show an abstract and references without the article body, landing pages that load the body separately, recognized by an abstract followed by too little body prose, landing-page strength, title identity, and PDF extraction. A rejected publisher page falls through to the next candidate, such as the arXiv preprint. Resolver links remain candidates until validation succeeds.
 
 SciX bearer credentials travel only to `api.scixplorer.org`. External article requests carry no SciX authorization header. Retrieval uses lawful public access and bounded redirects.
 
@@ -75,6 +90,8 @@ SciX bearer credentials travel only to `api.scixplorer.org`. External article re
 ### `fulltext`
 
 `selected.text_path` contains prepared article text. `selected.artifact_path` supports checks of figures, equations, tables, pagination, and extraction ambiguities.
+
+Prepared HTML text marks superscripts as `^{...}` and subscripts as `_{...}`, so `2 × 10^{16} G` stays distinct from `1016`, and carries math as TeX: `$...$` inline and `$$...$$` on its own line for a displayed equation. Equations published only as images leave a gap in the text. PDF text keeps the characters of superscripts and subscripts on the line, so `10^{16}` can read as `1016`; check exponents and indices in the artifact.
 
 `selected.sha256` identifies the downloaded artifact bytes. `selected.text_sha256` identifies extracted text. `selected.content_sha256` identifies normalized scientific content and lets the database recognize an unchanged article inside a refreshed HTML shell or PDF container.
 
@@ -117,7 +134,7 @@ For an exact version requiring complete ingest, read the body once and write the
 3. Read the sections in order by line range: front matter and abstract, introduction, data, methods, results, discussion, conclusions, and every appendix carrying results, validation, or data and code statements. Skip the reference list, acknowledgments, author lists, and affiliations; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
 4. After each section, add its findings at [citation granularity](digest-schema.md#granularity), each with a locator and a quote copied from the text just read; the section heading with a gist where the heading is uninformative; and any new entity, dataset, or method. Keep restated content under `cited_from` and the reader's evaluation in `assessment`.
 5. For tables and figures, read the captions and the rows or panels the text discusses. A long table becomes one finding with counts and ranges plus a `data_products` entry; only headline numbers become [values](digest-schema.md#values).
-6. Open the artifact where text extraction leaves a decisive value, sign, exponent, equation, or table cell ambiguous, and copy the value as printed.
+6. Open the artifact where text extraction leaves a decisive value, sign, exponent, equation, or table cell ambiguous, such as a PDF exponent read inline or an equation missing from HTML text, and copy the value as printed.
 7. Write `overview.tldr` and `overview.summary` last, from the drafted findings.
 8. Follow [digest-schema.md](digest-schema.md#validation-and-ingest) to review, validate with `--text`, and ingest the record.
 
@@ -127,7 +144,7 @@ Verify the task's investigation set with [reading-check](literature-memory.md#lo
 
 The CLI uses the Python standard library and detects these optional helpers:
 
-- `pdftotext` for PDF text extraction;
+- `pdftotext` for PDF text extraction in reading order, which keeps the columns of two-column pages in sequence;
 - `pdfinfo` for page counts;
 - `pdftoppm` for page rendering;
 - `pypdf` as a Python extraction and page-count fallback.

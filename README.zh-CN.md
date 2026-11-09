@@ -279,12 +279,15 @@ python "$nasaAdsSkill/scripts/literature_db.py" template
 | **方法依据** | “查找这个周期检验的原始方法和验证研究，比较假设、试验因子及适用限制。” |
 | **讨论证据** | “查找支持或挑战这个解释的研究，比较样本选择与不确定性。” |
 | **阅读指定文章** | “阅读 arXiv:1901.04502，总结方法、发现与局限。” |
+| **阅读你下载的 PDF** | “我通过学校下载了 2021Natur.598..267L，放在 `~/Downloads/li2021.pdf`，请阅读并保存阅读记录。” |
 | **核查文章细节** | “解释这篇论文图 3 的结果，并核对作者的结论。” |
 | **按主题词检索** | “查找 2024 年以来 UAT 主题为 fast radio bursts、且 SciX 收录全文的论文。” |
+| **发表趋势** | “2015 年以来每年有多少篇关于快速射电暴的审稿论文，分别发表在哪些期刊？” |
 | **复用已有阅读** | “在本地文献库中查找圆偏振符号反转，给出相关结论和证据位置。” |
 | **复用已存数值** | “整理文献库中已存的拟合谱指数，附不确定度、模型和表格位置，生成带引用键的对比表。” |
 | **引用具体结果** | “在文献库中找出由爆发偏振推断磁层起源的那条推论，给出章节和引用键，并核对它是否转述自更早的工作。” |
-| **导出引用** | “给我这三个 bibcode 的 AASTeX 格式参考文献。” |
+| **导出引用** | “给我这三个 bibcode 的 AASTeX 格式参考文献”，或“把它们排成 MNRAS 格式的参考文献列表。” |
+| **匹配参考文献列表** | “把我草稿里的参考文献列表匹配到 SciX 记录，并导出为 BibTeX。” |
 | **SciX 账号工具** | “列出我的 SciX libraries”，或“查看这些 bibcode 的引用指标。” |
 
 你可以预期：
@@ -293,16 +296,16 @@ python "$nasaAdsSkill/scripts/literature_db.py" template
 - 宽泛检索的候选会先按标题和摘要筛选，保留下来的连同简短总结一起入库。
 - Agent 评估过内容的每篇论文都会完整阅读并入库，包括最终没有写进回答的论文。只问一张图或一个数值时，第一次也会完成整篇阅读。
 - 写论文时，每个论断都引用它所依据的具体结论或数值及其原文位置；文章借用的结果会追溯到原始出处。只有摘要支撑的论断会明确标注。
-- 全文无法获取或保存失败时，会随回答一起说明。
+- 全文无法获取或保存失败时，会随回答一起说明。只能拿到摘要时，你可以通过自己的访问权限下载文章，把文件路径交给 Agent。
 
 Claude Code 还提供斜杠命令：
 
 ```text
 /nasa-ads:ads-search <research question or SciX query>
-/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs> [question]
+/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs> [local PDF] [question]
 /nasa-ads:ads-memory <lookup, search, findings, parameters, passage, collections, citations, adslib, or maintenance>
 /nasa-ads:ads-bibtex <identifiers> [--format]
-/nasa-ads:ads-cite [suggest | similar | links] <bibcodes>
+/nasa-ads:ads-cite [suggest | similar | links | refs] <bibcodes or reference strings>
 /nasa-ads:ads-metrics <bibcodes>
 /nasa-ads:ads-library [subcommand]
 ```
@@ -398,7 +401,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" citations --all --output persona
 python "$nasaAdsSkill/scripts/literature_db.py" citations "2016PhRvL.116f1102A" --fetch
 ```
 
-SciX 官方条目保留原有引用键。没有缓存官方条目的论文，会根据本地书目信息生成条目并加以标注；`--fetch` 下载并缓存官方条目，需要 token。需要 RIS、AASTeX、MNRAS 等格式时，告诉 Agent 即可，它会使用 SciX 的引用导出。
+SciX 官方条目保留原有引用键。没有缓存官方条目的论文，会根据本地书目信息生成条目并加以标注，与 SciX 导出一致，只列前十位作者再加 et al.；`--fetch` 下载并缓存官方条目，需要 token。需要 RIS、AASTeX、MNRAS 等格式时，告诉 Agent 即可，它会使用 SciX 的引用导出。草稿里的参考文献列表也可以这样匹配到 SciX 记录；Agent 会逐条解析参考文献，并给出每条匹配的可信度。
 
 ## 打开 Web 文献库
 
@@ -420,7 +423,7 @@ adslib
 | `adslib stop` / `adslib restart` | 停止或重启服务 |
 | `adslib serve` | 前台运行，按 `Ctrl+C` 停止 |
 
-`--library-dir "<目录>"` 打开另一个文献库，`--port 8766` 指定端口，例如 `adslib --library-dir "$HOME/other-library" --port 8766`；`status` 和 `stop` 使用相同选项。`--no-open` 不打开浏览器。默认地址是 `http://127.0.0.1:8765`；端口被占用时会改用空闲端口，请以输出的地址为准。启动时会打印日志路径；日志和服务记录在 Windows 上位于 `%LOCALAPPDATA%\nasa-ads\runtime`，其他系统位于 `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime`，也可以用 `NASA_ADS_RUNTIME_DIR` 指定。注册命令之前，可以直接运行已安装 skill 目录中的 `scripts/adslib.py`。
+`--library-dir "<目录>"` 打开另一个文献库，`--port 8766` 指定端口，例如 `adslib --library-dir "$HOME/other-library" --port 8766`。`status`、`stop` 和 `restart` 会找到所选文献库的服务，无论它用的是哪个端口；操作其他文献库时传 `--library-dir`，只有同一文献库运行了多个服务时才需要用 `--port` 指定。`--no-open` 不打开浏览器。默认地址是 `http://127.0.0.1:8765`；端口被占用时会改用空闲端口，请以输出的地址为准。启动时会打印日志路径；日志和服务记录在 Windows 上位于 `%LOCALAPPDATA%\nasa-ads\runtime`，其他系统位于 `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime`，也可以用 `NASA_ADS_RUNTIME_DIR` 指定。注册命令之前，可以直接运行已安装 skill 目录中的 `scripts/adslib.py`。
 
 | 你想做的事 | 操作 |
 | --- | --- |
@@ -554,13 +557,13 @@ Gemini CLI：在任一 shell 中执行 `git -C "$HOME/.gemini/nasa-ads-skill" pu
 | Web 数量不符合预期或显示空库 | 核对页面显示的文献库目录、当前筛选和[数据位置](#数据位置) |
 | 论文显示待总结或待分类 | 让 Agent 完成相关总结和主题分类 |
 | Agent 提示同一篇文章有两份不同的阅读 | 请它统一两份阅读（[详情](#检查文献库状态)） |
-| 全文无法获取 | 回答会使用现有题录或摘要，并说明缺口 |
+| 全文无法获取 | 回答会使用现有题录或摘要，并说明缺口；你可以通过自己的访问权限下载文章，把文件路径交给 Agent 完整阅读 |
 | 本地检索找不到原句 | 改为搜索已存全文（[检索范围](#检查文献库状态)） |
 | Agent 提示文献库来自较早版本 | 让 Agent 迁移文献库；`literature_db.py migrate` 会先备份，并给出备份位置 |
 
 ## 隐私与延伸阅读
 
-SciX token 只用于 SciX 请求。文章来自合法可访问的出版社、仓储、arXiv 或 SciX 来源。论文、阅读记录和引用缓存保存在本地文献库；Agent 宿主会按自身的数据政策处理任务中读取的内容。
+SciX token 只用于 SciX 请求。文章来自合法可访问的出版社、仓储、arXiv 或 SciX 来源，或你提供的文件。论文、阅读记录和引用缓存保存在本地文献库；Agent 宿主会按自身的数据政策处理任务中读取的内容。
 
 - [给 Agent 的 skill 说明](plugins/nasa-ads/skills/nasa-ads/SKILL.md)，包括[阅读记录格式](plugins/nasa-ads/skills/nasa-ads/references/digest-schema.md)和[文献库命令](plugins/nasa-ads/skills/nasa-ads/references/literature-memory.md)
 - [SciX CLI 参考](plugins/nasa-ads/skills/nasa-ads/references/ads-cli.md)、[SciX Libraries](plugins/nasa-ads/skills/nasa-ads/references/libraries.md) 和[直接 HTTP 回退](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md)

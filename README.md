@@ -279,12 +279,15 @@ Describe the scientific question and the evidence you need:
 | **Methods evidence** | “Find the original method and validation studies for this periodicity test; compare assumptions, trial factors, and limits.” |
 | **Discussion evidence** | “Find studies that support or challenge this interpretation, and compare sample selection and uncertainties.” |
 | **A specific article** | “Read arXiv:1901.04502 and summarize its methods, findings, and limitations.” |
+| **A PDF you downloaded** | “I downloaded 2021Natur.598..267L through my institution to `~/Downloads/li2021.pdf`; read it and save the reading.” |
 | **An article detail** | “Explain Figure 3 in this paper and check the authors’ conclusion.” |
 | **Subject filters** | “Find papers under the UAT subject ‘fast radio bursts’ since 2024 whose full text SciX indexes.” |
+| **Publication trends** | “How many refereed papers on fast radio bursts appeared each year since 2015, and in which journals?” |
 | **Earlier reading** | “Search my local library for circular-polarization sign reversals and show the supporting findings.” |
 | **Stored values** | “Collect the fitted spectral indices stored in my library, with uncertainties, models, and table locations, as a comparison table with citation keys.” |
 | **A specific result** | “Find the inference in my library that links burst polarization to a magnetospheric origin, give its section and citation key, and check whether it restates earlier work.” |
-| **Citations** | “Give me AASTeX references for these three bibcodes.” |
+| **Citations** | “Give me AASTeX references for these three bibcodes” or “Format them as an MNRAS reference list.” |
+| **A reference list** | “Match the reference list of my draft to SciX records and export it as BibTeX.” |
 | **SciX account tools** | “List my SciX libraries” or “Show citation metrics for these bibcodes.” |
 
 What to expect:
@@ -293,16 +296,16 @@ What to expect:
 - Candidates from a broad search are screened by title and abstract; the ones kept are saved with short summaries.
 - Every paper whose content the agent assesses is read in full and saved, including papers it later leaves out of the answer. A question about one figure or value also produces a whole-paper reading the first time.
 - In manuscript work, each claim cites the specific finding or value it rests on, at its location in the paper; a result the paper borrows is traced to its original source. A claim supported only by an abstract is labeled as such.
-- Unavailable full text or a failed save is reported with the answer.
+- Unavailable full text or a failed save is reported with the answer. When only the abstract is available, you can download the article through your own access and give the agent the file path.
 
 Claude Code also offers slash commands:
 
 ```text
 /nasa-ads:ads-search <research question or SciX query>
-/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs> [question]
+/nasa-ads:ads-fulltext <bibcodes, DOIs, or arXiv IDs> [local PDF] [question]
 /nasa-ads:ads-memory <lookup, search, findings, parameters, passage, collections, citations, adslib, or maintenance>
 /nasa-ads:ads-bibtex <identifiers> [--format]
-/nasa-ads:ads-cite [suggest | similar | links] <bibcodes>
+/nasa-ads:ads-cite [suggest | similar | links | refs] <bibcodes or reference strings>
 /nasa-ads:ads-metrics <bibcodes>
 /nasa-ads:ads-library [subcommand]
 ```
@@ -398,7 +401,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" citations --all --output persona
 python "$nasaAdsSkill/scripts/literature_db.py" citations "2016PhRvL.116f1102A" --fetch
 ```
 
-Official SciX entries keep their exact citation keys. Papers without a cached official entry get one generated from local metadata, labeled as such; `--fetch` downloads and caches the official entry and needs a token. For RIS, AASTeX, MNRAS, or other formats, ask the agent, which uses SciX citation export.
+Official SciX entries keep their exact citation keys. Papers without a cached official entry get one generated from local metadata, labeled as such, with the first ten authors followed by et al. as in SciX exports; `--fetch` downloads and caches the official entry and needs a token. For RIS, AASTeX, MNRAS, or other formats, ask the agent, which uses SciX citation export. A draft's reference list can be matched to SciX records the same way; the agent resolves each reference string and shows how confident each match is.
 
 ## Open the Web Library
 
@@ -420,7 +423,7 @@ It starts a background service and opens the browser; you can close the terminal
 | `adslib stop` / `adslib restart` | Stop or restart the service |
 | `adslib serve` | Run in the foreground until `Ctrl+C` |
 
-`--library-dir "<folder>"` opens another library and `--port 8766` picks a port, for example `adslib --library-dir "$HOME/other-library" --port 8766`; use the same options with `status` and `stop`. `--no-open` skips the browser. The default address is `http://127.0.0.1:8765`; a busy port is replaced by a free one, so use the printed URL. Startup prints a log path; logs and service records live in `%LOCALAPPDATA%\nasa-ads\runtime` on Windows or `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime` elsewhere, or in `NASA_ADS_RUNTIME_DIR`. Before registration, run `scripts/adslib.py` from the installed skill folder directly.
+`--library-dir "<folder>"` opens another library and `--port 8766` picks a port, for example `adslib --library-dir "$HOME/other-library" --port 8766`. `status`, `stop`, and `restart` find the selected library's service on whatever port it uses, so pass `--library-dir` to them for another library and `--port` only to choose among several services. `--no-open` skips the browser. The default address is `http://127.0.0.1:8765`; a busy port is replaced by a free one, so use the printed URL. Startup prints a log path; logs and service records live in `%LOCALAPPDATA%\nasa-ads\runtime` on Windows or `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime` elsewhere, or in `NASA_ADS_RUNTIME_DIR`. Before registration, run `scripts/adslib.py` from the installed skill folder directly.
 
 | What you want | How |
 | --- | --- |
@@ -554,13 +557,13 @@ After a plugin update, run `adslib.py install` from the new plugin folder; then 
 | Web shows an unexpected count or an empty library | Check the library folder shown on the page, the active filters, and your [data location](#data-location) |
 | Papers are marked pending or unclassified | Ask the agent to finish their summaries and topics |
 | The agent reports two different readings of one article | Ask it to reconcile them ([details](#check-library-health)) |
-| Full text is unavailable | The answer uses the available metadata or abstract and reports the gap |
+| Full text is unavailable | The answer uses the available metadata or abstract and reports the gap; download the article through your own access and give the agent its file path to have it read in full |
 | A local search misses a phrase | Search the stored full text ([search scopes](#check-library-health)) |
 | The agent reports that the library comes from an earlier release | Ask it to migrate the library; `literature_db.py migrate` backs it up first and prints the backup location |
 
 ## Privacy and Further Reading
 
-Your SciX token is used only for SciX requests. Articles come from lawful publisher, repository, arXiv, or SciX sources. Papers, readings, and citation caches stay in your local library; the agent host processes the content read for your task under its own policies.
+Your SciX token is used only for SciX requests. Articles come from lawful publisher, repository, arXiv, or SciX sources, or from files you supply. Papers, readings, and citation caches stay in your local library; the agent host processes the content read for your task under its own policies.
 
 - [Skill instructions for agents](plugins/nasa-ads/skills/nasa-ads/SKILL.md), including the [reading record format](plugins/nasa-ads/skills/nasa-ads/references/digest-schema.md) and [library commands](plugins/nasa-ads/skills/nasa-ads/references/literature-memory.md)
 - [SciX CLI reference](plugins/nasa-ads/skills/nasa-ads/references/ads-cli.md), [SciX Libraries](plugins/nasa-ads/skills/nasa-ads/references/libraries.md), and [direct HTTP fallback](plugins/nasa-ads/skills/nasa-ads/references/http-fallback.md)

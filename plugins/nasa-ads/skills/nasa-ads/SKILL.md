@@ -1,11 +1,11 @@
 ---
 name: nasa-ads
-description: Research astronomy and space-science literature through SciX, the successor to NASA ADS, with a persistent personal library. Use for literature reviews, manuscript introduction, methods, and discussion evidence, claim checks, reading a paper or one of its figures, tables, or values, citing a specific measurement, fitted parameter, or inference from earlier reading, bibcode/DOI/arXiv lookup, metrics, SciX libraries, and BibTeX export. Reads investigated papers in full and silently stores layered digests (one-line summary, paper summary, section map, and citable findings with key parameters and verbatim anchors) so later work rereads one paragraph instead of the paper; browse the library with adslib.
+description: Research astronomy and space-science literature through SciX, the successor to NASA ADS, with a persistent personal library. Use for literature reviews, manuscript introduction, methods, and discussion evidence, claim checks, reading a paper, a PDF the user supplies, or one of its figures, tables, or values, citing a specific measurement, fitted parameter, or inference from earlier reading, bibcode/DOI/arXiv lookup, matching a reference list to SciX records, publication trends, metrics, SciX libraries, and BibTeX or journal-style reference export. Reads investigated papers in full and silently stores layered digests (one-line summary, paper summary, section map, and citable findings with key parameters and verbatim anchors) so later work rereads the one paragraph that states a result; browse the library with adslib.
 ---
 
 # SciX Literature Workflow
 
-Answer the user's scientific question. Within the same task, read every investigated paper's body once and silently store a layered digest of what a manuscript can cite, anchored to the passages that state it, so later research and manuscript writing reuse complete readings instead of abstracts and recheck a citation by reading one paragraph.
+Answer the user's scientific question. Within the same task, read every investigated paper's body once and silently store a layered digest of what a manuscript can cite, anchored to the passages that state it, so later research and manuscript writing reuse complete readings and recheck a citation by reading one paragraph.
 
 ## Task Routing
 
@@ -13,14 +13,17 @@ Answer the user's scientific question. Within the same task, read every investig
 |---|---|---|
 | Literature review, manuscript introduction, methods, or discussion evidence, claim check | Search local evidence, discover missing work in SciX, then follow [Literature Research](#literature-research) | [research-writing.md](references/research-writing.md), [literature-memory.md](references/literature-memory.md) |
 | Read an article, or explain one of its figures, tables, values, or conclusions | `lookup` the exact paper and version, then apply [Reading Scope](#reading-scope) | [local lookup](references/literature-memory.md#local-lookup-and-reading), [fulltext.md](references/fulltext.md), [digest-schema.md](references/digest-schema.md) |
+| Read a PDF or HTML copy the user supplies | `lookup`, then `fulltext.py import` with its identifier and version | [import a local copy](references/fulltext.md#import-a-local-copy) |
 | Reuse or cite a measurement, fit, inference, or method from earlier reading | `findings`, `parameters`, or `search --scope summary`; `passage` for the stating paragraph | [query stored evidence](references/literature-memory.md#query-stored-evidence), [stored passages](references/literature-memory.md#read-stored-passages), [citing specific results](references/research-writing.md#cite-specific-results) |
 | Export citations | Local `citations`; add `--fetch` for official SciX entries | [citation export](references/literature-memory.md#citation-export) |
 | Open or manage the Web library, register `adslib` | Run `adslib` or `scripts/adslib.py` | [Web library](references/literature-memory.md#web-library) |
 | Organize topics, writing roles, tags, or notes | Inspect `collections`, then `annotate` or `organize` | [classification](references/literature-memory.md#classification-and-manuscript-roles) |
 | Check, back up, restore, merge duplicates, refresh metadata, or migrate a library from the previous release | `stats` or `audit`; `backup` before changes | [library-maintenance.md](references/library-maintenance.md) |
 | SciX metrics, citation suggestions, resolver links, identifier lookup | Run the matching `ads_api.py` subcommand | [ads-cli.md](references/ads-cli.md) |
+| Match a reference list to bibcodes, resolve object names, find journal bibstems | `ads_api.py reference`, `objects`, or `journals` | [references, objects, and journals](references/ads-cli.md#references-objects-and-journals) |
+| Publication trends, paper or author groups, word clouds | `ads_api.py search --facet`, `network`, or `wordcloud` | [discovery aids](references/ads-cli.md#discovery-aids) |
 | Manage libraries in the SciX account | Direct HTTP with its authorization rules | [libraries.md](references/libraries.md) |
-| Python unavailable, or an endpoint outside the CLI | Direct HTTP | [http-fallback.md](references/http-fallback.md) |
+| Python unavailable, or a bibliographic endpoint outside the CLI | Direct HTTP | [http-fallback.md](references/http-fallback.md) |
 
 All entry points share the Core Invariants below. Load only the references the selected route needs.
 
@@ -30,8 +33,8 @@ Resolve `scripts/` relative to this `SKILL.md` and keep the packaged `scripts/`,
 
 | Script | Responsibility |
 |---|---|
-| `scripts/ads_api.py` | SciX search, big query, export, metrics, citation helper, resolver; captures returned records |
-| `scripts/fulltext.py` | Lawful full-text retrieval, section outline, PDF page rendering |
+| `scripts/ads_api.py` | SciX search with highlights, facets, and statistics, big query, export, metrics, citation helper, resolver, reference strings, objects, journals, networks, word clouds; captures returned search records |
+| `scripts/fulltext.py` | Lawful full-text retrieval, import of user-supplied copies, section outline, PDF page rendering |
 | `scripts/literature_db.py` | Personal library: capture, summaries, lookup, digests, stored passages, search, findings and parameters, classification, citations, maintenance, migration from the previous release |
 | `scripts/adslib.py` | Local Web library launcher and one-time command registration |
 
@@ -40,10 +43,11 @@ Global options go in these positions:
 ```text
 ads_api.py [--no-store] [--library-dir <dir>] <subcommand> ...
 fulltext.py fetch <identifier>... [--no-store] [--library-dir <dir>]
+fulltext.py import <file> --identifier <id> --version <kind> [--no-store] [--library-dir <dir>]
 literature_db.py [--library-dir <dir>] <subcommand> ...
 ```
 
-Online SciX operations read `ADS_API_TOKEN`. Keep it out of output, logs, URLs, and external article requests. Local lookup, stored reading, organization, Web browsing, and cached citation export work offline. Check every exit status and read the actual JSON shape before interpreting results.
+Online SciX operations read `ADS_API_TOKEN`. Keep it out of output, logs, URLs, and external article requests. The skill uses the public bibliographic services of SciX and the SciX libraries of the account through [libraries.md](references/libraries.md); other account services, such as myADS notifications, reading-history recommendations, and ORCID claims, stay outside its scope. Local lookup, stored reading, organization, Web browsing, and cached citation export work offline. Check every exit status and read the actual JSON shape before interpreting results.
 
 ## Core Invariants
 
@@ -100,7 +104,7 @@ Completion checks verify structure, declared coverage, and stored integrity; the
 | `check` reports pending summaries or missing topics | Finish source-grounded summaries and content-based topics for the task's runs, then rerun `check`. |
 | Capture, ingest, or enrich reports different stored digests | Two records hold different complete readings of one text; reconcile them with [maintenance](references/library-maintenance.md#reconcile-conflicting-digests). |
 | `needs_visual_reading` | Inspect every page and record page ranges covering the verified page count. |
-| `abstract_only` | Use the abstract with its label, record attempted sources, and keep the paper's reading gap open. |
+| `abstract_only` | Use the abstract with its label, record attempted sources, and keep the paper's reading gap open. A lawful copy the user supplies enters through [import](references/fulltext.md#import-a-local-copy). |
 | Missing or changed stored objects | Restore a verified backup or retrieve the exact source again; inspect the integrity failure reported by `lookup`. |
 | Missing facet for a new question | Find it with `passage --grep`, read the complete sections with `passage --section`, and merge a targeted digest. |
 | Database schema from an earlier release | Run `literature_db.py migrate` as in [maintenance](references/library-maintenance.md#upgrade-from-the-previous-release), then continue the task. |

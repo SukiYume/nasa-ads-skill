@@ -1,5 +1,7 @@
 # Personal Literature Library
 
+Contents: [Storage and evidence levels](#storage-and-evidence-levels) · [Screening before capture](#screening-before-capture) · [Automatic capture and summary completion](#automatic-capture-and-summary-completion) · [Local lookup and reading](#local-lookup-and-reading) · [Read stored passages](#read-stored-passages) · [Query stored evidence](#query-stored-evidence) · [Classification and manuscript roles](#classification-and-manuscript-roles) · [Citation export](#citation-export) · [Web library](#web-library)
+
 Load this reference for search capture, source summaries, local lookup, stored-evidence queries, classification, citations, and the Web library. Apply [Core Invariants](../SKILL.md#core-invariants). Digest authoring lives in [digest-schema.md](digest-schema.md); backup, restore, and repair live in [library-maintenance.md](library-maintenance.md).
 
 All commands below run `python3 "<skill-dir>/scripts/literature_db.py" [--library-dir <dir>] <subcommand>`; the examples show only the subcommand.
@@ -61,6 +63,8 @@ For each entry, paraphrase the question, approach, result, and relevance support
 
 `identifier`, `source_hash`, and `summary` are required. Supply `collections` here or keep existing memberships; every paper needs a topic before the task is complete. Keywords also become tags, and notes are appended. Repeating the same summary is idempotent; a different summary for the same source is rejected to protect earlier work.
 
+A summary rests on the title and abstract. A new snapshot of the same paper with the same title and abstract, such as the full-text fetch of a captured search record or a publication update that changes only volume and pages, reuses the earlier summary; capture counts it under `reused_summaries` and names the source in `summary_reused_from`. `summarize` fills pending snapshots of the same title and abstract the same way and reports them as `reused`. Records without an abstract also need the same authors, venue, year, and document type.
+
 ```bash
 summarize --summaries "<summaries.json>"
 check --run-id <id>
@@ -77,11 +81,11 @@ Use `lookup` to decide whether a paper needs reading:
 lookup "<identifier>" --topic "<scientific dimension>"
 ```
 
-`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Retrieve the citable results with `findings --paper "<identifier>"` and their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version.
+`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Retrieve the citable results with `findings --paper "<identifier>"` and their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version. A `--topic` is covered when it occurs in a facet's text, findings, quotes, or value names, models, and conditions, or among the paper's entities, keywords, datasets, and methods.
 
 | Lookup state | Action |
 |---|---|
-| `not_found` | Retrieve metadata and the article version, then complete its source summary and digest. |
+| `not_found` | Retrieve metadata and the article version, or [import](fulltext.md#import-a-local-copy) a copy the user supplies, then complete its source summary and digest. |
 | `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the paper-wide reading and digest. |
 | `reusable` | Reuse the complete version through `findings`, `parameters`, and `passage`. |
 | `targeted_reading` | Find the relevant sections with `passage --outline` or `--grep`, read them with `passage --section`, and merge the missing facets. |
@@ -113,7 +117,7 @@ passage "<identifier>" --grep "<term>" --grep "<second term>"
 |---|---|
 | `--outline` (also the default) | Stored section headings with starting line, word count, and the digest's gist |
 | `--finding` | The paragraph its quote anchors; without a quote, the paragraph naming its table, figure, or equation, or the start of its locator section; the finding's statement and locator come with it |
-| `--section` | One section, matched by number, heading, or heading words, such as `2.3`, `Sec. 4`, or `Discussion` |
+| `--section` | One section, matched by number, heading, or heading words, such as `2.3`, `Sec. 4`, or `Discussion`; headings in the digest's `reading.sections` locate sections that the stored outline missed |
 | `--grep` | Paragraphs containing every term, with their section headings; `term_matches` counts all matches |
 
 Each passage reports its `section`, `match` type, `lines` in the stored text, and `truncated` when it reached `--max-chars` (default 3000; `0` returns complete passages). A truncated section adds `section_lines` for reading the rest by line range from `version.text_path`. `--context <n>` adds neighboring paragraphs, `--limit` caps grep paragraphs (default 5), and `--sha256` selects a known version. Requests that resolve nowhere are listed in `unresolved`; a scan without extracted text returns the finding locators and the artifact path.
@@ -170,9 +174,9 @@ citations --collection "My manuscript" --output "<references.bib>"
 citations --all --output "<personal-library.bib>"
 ```
 
-Cached official SciX entries keep their exact keys and source. A paper without one receives BibTeX generated from stored metadata with a provenance comment; it includes only known fields. `--fetch` caches official entries for the selected papers using SciX credentials and reuses existing ones. Changes to citation-bearing metadata, including DOI and arXiv identifiers, invalidate a cached entry. Direct arXiv records awaiting SciX indexing keep metadata-generated entries. Output files must lie outside the library directory.
+Cached official SciX entries keep their exact keys and source. A paper without one receives BibTeX generated from stored metadata with a provenance comment; it includes only known fields, lists the first ten authors followed by `others` as SciX exports do, and braces collaboration names. `--fetch` caches official entries for the selected papers using SciX credentials and reuses existing ones. Changes to citation-bearing metadata, including DOI and arXiv identifiers, invalidate a cached entry. Direct arXiv records awaiting SciX indexing keep metadata-generated entries. Output files must lie outside the library directory.
 
-For papers missing from the library, retrieve metadata with `ads_api.py bigquery`, complete that run's summaries and topics, then export. Other citation formats use [`ads_api.py export`](ads-cli.md#citation-export).
+For papers missing from the library, retrieve metadata with `ads_api.py bigquery`, complete that run's summaries and topics, then export. A manuscript's reference list reaches bibcodes through [`ads_api.py reference`](ads-cli.md#references-objects-and-journals). Other citation formats use [`ads_api.py export`](ads-cli.md#citation-export).
 
 ## Web Library
 
@@ -183,7 +187,7 @@ adslib
 python3 "<skill-dir>/scripts/adslib.py"
 ```
 
-`open` (the default) starts or reuses a background service and opens the browser; `start`, `status`, `stop`, `restart`, and `serve` (foreground) manage it. Pass the same `--library-dir <path>` and preferred `--port <number>` to later commands; an occupied port is replaced by a free one and recorded for discovery. `--no-open` suppresses the browser. `status` exits 3 when no managed instance runs, and repeated `stop` succeeds. Verify `status`, `/api/stats`, and the page before reporting the URL. The service binds to localhost, uses bundled assets, needs no SciX token, and shows an empty library when no database exists. Classification and notes are edited through the CLI.
+`open` (the default) starts or reuses a background service and opens the browser; `start`, `status`, `stop`, `restart`, and `serve` (foreground) manage it. Pass the same `--library-dir <path>` to later commands; `status`, `stop`, `restart`, and `open` find that library's service on whatever port it uses. `--port <number>` sets the preferred port for a new service and chooses among several services of one library; an occupied port is replaced by a free one and recorded for discovery. `--no-open` suppresses the browser. `status` exits 3 when no managed instance runs, and repeated `stop` succeeds. Verify `status`, `/api/stats`, and the page before reporting the URL. The service binds to localhost, uses bundled assets, needs no SciX token, and shows an empty library when no database exists. Classification and notes are edited through the CLI.
 
 Register the command once during installation or on request, then verify it in a fresh shell:
 

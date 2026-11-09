@@ -30,14 +30,15 @@ PATH_START = "# >>> NASA ADS adslib PATH >>>"
 PATH_END = "# <<< NASA ADS adslib PATH <<<"
 
 
+DEFAULT_PORT = 8765
+
+
 @contextlib.contextmanager
-def service_lock(library_dir, port):
-    """Serialize shell invocations; the serving child never takes this lock."""
+def service_lock(library_dir):
+    """Serialize shell invocations per library; the serving child never locks."""
     directory = runtime_dir()
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    key = hashlib.sha256(
-        f"{os.path.normcase(str(library_dir))}:{port}".encode()
-    ).hexdigest()
+    key = hashlib.sha256(os.path.normcase(str(library_dir)).encode()).hexdigest()
     with (directory / f"{key}.lock").open("a+b") as stream:
         stream.seek(0, os.SEEK_END)
         if stream.tell() == 0:
@@ -60,7 +61,7 @@ def service_lock(library_dir, port):
                 if time.monotonic() >= deadline:
                     raise ValueError(
                         "Another service operation is in progress; retry shortly."
-                    )
+                    ) from None
                 time.sleep(0.1)
         try:
             yield
@@ -116,7 +117,21 @@ def managed_services(library_dir):
 
 
 def find_service(library_dir, port):
+    """The managed service of this library on ``port``, or on any port if None.
+
+    Without a port, one running service is returned; among several, the one
+    started for the default port, otherwise the caller must choose.
+    """
     records = managed_services(library_dir)
+    if port is None:
+        if len(records) <= 1:
+            return records[0] if records else None
+        port = DEFAULT_PORT
+        if not any(DEFAULT_PORT in (r["port"], r["requested_port"]) for r in records):
+            raise ValueError(
+                "Several services serve this library; choose one with --port: "
+                + ", ".join(str(record["port"]) for record in records)
+            )
     exact = [record for record in records if record["port"] == port]
     candidates = exact or [
         record for record in records if record["requested_port"] == port
@@ -553,16 +568,17 @@ def manage_service(args, library_dir, stdout):
         if not args.no_open and args.command in {None, "open"}:
             open_browser(f"http://127.0.0.1:{record['port']}", stdout)
         return 0
+    port = DEFAULT_PORT if args.port is None else args.port
     if args.command in {None, "start", "open", "restart"}:
         return start_background(
             library_dir,
-            args.port,
+            port,
             browser=not args.no_open and args.command in {None, "open"},
             stdout=stdout,
         )
     return launch(
         library_dir,
-        args.port,
+        port,
         browser=False,
         stdout=stdout,
         ready_file=args.ready_file,
@@ -605,7 +621,14 @@ def run(argv=None, *, environ=None, stdout=None, stderr=None) -> int:
         "--library-dir",
         help="personal library directory; defaults to NASA_ADS_LITERATURE_DIR or the user library",
     )
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--port",
+        type=int,
+        help=(
+            f"preferred port for a new service (default: {DEFAULT_PORT}); "
+            "status, stop, and open find this library's service on any port without it"
+        ),
+    )
     parser.add_argument("--ready-file", help=argparse.SUPPRESS)
     parser.add_argument(
         "--no-open",
@@ -635,12 +658,12 @@ def run(argv=None, *, environ=None, stdout=None, stderr=None) -> int:
             else literature_db.default_library_dir(environ)
         )
         library_dir = library_dir.expanduser().resolve()
-        if not 0 <= args.port <= 65535:
+        if args.port is not None and not 0 <= args.port <= 65535:
             raise ValueError("Port must be between 0 and 65535.")
         lock = (
             contextlib.nullcontext()
             if args.command in {"serve", "status"}
-            else service_lock(library_dir, args.port)
+            else service_lock(library_dir)
         )
         with lock:
             return manage_service(args, library_dir, stdout)

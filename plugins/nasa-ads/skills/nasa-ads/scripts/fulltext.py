@@ -76,6 +76,23 @@ SKIP_TAGS = {
 }
 HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 FOCUS_TAGS = {"article", "main"}
+# Prepared HTML text marks scripts and carries TeX for math; cached text from
+# an earlier extraction is prepared again from its cached artifact.
+HTML_TEXT_MODE = "math-markup"
+TEX_SCRIPT_TYPES = {"math/tex", "math/latex"}
+# MathML children after the base become scripts, fraction parts, or root indices.
+MATH_CHILD_AFFIXES: dict[str, dict[int, tuple[str, str]]] = {
+    "msup": {1: ("^{", "}")},
+    "msub": {1: ("_{", "}")},
+    "msubsup": {1: ("_{", "}"), 2: ("^{", "}")},
+    "munder": {1: ("_{", "}")},
+    "mover": {1: ("^{", "}")},
+    "munderover": {1: ("_{", "}"), 2: ("^{", "}")},
+    "mfrac": {0: ("(", ")"), 1: ("/(", ")")},
+    "mroot": {0: ("root(", ""), 1: (", ", ")")},
+}
+# Math and script markup, which prose detection reads past.
+MARKUP_SPAN_RE = re.compile(r"\$\$.+?\$\$|\$[^$\n]+\$|[\^_]\{[^{}\n]*\}", re.DOTALL)
 MEASUREMENT_ONLY_RE = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s*"
     r"(?:uJy|μJy|mJy|Jy|Hz|kHz|MHz|GHz|THz|μs|us|ms|s|min|h|d|yr|"
@@ -119,7 +136,15 @@ class Downloaded:
 
 
 class ReadableHTMLParser(HTMLParser):
-    """Extract readable blocks while preferring article/main content."""
+    """Extract readable blocks while preferring article/main content.
+
+    Superscripts and subscripts become ``^{...}`` and ``_{...}`` so that
+    ``10^{16}`` stays distinct from ``1016``. MathML contributes its TeX source,
+    from the ``alttext`` attribute or a TeX annotation, as ``$...$``, or as
+    ``$$...$$`` on its own line for a displayed equation; MathML without TeX
+    keeps its scripts and fractions. ``<script type="math/tex">`` contributes
+    its TeX the same way.
+    """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -132,9 +157,16 @@ class ReadableHTMLParser(HTMLParser):
         self.heading_depth = 0
         self.title_depth = 0
         self.title_parts: list[str] = []
+        self.scripts: list[tuple[str, list[str]]] = []
+        self.tex_script: list[str] | None = None
+        self.tex_script_display = False
+        self.math: dict[str, Any] | None = None
 
     def append(self, value: str) -> None:
         if self.skip_depth:
+            return
+        if self.scripts:
+            self.scripts[-1][1].append(value)
             return
         self.all_parts.append(value)
         if self.focus_depth:
@@ -142,12 +174,117 @@ class ReadableHTMLParser(HTMLParser):
         if self.heading_depth:
             self.heading_parts.append(value)
 
-    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+    def append_tex(self, tex: str, display: bool) -> None:
+        tex = " ".join(tex.split())
+        if tex:
+            self.append(f"\n$${tex}$$\n" if display else f"${tex}$")
+
+    def close_script(self) -> None:
+        kind, parts = self.scripts.pop()
+        content = " ".join("".join(parts).split())
+        if content:
+            self.append(("^{" if kind == "sup" else "_{") + content + "}")
+
+    def start_math(self, attributes: Mapping[str, str]) -> None:
+        self.math = {
+            "alttext": attributes.get("alttext", ""),
+            "display": attributes.get("display", "").lower() == "block",
+            "parts": [],
+            "tex": [],
+            "stack": [],
+            "annotation": False,
+            "ignore": 0,
+        }
+
+    def finish_math(self) -> None:
+        math, self.math = self.math, None
+        if math is None:
+            return
+        tex = math["alttext"] or "".join(math["tex"])
+        if tex.strip():
+            self.append_tex(tex, math["display"])
+            return
+        text = " ".join("".join(math["parts"]).split())
+        if text:
+            self.append(f"\n{text}\n" if math["display"] else text)
+
+    def math_starttag(self, tag: str, attributes: Mapping[str, str]) -> None:
+        math = self.math
+        assert math is not None
+        if math["ignore"]:
+            math["ignore"] += 1
+            return
+        if tag == "annotation" and "tex" in attributes.get("encoding", "").lower():
+            math["annotation"] = True
+            return
+        if tag in {"annotation", "annotation-xml"}:
+            math["ignore"] = 1
+            return
+        prefix = suffix = ""
+        if math["stack"]:
+            parent = math["stack"][-1]
+            prefix, suffix = MATH_CHILD_AFFIXES.get(parent[0], {}).get(
+                parent[1], ("", "")
+            )
+            parent[1] += 1
+        if tag == "msqrt":
+            prefix, suffix = prefix + "sqrt(", ")" + suffix
+        math["parts"].append(prefix)
+        math["stack"].append([tag, 0, suffix])
+
+    def math_endtag(self, tag: str) -> None:
+        math = self.math
+        assert math is not None
+        if math["ignore"]:
+            math["ignore"] -= 1
+            return
+        if math["annotation"]:
+            if tag == "annotation":
+                math["annotation"] = False
+            return
+        if tag == "math":
+            self.finish_math()
+            return
+        if not any(entry[0] == tag for entry in math["stack"]):
+            return
+        while math["stack"]:
+            entry = math["stack"].pop()
+            math["parts"].append(entry[2])
+            if entry[0] == tag:
+                break
+
+    def flush(self) -> None:
+        """Close math and scripts left open by malformed markup."""
+        self.finish_math()
+        while self.scripts:
+            self.close_script()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        attributes = {name.lower(): value or "" for name, value in attrs}
+        if self.math is not None:
+            if tag not in BLOCK_TAGS:
+                self.math_starttag(tag, attributes)
+                return
+            self.finish_math()
+        if self.tex_script is not None:
+            return
+        if tag == "script" and not self.skip_depth:
+            kind = attributes.get("type", "").lower().replace(" ", "")
+            if kind.split(";")[0] in TEX_SCRIPT_TYPES:
+                self.tex_script = []
+                self.tex_script_display = "mode=display" in kind
+                return
         if tag in SKIP_TAGS:
             self.skip_depth += 1
             return
         if self.skip_depth:
+            return
+        if tag == "math":
+            self.start_math(attributes)
+            return
+        if tag in {"sup", "sub"}:
+            self.scripts.append((tag, []))
             return
         if tag in FOCUS_TAGS:
             self.focus_depth += 1
@@ -161,12 +298,29 @@ class ReadableHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if self.math is not None:
+            if tag not in BLOCK_TAGS:
+                self.math_endtag(tag)
+                return
+            self.finish_math()
+        if self.tex_script is not None:
+            if tag == "script":
+                tex, self.tex_script = "".join(self.tex_script), None
+                self.append_tex(tex, self.tex_script_display)
+            return
         if tag in SKIP_TAGS and self.skip_depth:
             self.skip_depth -= 1
             return
         if self.skip_depth:
             return
+        if tag in {"sup", "sub"}:
+            if self.scripts and self.scripts[-1][0] == tag:
+                self.close_script()
+            return
         if tag in BLOCK_TAGS:
+            # A superscript or subscript never spans a block boundary.
+            while self.scripts:
+                self.close_script()
             self.append("\n")
         if tag in HEADING_TAGS and self.heading_depth:
             heading = normalize_text("".join(self.heading_parts))
@@ -180,6 +334,14 @@ class ReadableHTMLParser(HTMLParser):
             self.focus_depth -= 1
 
     def handle_data(self, data: str) -> None:
+        if self.math is not None:
+            math = self.math
+            if not math["ignore"]:
+                (math["tex"] if math["annotation"] else math["parts"]).append(data)
+            return
+        if self.tex_script is not None:
+            self.tex_script.append(data)
+            return
         if self.skip_depth:
             return
         self.append(data)
@@ -187,12 +349,14 @@ class ReadableHTMLParser(HTMLParser):
             self.title_parts.append(data)
 
     def readable_text(self) -> tuple[str, bool]:
+        self.flush()
         focused = normalize_text("".join(self.focus_parts))
         if count_words(focused) >= 250:
             return focused, True
         return normalize_text("".join(self.all_parts)), False
 
     def full_text(self) -> str:
+        self.flush()
         return normalize_text("".join(self.all_parts))
 
     def document_title(self) -> str:
@@ -300,6 +464,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum downloaded size per candidate (default: 100 MiB)",
     )
 
+    local = subparsers.add_parser(
+        "import",
+        help="prepare a user-supplied PDF or HTML copy of an article for reading",
+    )
+    local.add_argument("file", help="local PDF or HTML file holding the article")
+    local.add_argument(
+        "--identifier",
+        required=True,
+        help="bibcode, DOI, or arXiv ID of the article in the file",
+    )
+    local.add_argument(
+        "--version",
+        required=True,
+        choices=("published", "accepted", "preprint", "scan"),
+        help="article version the file holds",
+    )
+    local.add_argument(
+        "--source-url", help="HTTPS address the file came from, recorded as provenance"
+    )
+    local.add_argument("--cache-dir", help="cache root; overrides the default")
+    local.add_argument(
+        "--library-dir", help="personal library used for metadata capture"
+    )
+    local.add_argument(
+        "--no-store",
+        action="store_true",
+        help="prepare the file without capturing metadata in the personal library",
+    )
+    local.add_argument(
+        "--timeout",
+        type=ads_api.bounded_timeout,
+        default=DEFAULT_TIMEOUT,
+        help="metadata request timeout in seconds (default: 45)",
+    )
+    local.add_argument(
+        "--max-mib",
+        type=bounded_megabytes,
+        default=DEFAULT_MAX_BYTES,
+        metavar="MIB",
+        help="maximum file size (default: 100 MiB)",
+    )
+
     render = subparsers.add_parser(
         "render", help="render at most twenty PDF pages for visual reading"
     )
@@ -403,7 +609,8 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
             if ". " in heading_text or heading_text[0].islower():
                 continue
             candidates.append((line, line.casefold(), heading_text.casefold()))
-        elif named.match(line):
+        elif named.match(line) and line[0].isupper():
+            # Lowercase single words are usually figure labels in PDF text.
             candidates.append((line, line.casefold(), None))
     reference_starts = [
         index for index, (_line, key, _title) in enumerate(candidates) if key in REFERENCE_HEADINGS
@@ -429,11 +636,16 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
 
 
 def article_outline(
-    text: str, manifest: Mapping[str, Any] | None = None, *, limit: int = 400
+    text: str,
+    manifest: Mapping[str, Any] | None = None,
+    *,
+    limit: int = 400,
+    reading_headings: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """Section spans from the manifest's HTML headings or the inferred outline.
 
-    The candidate that places more headings on lines of ``text`` wins.
+    The candidate that places more headings on lines of ``text`` wins. Headings
+    a reader recorded in a digest then fill sections that the outline missed.
     """
     candidates = [infer_text_outline(text, limit=limit)]
     statistics = ((manifest or {}).get("selected") or {}).get("statistics") or {}
@@ -445,10 +657,33 @@ def article_outline(
         located = locate_headings(text, headings)
         if len(located) > len(best):
             best = located
+    if reading_headings:
+        best = add_reading_headings(text, best, reading_headings)
     return best
 
 
 FRONT_MATTER_HEADING = "Front matter"
+NUMBERED_HEADING_RE = re.compile(
+    r"^(?:§\s*)?(?:\d{1,2}(?:\.\d{1,2}){0,3}[.):]?|[A-Z](?:\.\d{1,2}){1,3}[.):]?|"
+    r"[A-Z][.)]|(?-i:[IVXLC]+)[.):]?|(?:appendix|supplement)\s+[A-Z0-9]+[.):]?)"
+    r"\s+\S",
+    re.IGNORECASE,
+)
+
+
+def heading_key(value: str) -> str:
+    """Case-, spacing-, and punctuation-insensitive heading comparison key."""
+    return " ".join(re.sub(r"[^\w\s]", " ", str(value).casefold()).split())
+
+
+def line_starts(text: str) -> tuple[list[str], list[int]]:
+    lines = text.split("\n")
+    starts: list[int] = []
+    offset = 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    return lines, starts
 
 
 def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
@@ -458,12 +693,7 @@ def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
     ``start`` and ``end`` offsets, and the number of ``lines`` it spans. Text
     before the first heading becomes a front-matter section.
     """
-    lines = text.split("\n")
-    starts: list[int] = []
-    offset = 0
-    for line in lines:
-        starts.append(offset)
-        offset += len(line) + 1
+    lines, _starts = line_starts(text)
     normalized = [" ".join(line.split()).casefold() for line in lines]
     placed: list[tuple[str, int]] = []
     cursor = 0
@@ -474,6 +704,65 @@ def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
                 placed.append((str(heading), index))
                 cursor = index + 1
                 break
+    return sections_from_placements(text, placed)
+
+
+def add_reading_headings(
+    text: str,
+    sections: Sequence[Mapping[str, Any]],
+    headings: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Place digest headings that no located section already covers.
+
+    A heading matches a whole line, or for a numbered heading such as
+    ``V. Searches`` the start of a line that continues with the section's first
+    sentence, as PDF text extraction often joins them.
+    """
+    lines, _starts = line_starts(text)
+    keys = [heading_key(line) for line in lines]
+    placed = [
+        (str(section["heading"]), int(section["line"]) - 1)
+        for section in sections
+        if section["heading"] != FRONT_MATTER_HEADING
+    ]
+    covered = {heading_key(heading): index for heading, index in placed}
+    occupied = set(covered.values())
+    cursor = 0
+    for heading in headings:
+        key = heading_key(heading)
+        if not key:
+            continue
+        existing = next(
+            (
+                index
+                for existing_key, index in covered.items()
+                if existing_key == key or existing_key.startswith(key + " ")
+            ),
+            None,
+        )
+        if existing is not None:
+            cursor = max(cursor, existing + 1)
+            continue
+        free = [index for index in range(cursor, len(lines)) if index not in occupied]
+        found = next((index for index in free if keys[index] == key), None)
+        if found is None and NUMBERED_HEADING_RE.match(str(heading).strip()):
+            found = next(
+                (index for index in free if keys[index].startswith(key + " ")), None
+            )
+        if found is not None:
+            placed.append((str(heading), found))
+            covered[key] = found
+            occupied.add(found)
+            cursor = found + 1
+    placed.sort(key=lambda item: item[1])
+    return sections_from_placements(text, placed)
+
+
+def sections_from_placements(
+    text: str, placed: Sequence[tuple[str, int]]
+) -> list[dict[str, Any]]:
+    lines, starts = line_starts(text)
+    placed = list(placed)
     if not placed or (placed[0][1] > 0 and text[: starts[placed[0][1]]].strip()):
         placed.insert(0, (FRONT_MATTER_HEADING, 0))
     sections: list[dict[str, Any]] = []
@@ -714,13 +1003,105 @@ SUBSCRIPTION_PREVIEW_MARKERS = (
 )
 
 
+REFERENCE_LIST_HEADING_RE = re.compile(
+    r"^\s*(?:references|bibliography|reference list|literature cited|works cited)"
+    r"(?:\s*\(\d+\))?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Landing pages carry an abstract, author and affiliation lists, and references.
+# Real articles, including short research notes, carry far more body prose.
+MIN_BODY_PROSE_WORDS = 300
+ABSTRACT_SKIP_WORDS = 500
+
+
 def text_before_references(value: str) -> str:
-    match = re.search(
-        r"^\s*(?:references|bibliography|reference list)\s*$",
-        value,
-        re.IGNORECASE | re.MULTILINE,
+    """Text before the reference list, which starts at its last heading.
+
+    Publisher pages often link ``References`` from a table of contents first.
+    """
+    matches = list(REFERENCE_LIST_HEADING_RE.finditer(value))
+    return value[: matches[-1].start()] if matches else value
+
+
+LOWERCASE_WORD_RE = re.compile(r"[a-z][a-z'-]*[.,;:)]?")
+CJK_CHARACTER_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
+
+
+def is_prose(paragraph: str) -> bool:
+    """Running text: twelve or more words, few commas, mostly lowercase words.
+
+    Author and affiliation lists and reference entries consist of names,
+    initials, places, and numbers, so few of their words are lowercase.
+    Chinese, Japanese, and Korean text counts by its characters. Math and
+    script markup are left out.
+    """
+    paragraph = MARKUP_SPAN_RE.sub(" ", paragraph)
+    if len(CJK_CHARACTER_RE.findall(paragraph)) >= 24:
+        return True
+    tokens = paragraph.split()
+    if len(tokens) < 12 or paragraph.count(",") > 0.2 * len(tokens):
+        return False
+    lowercase = sum(1 for token in tokens if LOWERCASE_WORD_RE.fullmatch(token))
+    return lowercase >= 0.4 * len(tokens)
+
+
+def prose_words(paragraph: str) -> int:
+    """Word count without math markup, with two CJK characters taken as one word."""
+    paragraph = MARKUP_SPAN_RE.sub(" ", paragraph)
+    return count_words(CJK_CHARACTER_RE.sub(" ", paragraph)) + (
+        len(CJK_CHARACTER_RE.findall(paragraph)) // 2
     )
-    return value[: match.start()] if match else value
+
+
+def text_paragraphs(text: str) -> Iterable[tuple[str, bool]]:
+    """Paragraphs joined across hard line wraps, each flagged when it opens an abstract."""
+    lines: list[str] = []
+    opens_abstract = False
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if line.casefold().rstrip(":. ") == "abstract":
+            if lines:
+                yield " ".join(lines), opens_abstract
+            lines, opens_abstract = [], True
+        elif line:
+            lines.append(line)
+        elif lines:
+            yield " ".join(lines), opens_abstract
+            lines, opens_abstract = [], False
+    if lines:
+        yield " ".join(lines), opens_abstract
+
+
+def body_prose(text: str) -> tuple[int, bool]:
+    """Words of body prose before the reference list, and whether an abstract was seen.
+
+    The prose paragraphs that follow an ``Abstract`` heading are excluded.
+    """
+    total = 0
+    abstract_seen = False
+    abstract_budget = 0
+    for paragraph, opens_abstract in text_paragraphs(text_before_references(text)):
+        if opens_abstract:
+            abstract_seen = True
+            abstract_budget = ABSTRACT_SKIP_WORDS
+        words = prose_words(paragraph)
+        if not is_prose(paragraph):
+            if abstract_budget and len(paragraph.split()) <= 12:
+                abstract_budget = 0  # A heading or label ends the abstract.
+            continue
+        skipped = min(words, abstract_budget)
+        abstract_budget -= skipped
+        total += words - skipped
+    return total, abstract_seen
+
+
+def is_landing_page(prose_words: int, abstract_seen: bool) -> bool:
+    """An abstract followed by almost no body prose marks an abstract landing page.
+
+    Short documents without an abstract, such as telegrams, notices, and
+    software records, are complete as served.
+    """
+    return abstract_seen and prose_words < MIN_BODY_PROSE_WORDS
 
 
 def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str, Any]]:
@@ -759,6 +1140,12 @@ def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str
         )
     if not used_focus and len(parser.headings) < 3 and word_count < 2500:
         raise FullTextError("HTML candidate does not expose a full article structure.")
+    prose_words, abstract_seen = body_prose(text)
+    if is_landing_page(prose_words, abstract_seen):
+        raise FullTextError(
+            "HTML candidate is a landing page without the article body "
+            f"({prose_words} words of body prose after the abstract)."
+        )
     title_overlap = None
     if expected_title:
         expected_tokens = {
@@ -795,6 +1182,8 @@ def extract_html(body: bytes, expected_title: str | None) -> tuple[str, dict[str
     return text, {
         "characters": len(text),
         "words": word_count,
+        "text_mode": HTML_TEXT_MODE,
+        "body_prose_words": prose_words,
         "headings": len(outline),
         "outline": outline,
         "focused_article": used_focus,
@@ -851,18 +1240,25 @@ def pdf_page_count(
     return (approximate or None), ("pdf-marker-count" if approximate else None)
 
 
+PDF_TEXT_MODE = "reading-order"
+
+
 def extract_pdf_text(
     pdf_path: Path,
     text_path: Path,
     environ: Mapping[str, str],
 ) -> tuple[str | None, str | None, str | None]:
+    """Extract PDF text in reading order.
+
+    Physical-layout extraction places both columns of a two-column page on one
+    line, and whitespace normalization would then interleave them.
+    """
     pdftotext = find_executable(environ, "NASA_ADS_PDFTOTEXT", "pdftotext")
     if pdftotext:
         try:
             completed = subprocess.run(
                 [
                     pdftotext,
-                    "-layout",
                     "-enc",
                     "UTF-8",
                     str(pdf_path),
@@ -922,30 +1318,42 @@ def assess_pdf_text(
             "pages": page_count,
             "characters_per_page": round(characters_per_page, 1),
             "extractor": extractor,
+            "text_mode": PDF_TEXT_MODE if extractor else None,
             "outline": infer_text_outline(text or ""),
         },
         warnings,
     )
 
 
-def actual_format(downloaded: Downloaded) -> str:
-    stripped = downloaded.body.lstrip()
+def artifact_format(body: bytes, content_type: str | None) -> str:
+    stripped = body.lstrip()
+    if stripped.startswith(b"\xef\xbb\xbf"):
+        stripped = stripped[3:].lstrip()
     if stripped.startswith(b"%PDF-"):
         return "pdf"
     if stripped[:200].lower().startswith((b"<!doctype html", b"<html", b"<?xml")):
         return "html"
-    if downloaded.content_type == "application/pdf":
+    if content_type == "application/pdf":
         raise FullTextError("PDF response lacks the PDF file signature.")
-    if downloaded.content_type in {"text/html", "application/xhtml+xml"}:
+    if content_type in {"text/html", "application/xhtml+xml"}:
         return "html"
     raise FullTextError(
-        f"Unsupported full-text content type: {downloaded.content_type or 'unknown'}"
+        f"Unsupported full-text content type: {content_type or 'unknown'}"
     )
+
+
+def actual_format(downloaded: Downloaded) -> str:
+    return artifact_format(downloaded.body, downloaded.content_type)
 
 
 def candidate_stem(candidate: Candidate, selected_format: str) -> str:
     raw = f"{candidate.source}-{candidate.version}-{selected_format}"
     return re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-")
+
+
+def text_file_path(artifact_path: Path, text_mode: str) -> Path:
+    """Prepared text named by extraction mode, so earlier text is preserved."""
+    return artifact_path.with_name(f"{artifact_path.stem}.{text_mode}.txt")
 
 
 def materialize_candidate(
@@ -971,32 +1379,57 @@ def materialize_candidate(
             raise FullTextError(
                 "Downloaded arXiv URL does not preserve the requested version."
             )
-    selected_format = actual_format(downloaded)
+    return prepare_artifact(
+        downloaded.body,
+        candidate,
+        record_dir,
+        expected_title,
+        final_url=downloaded.final_url,
+        content_type=downloaded.content_type,
+        required_format=required_format,
+        environ=environ,
+    )
+
+
+def prepare_artifact(
+    body: bytes,
+    candidate: Candidate,
+    record_dir: Path,
+    expected_title: str | None,
+    *,
+    final_url: str | None,
+    content_type: str | None,
+    environ: Mapping[str, str],
+    required_format: str | None = None,
+    retrieved_at: str | None = None,
+) -> dict[str, Any]:
+    """Validate an article artifact, store it, and prepare its text."""
+    selected_format = artifact_format(body, content_type)
     if required_format is not None and selected_format != required_format:
         raise FullTextError(
             f"Candidate advertised {candidate.format} but returned "
             f"{selected_format}; {required_format} was required."
         )
     stem = candidate_stem(candidate, selected_format)
-    artifact_hash = sha256_bytes(downloaded.body)
+    artifact_hash = sha256_bytes(body)
     artifact_path = (
         record_dir / "artifacts" / f"{stem}-{artifact_hash[:16]}.{selected_format}"
     ).resolve()
     common: dict[str, Any] = {
         "candidate": asdict(candidate),
         "actual_format": selected_format,
-        "final_url": downloaded.final_url,
+        "final_url": final_url,
         "artifact_path": str(artifact_path),
         "sha256": artifact_hash,
         "content_sha256": artifact_hash,
-        "bytes": len(downloaded.body),
-        "content_type": downloaded.content_type or None,
-        "retrieved_at": utc_now(),
+        "bytes": len(body),
+        "content_type": content_type or None,
+        "retrieved_at": retrieved_at or utc_now(),
     }
     if selected_format == "html":
-        text, statistics = extract_html(downloaded.body, expected_title)
-        atomic_write_bytes(artifact_path, downloaded.body)
-        text_path = artifact_path.with_suffix(".txt")
+        text, statistics = extract_html(body, expected_title)
+        atomic_write_bytes(artifact_path, body)
+        text_path = text_file_path(artifact_path, HTML_TEXT_MODE)
         atomic_write_text(text_path, text + "\n")
         common.update(
             {
@@ -1010,9 +1443,9 @@ def materialize_candidate(
         )
         return common
 
-    atomic_write_bytes(artifact_path, downloaded.body)
+    atomic_write_bytes(artifact_path, body)
     page_count, page_counter = pdf_page_count(artifact_path, environ)
-    text_path = artifact_path.with_suffix(".txt")
+    text_path = text_file_path(artifact_path, PDF_TEXT_MODE)
     text, extractor, extraction_error = extract_pdf_text(
         artifact_path, text_path, environ
     )
@@ -1058,15 +1491,8 @@ def ads_search_record(query: str, token: str, timeout: float) -> dict[str, Any] 
         "GET",
         "/search/query",
         token,
-        query=[
-            ("q", query),
-            (
-                "fl",
-                "bibcode,title,author,abstract,doi,identifier,property,esources,"
-                "doctype,year,pub,citation_count,read_count,uat,has",
-            ),
-            ("rows", 1),
-        ],
+        # The same fields as search capture, so both describe one source alike.
+        query=[("q", query), ("fl", ads_api.DEFAULT_FIELDS), ("rows", 1)],
         timeout=timeout,
     )
     payload = ads_api.decode_json_response(response, "full-text metadata")
@@ -1319,7 +1745,9 @@ def discover(
     max_bytes: int,
     environ: Mapping[str, str],
     output_format: str = "auto",
+    find_candidates: bool = True,
 ) -> dict[str, Any]:
+    """Resolve an identifier's metadata and, unless disabled, its full-text candidates."""
     identifier_type, normalized_identifier = classify_identifier(identifier)
     token = ads_api.token_if_available(environ)
     record: dict[str, Any] | None = None
@@ -1369,6 +1797,11 @@ def discover(
                             *list_value(exact_metadata.get("doi")),
                         ]
                     ),
+                    # The requested preprint version has no journal locators.
+                    **{
+                        field: None
+                        for field in ("volume", "issue", "page", "eid", "pubdate")
+                    },
                 }
             else:
                 warnings.append("metadata_abstract_unverified_for_requested_version")
@@ -1399,7 +1832,7 @@ def discover(
     )
 
     resolver_records: list[dict[str, Any]] = []
-    if bibcode and token:
+    if find_candidates and bibcode and token:
         try:
             resolver_records = ads_resolver_records(bibcode, token, timeout)
         except ads_api.CliError as exc:
@@ -1410,14 +1843,14 @@ def discover(
             arxiv_ids.append(possible_id)
 
     candidates: list[Candidate] = []
-    for arxiv_id in arxiv_ids:
+    for arxiv_id in arxiv_ids if find_candidates else []:
         candidates.extend(arxiv_candidates(arxiv_id))
     for resolver_record in resolver_records:
         candidate = resolver_candidate(resolver_record, properties)
         if candidate:
             candidates.append(candidate)
 
-    if use_unpaywall and doi_values:
+    if find_candidates and use_unpaywall and doi_values:
         email = environ.get("UNPAYWALL_EMAIL", "").strip()
         if not email:
             warnings.append("unpaywall_skipped: set UNPAYWALL_EMAIL")
@@ -1467,6 +1900,10 @@ def discover(
         "read_count": record.get("read_count") if record else None,
         "uat": list_value(record.get("uat")) if record else [],
         "has": list_value(record.get("has")) if record else [],
+        **{
+            field: record.get(field) if record else None
+            for field in ("volume", "issue", "page", "eid", "pubdate")
+        },
         "requested_format": output_format,
         "candidates": candidates,
         "warnings": warnings,
@@ -1537,8 +1974,106 @@ def cached_result(manifest_path: Path) -> dict[str, Any] | None:
             )
             if actual_content_hash != content_hash.lower():
                 return None
+        if payload.get("status") == "fulltext" and not current_extraction(
+            selected, local_text_path
+        ):
+            return None
     payload["cache_hit"] = True
     return payload
+
+
+def current_extraction(selected: Mapping[str, Any], text_path: Path) -> bool:
+    """Whether a cached full-text selection meets the current validation rules.
+
+    Older caches can hold interleaved two-column PDF text, HTML text that
+    dropped superscripts and math, or a publisher landing page accepted as an
+    article. Their cached artifacts are prepared again, and a selection that no
+    longer validates is retrieved again.
+    """
+    statistics = selected.get("statistics")
+    statistics = statistics if isinstance(statistics, Mapping) else {}
+    selected_format = selected.get("actual_format")
+    if selected_format == "pdf":
+        return statistics.get("text_mode") == PDF_TEXT_MODE
+    if selected_format == "html":
+        if statistics.get("text_mode") != HTML_TEXT_MODE:
+            return False
+        try:
+            text = text_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return not is_landing_page(*body_prose(text))
+    return True
+
+
+def prepare_cached_again(
+    manifest_path: Path, environ: Mapping[str, str]
+) -> dict[str, Any] | None:
+    """Prepare a cached full-text selection again from its verified artifact.
+
+    Returns the updated manifest, or None when the artifact is missing or the
+    selection no longer validates, so the caller retrieves it again.
+    """
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("status") != "fulltext":
+        return None
+    selected = payload.get("selected")
+    if not isinstance(selected, dict) or selected.get("actual_format") not in {
+        "html",
+        "pdf",
+    }:
+        return None
+    artifact = Path(str(selected.get("artifact_path") or ""))
+    artifact_hash = str(selected.get("sha256") or "").lower()
+    candidate_fields = selected.get("candidate")
+    if (
+        not artifact.is_file()
+        or sha256_file(artifact) != artifact_hash
+        or not isinstance(candidate_fields, dict)
+    ):
+        return None
+    requested = arxiv_id_from_value(
+        str(payload.get("normalized_identifier") or payload.get("input") or "")
+    )
+    if requested and re.search(r"v\d+$", requested):
+        if arxiv_id_from_value(str(selected.get("final_url") or "")) != requested:
+            return None
+    try:
+        candidate = Candidate(
+            **{
+                name: candidate_fields[name]
+                for name in Candidate.__dataclass_fields__
+                if name in candidate_fields
+            }
+        )
+        prepared = prepare_artifact(
+            artifact.read_bytes(),
+            candidate,
+            manifest_path.parent,
+            payload.get("title"),
+            final_url=selected.get("final_url"),
+            content_type=selected.get("content_type"),
+            environ=environ,
+            retrieved_at=selected.get("retrieved_at"),
+        )
+    except (FullTextError, TypeError, OSError, subprocess.SubprocessError):
+        return None
+    manifest = dict(payload)
+    manifest["status"] = prepared["status"]
+    manifest["selected"] = prepared
+    manifest["cache_hit"] = True
+    manifest["warnings"] = ordered_unique_strings(
+        [
+            *list_value(payload.get("warnings")),
+            *prepared.get("warnings", []),
+            "text_prepared_again_from_cached_artifact",
+        ]
+    )
+    write_json_file(manifest_path, manifest)
+    return manifest
 
 
 def manifest_selection_rank(manifest: Mapping[str, Any]) -> tuple[int, int]:
@@ -1583,6 +2118,10 @@ def fetch_one(
     cached = cached_result(manifest_path)
     if not refresh and cached is not None:
         return cached
+    if not refresh:
+        prepared_again = prepare_cached_again(manifest_path, environ)
+        if prepared_again is not None:
+            return prepared_again
     record_dir.mkdir(parents=True, exist_ok=True)
     discovered = discover(
         identifier,
@@ -1671,6 +2210,113 @@ def fetch_one(
             "kept_cached_authority": True,
         }
         return fallback
+    write_json_file(manifest_path, manifest)
+    return manifest
+
+
+LOCAL_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".xhtml": "application/xhtml+xml",
+}
+
+
+def provenance_url(value: str | None) -> str | None:
+    """An HTTPS address recorded as where a user-supplied file came from."""
+    if not value:
+        return None
+    parsed = urlsplit(value.strip())
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise FullTextError("--source-url must be an HTTPS address.", exit_code=2)
+    if parsed.username or parsed.password:
+        raise FullTextError("--source-url must not contain credentials.", exit_code=2)
+    return urlunsplit(parsed)
+
+
+def import_local(
+    file_path: Path,
+    identifier: str,
+    *,
+    version: str,
+    source_url: str | None,
+    cache_root: Path,
+    timeout: float,
+    max_bytes: int,
+    environ: Mapping[str, str],
+) -> dict[str, Any]:
+    """Prepare a user-supplied PDF or HTML copy of an article as a full-text manifest.
+
+    The file passes the same format, extraction, and title-identity checks as a
+    downloaded candidate, and its stated version becomes the version authority.
+    """
+    path = file_path.expanduser().resolve()
+    if not path.is_file():
+        raise FullTextError(f"Local article file does not exist: {path}", exit_code=2)
+    if path.stat().st_size > max_bytes:
+        raise FullTextError(
+            f"Local article file exceeds {max_bytes // (1024 * 1024)} MiB: {path}",
+            exit_code=2,
+        )
+    body = path.read_bytes()
+    url = provenance_url(source_url)
+    discovered = discover(
+        identifier,
+        source="auto",
+        use_unpaywall=False,
+        timeout=timeout,
+        max_bytes=max_bytes,
+        environ=environ,
+        find_candidates=False,
+    )
+    discovered.pop("candidates")
+    content_type = LOCAL_CONTENT_TYPES.get(path.suffix.casefold())
+    selected_format = artifact_format(body, content_type)
+    candidate = Candidate(
+        source="user",
+        version=version,
+        format=selected_format,
+        url=url or "",
+        priority=0,
+        link_type="user-supplied",
+        access="user",
+    )
+    record_dir = (cache_root / cache_key(identifier)).resolve()
+    selected = prepare_artifact(
+        body,
+        candidate,
+        record_dir,
+        discovered.get("title"),
+        final_url=url,
+        content_type=content_type,
+        environ=environ,
+    )
+    warnings = list(discovered.pop("warnings"))
+    warnings.append("user_supplied_artifact")
+    if version == "preprint":
+        warnings.append("selected_fulltext_is_preprint")
+    warnings.extend(selected.get("warnings", []))
+    manifest_path = record_dir / f"manifest-import-{selected['sha256'][:16]}.json"
+    manifest: dict[str, Any] = {
+        "schema_version": 1,
+        "tool_version": VERSION,
+        "status": selected["status"],
+        "cache_hit": False,
+        "cache_dir": str(record_dir),
+        "manifest_path": str(manifest_path.resolve()),
+        "created_at": utc_now(),
+        **discovered,
+        "candidates": [asdict(candidate)],
+        "attempts": [
+            {
+                "candidate": asdict(candidate),
+                "status": selected["status"],
+                "final_url": url,
+            }
+        ],
+        "selected": selected,
+        "warnings": ordered_unique_strings(warnings),
+    }
     write_json_file(manifest_path, manifest)
     return manifest
 
@@ -1777,13 +2423,50 @@ def render_pdf(
     }
 
 
+def capture_manifest(
+    result: dict[str, Any],
+    query: str,
+    parameters: dict[str, Any],
+    library_dir_value: str | None,
+    environ: Mapping[str, str],
+) -> bool:
+    """Capture a manifest's metadata and abstract; returns whether capture failed."""
+    import literature_db
+    import library_catalog
+    import sqlite3
+
+    library_dir = (
+        Path(library_dir_value).expanduser().resolve()
+        if library_dir_value
+        else literature_db.default_library_dir(environ)
+    )
+    connection = None
+    try:
+        connection, fts5 = literature_db.connect_library(library_dir)
+        result["literature"] = library_catalog.capture_search(
+            connection,
+            fts5,
+            {"response": {"numFound": 1, "docs": [result]}},
+            query=query,
+            parameters=parameters,
+            refresh_metadata=False,
+        )
+    except (literature_db.LiteratureError, sqlite3.Error, OSError, ValueError) as exc:
+        result["literature"] = {"status": "failed", "error": str(exc)}
+        return True
+    finally:
+        if connection is not None:
+            connection.close()
+    return False
+
+
 def execute(
     args: argparse.Namespace,
     *,
     environ: Mapping[str, str],
     stdout: TextIO,
 ) -> int:
-    if args.command == "fetch":
+    if args.command in {"fetch", "import"}:
         cache_root = (
             Path(args.cache_dir).expanduser().resolve()
             if args.cache_dir
@@ -1791,55 +2474,46 @@ def execute(
         )
         results: list[dict[str, Any]] = []
         failed = False
-        for identifier in args.identifiers:
+        identifiers = args.identifiers if args.command == "fetch" else [args.identifier]
+        for identifier in identifiers:
             try:
-                result = fetch_one(
-                    identifier,
-                    source=args.source,
-                    cache_root=cache_root,
-                    refresh=args.refresh,
-                    use_unpaywall=args.use_unpaywall,
-                    timeout=args.timeout,
-                    max_bytes=args.max_mib,
-                    environ=environ,
-                    output_format=args.output_format,
-                )
-                if not args.no_store:
-                    import literature_db
-                    import library_catalog
-                    import sqlite3
-
-                    library_dir = (
-                        Path(args.library_dir).expanduser().resolve()
-                        if args.library_dir
-                        else literature_db.default_library_dir(environ)
+                if args.command == "fetch":
+                    result = fetch_one(
+                        identifier,
+                        source=args.source,
+                        cache_root=cache_root,
+                        refresh=args.refresh,
+                        use_unpaywall=args.use_unpaywall,
+                        timeout=args.timeout,
+                        max_bytes=args.max_mib,
+                        environ=environ,
+                        output_format=args.output_format,
                     )
-                    connection = None
-                    try:
-                        connection, fts5 = literature_db.connect_library(library_dir)
-                        result["literature"] = library_catalog.capture_search(
-                            connection,
-                            fts5,
-                            {"response": {"numFound": 1, "docs": [result]}},
-                            query=identifier,
-                            parameters={
-                                "command": "fulltext",
-                                "source": args.source,
-                                "format": args.output_format,
-                            },
-                            refresh_metadata=False,
-                        )
-                    except (
-                        literature_db.LiteratureError,
-                        sqlite3.Error,
-                        OSError,
-                        ValueError,
-                    ) as exc:
-                        failed = True
-                        result["literature"] = {"status": "failed", "error": str(exc)}
-                    finally:
-                        if connection is not None:
-                            connection.close()
+                    parameters = {
+                        "command": "fulltext",
+                        "source": args.source,
+                        "format": args.output_format,
+                    }
+                else:
+                    result = import_local(
+                        Path(args.file),
+                        identifier,
+                        version=args.version,
+                        source_url=args.source_url,
+                        cache_root=cache_root,
+                        timeout=args.timeout,
+                        max_bytes=args.max_mib,
+                        environ=environ,
+                    )
+                    parameters = {
+                        "command": "import",
+                        "version": args.version,
+                        "format": result["selected"]["actual_format"],
+                    }
+                if not args.no_store and capture_manifest(
+                    result, identifier, parameters, args.library_dir, environ
+                ):
+                    failed = True
             except (
                 FullTextError,
                 ads_api.CliError,

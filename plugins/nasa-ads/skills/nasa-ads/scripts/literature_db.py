@@ -840,6 +840,21 @@ def validate_locator(value: Any, name: str) -> dict[str, Any]:
     return locator
 
 
+NUMBER_TEXT_PATTERN = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+
+
+def range_bound(bound: Any) -> float | None:
+    """A range bound as a number; strings keep a value's printed digits."""
+    if isinstance(bound, bool):
+        return None
+    if isinstance(bound, (int, float)):
+        return float(bound) if math.isfinite(bound) else None
+    if isinstance(bound, str) and NUMBER_TEXT_PATTERN.fullmatch(bound.strip()):
+        number = float(bound)
+        return number if math.isfinite(number) else None
+    return None
+
+
 def validate_values(
     value: Any,
     name: str,
@@ -859,22 +874,22 @@ def validate_values(
         if bounds is None or bounds == []:
             item.pop("range", None)
         else:
-            if (
-                not isinstance(bounds, list)
-                or len(bounds) != 2
-                or any(
-                    isinstance(bound, bool)
-                    or not isinstance(bound, (int, float))
-                    or not math.isfinite(bound)
-                    for bound in bounds
-                )
-            ):
+            numbers = (
+                [range_bound(bound) for bound in bounds]
+                if isinstance(bounds, list) and len(bounds) == 2
+                else None
+            )
+            if numbers is None or None in numbers:
                 raise LiteratureError(
-                    f"{item_name}.range must be [low, high] with two finite numbers.",
+                    f"{item_name}.range must be [low, high], each a finite number "
+                    "or a number written as a string such as \"57175.743510388\".",
                     2,
                 )
-            if bounds[0] > bounds[1]:
+            if numbers[0] > numbers[1]:
                 raise LiteratureError(f"{item_name}.range low exceeds high.", 2)
+            item["range"] = [
+                bound.strip() if isinstance(bound, str) else bound for bound in bounds
+            ]
         item_value = item.get("value")
         if "range" in item and (
             item_value is None or (isinstance(item_value, str) and not item_value.strip())
@@ -1297,7 +1312,9 @@ def digest_warnings(
             for value_index, value in enumerate(values):
                 value_path = f"{path}.values[{value_index}]"
                 reported = value.get("value")
-                if looks_computed(reported):
+                if looks_computed(reported) or any(
+                    looks_computed(bound) for bound in value.get("range") or []
+                ):
                     warn(value_path, "Copy the value as printed, as a string when it is long or in scientific notation.")
                 if value.get("status") == "fitted" and not value.get("model"):
                     warn(value_path, "Name the model behind the fitted value.")
@@ -2631,7 +2648,7 @@ def ingest_record(
             encoding="utf-8", errors="replace"
         )
         anchors = quote_anchors(
-            incoming, article_text, article_sections(article_text, manifest)
+            incoming, article_text, article_sections(article_text, manifest, incoming)
         )
     warnings = digest_warnings(incoming, anchors)
     try:
@@ -2792,10 +2809,19 @@ def preferred_version(
     ).fetchone()
 
 
-def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
+TOPIC_VALUE_FIELDS = ("name", "symbol", "model", "condition", "dataset", "method")
+
+
+def text_covers(haystack: str, topic: str) -> bool:
     needle = topic.strip().casefold()
     if not needle:
         return False
+    haystack = haystack.casefold()
+    return needle in haystack or all(token in haystack for token in needle.split())
+
+
+def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
+    """Whether a facet covers a topic through its text, findings, quotes, or values."""
     haystack = "\n".join(
         [
             str(facet.get("key", "")),
@@ -2806,11 +2832,40 @@ def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
             *[
                 str(part)
                 for finding in facet.get("findings", [])
-                for part in (finding.get("statement", ""), *finding.get("keywords", []))
+                for part in (
+                    finding.get("statement", ""),
+                    finding.get("quote", ""),
+                    *finding.get("keywords", []),
+                    *[
+                        value.get(field, "")
+                        for value in finding.get("values", [])
+                        for field in TOPIC_VALUE_FIELDS
+                    ],
+                )
             ],
         ]
-    ).casefold()
-    return needle in haystack or all(token in haystack for token in needle.split())
+    )
+    return text_covers(haystack, topic)
+
+
+def digest_context_match(digest: Mapping[str, Any], topic: str) -> bool:
+    """Whether a topic names the paper's own objects, keywords, data, or methods."""
+    haystack = "\n".join(
+        [
+            *[str(value) for value in digest.get("keywords", [])],
+            *[
+                str(part)
+                for entity in digest.get("entities", [])
+                for part in (entity.get("name", ""), *entity.get("aliases", []))
+            ],
+            *[
+                str(record.get("name", ""))
+                for field in ("datasets", "methods")
+                for record in digest.get(field, [])
+            ],
+        ]
+    )
+    return text_covers(haystack, topic)
 
 
 def article_open_gate(reuse_status: str) -> dict[str, Any]:
@@ -2881,7 +2936,9 @@ def reuse_assessment(
     matched: list[str] = []
     missing: list[str] = []
     for topic in topics:
-        if any(topic_match(facet, topic) for facet in digest["facets"]):
+        if any(
+            topic_match(facet, topic) for facet in digest["facets"]
+        ) or digest_context_match(digest, topic):
             matched.append(topic)
         else:
             missing.append(topic)
@@ -3201,11 +3258,30 @@ def match_section_label(
     return None
 
 
+def reading_headings(digest: Mapping[str, Any] | None) -> list[str]:
+    """Section headings a digest records as read, in reading order."""
+    reading = digest.get("reading") if isinstance(digest, Mapping) else None
+    entries = reading.get("sections") if isinstance(reading, Mapping) else None
+    headings: list[str] = []
+    for entry in entries if isinstance(entries, list) else []:
+        heading = entry.get("heading") if isinstance(entry, Mapping) else entry
+        if isinstance(heading, str) and heading.strip():
+            headings.append(heading)
+    return headings
+
+
 def article_sections(
-    text: str, manifest: Mapping[str, Any] | None = None
+    text: str,
+    manifest: Mapping[str, Any] | None = None,
+    digest: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Section spans of stored text, from the manifest outline or inferred headings."""
-    return fulltext.article_outline(text, manifest)
+    """Section spans of stored text, from the manifest outline or inferred headings.
+
+    The digest's read sections fill headings that the outline missed.
+    """
+    return fulltext.article_outline(
+        text, manifest, reading_headings=reading_headings(digest)
+    )
 
 
 def section_at(
@@ -3223,7 +3299,7 @@ def quote_anchors(
     sections: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Check that each finding's quote occurs in the article text."""
-    sections = sections if sections is not None else article_sections(text)
+    sections = sections if sections is not None else article_sections(text, None, digest)
     skeleton, offsets = text_skeleton(text)
     located = 0
     quoted = 0
@@ -3409,7 +3485,7 @@ def article_passages(
         manifest = json.loads(Path(version["manifest_path"]).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         manifest = {}
-    spans = article_sections(text, manifest) if text else []
+    spans = article_sections(text, manifest, digest) if text else []
     result: dict[str, Any] = {
         "paper": {
             "canonical_key": paper["canonical_key"],

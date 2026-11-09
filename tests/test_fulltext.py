@@ -393,6 +393,75 @@ Appendix A. Derivation
         with self.assertRaises(fulltext.FullTextError):
             fulltext.extract_html(body, "Paper title")
 
+    def test_landing_page_with_long_author_list_is_rejected(self):
+        # Publisher abstract pages of large collaborations pass a word count
+        # through their author and affiliation lists while the body loads later.
+        authors = ", ".join(f"A. Author{index}{index % 9}" for index in range(1000))
+        affiliations = "".join(
+            f"<p>{index}Institute {index}, City {index}, Country</p>"
+            for index in range(120)
+        )
+        references = "".join(
+            f"<li>B. Cited{index}, Phys. Rev. Lett. {index}, 1 (2010).</li>"
+            for index in range(118)
+        )
+        abstract = " ".join(["The detectors observed a transient signal."] * 30)
+        body = (
+            "<html><head><title>Observation of a merger</title></head><body><main>"
+            f"<h1>Observation of a merger</h1><p>{authors}</p>{affiliations}"
+            f"<h2>Abstract</h2><p>{abstract}</p><p>View figure in article</p>"
+            "<h2>Article Text</h2><h2>References (118)</h2>"
+            f"<ol>{references}</ol></main></body></html>"
+        ).encode()
+        with self.assertRaisesRegex(fulltext.FullTextError, "landing page"):
+            fulltext.extract_html(body, "Observation of a merger")
+
+    def test_body_prose_excludes_abstract_lists_and_references(self):
+        abstract = " ".join(["We report a measured value of the spectral index."] * 10)
+        body_paragraph = " ".join(["The fitted model describes the data well."] * 8)
+        text = "\n\n".join(
+            [
+                "Contents\nAbstract\nReferences",
+                "Title",
+                "A. One, B. Two, C. Three, D. Four, E. Five, F. Six, G. Seven, H. Eight",
+                "21Instituto de Física Teórica, Universidade Estadual Paulista and "
+                "South American Institute for Fundamental Research, São Paulo SP Brazil",
+                "Abstract",
+                abstract,
+                "1 Introduction",
+                body_paragraph,
+                "S. Chandrasekhar and S. L. Detweiler, Proc. R. Soc. A 344, 441 (1975).",
+                "References (2)",
+                body_paragraph,
+            ]
+        )
+        self.assertEqual(
+            fulltext.body_prose(text), (fulltext.count_words(body_paragraph), True)
+        )
+
+    def test_short_documents_without_an_abstract_are_not_landing_pages(self):
+        telegram = " ".join(["We observed the source again and detected two bursts."] * 6)
+        self.assertEqual(
+            fulltext.body_prose(f"ATel #1\n\n{telegram}"),
+            (fulltext.count_words(telegram), False),
+        )
+        self.assertFalse(fulltext.is_landing_page(*fulltext.body_prose(telegram)))
+
+    def test_chinese_body_after_an_english_abstract_is_body_prose(self):
+        abstract = " ".join(["We report a measured value of the spectral index."] * 10)
+        body = "本文利用射电望远镜观测快速射电暴的偏振特性，并讨论其辐射机制。" * 30
+        words, abstract_seen = fulltext.body_prose(
+            f"Abstract\n\n{abstract}\n\n1 引言\n\n{body}"
+        )
+        self.assertTrue(abstract_seen)
+        self.assertGreater(words, fulltext.MIN_BODY_PROSE_WORDS)
+
+    def test_abstract_without_paragraph_breaks_keeps_its_excess_as_body(self):
+        run_on = " ".join(["The spectral index of the burst emission is steep."] * 90)
+        words, abstract_seen = fulltext.body_prose(f"Abstract\n{run_on}")
+        self.assertTrue(abstract_seen)
+        self.assertEqual(words, fulltext.count_words(run_on) - fulltext.ABSTRACT_SKIP_WORDS)
+
 
 class PdfAssessmentTests(unittest.TestCase):
     def test_dense_pdf_text_is_fulltext(self):
@@ -433,6 +502,40 @@ class PdfAssessmentTests(unittest.TestCase):
         self.assertIsNone(extracted)
         self.assertEqual(extractor, "pdftotext")
         self.assertIn("failed", error)
+
+    def test_pdftotext_keeps_reading_order_for_two_column_pages(self):
+        # Physical-layout mode puts both columns on one line, and whitespace
+        # normalization would interleave them.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pdf = root / "paper.pdf"
+            text = root / "paper.txt"
+            pdf.write_bytes(b"%PDF-1.7\n")
+            commands = []
+
+            def extractor(command, **_kwargs):
+                commands.append(command)
+                text.write_text("I. INTRODUCTION\nBody text.\n", encoding="utf-8")
+                return fulltext.subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch.object(fulltext, "find_executable", return_value="pdftotext"),
+                patch.object(fulltext.subprocess, "run", side_effect=extractor),
+            ):
+                extracted, _extractor, error = fulltext.extract_pdf_text(pdf, text, {})
+        self.assertIsNone(error)
+        self.assertEqual(extracted, "I. INTRODUCTION\nBody text.")
+        self.assertNotIn("-layout", commands[0])
+        _status, statistics, _warnings = fulltext.assess_pdf_text(
+            "result method evidence " * 1000, 10, "pdftotext"
+        )
+        self.assertEqual(statistics["text_mode"], fulltext.PDF_TEXT_MODE)
+
+    def test_lowercase_label_is_not_a_named_heading(self):
+        outline = fulltext.infer_text_outline(
+            "1 Introduction\nText.\ndata\nin\nResults\nMore text."
+        )
+        self.assertEqual(outline, ["1 Introduction", "Results"])
 
     def test_renderer_timeout_becomes_a_fulltext_error(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -818,10 +921,486 @@ class WorkflowTests(unittest.TestCase):
             text.write_text("modified full text", encoding="utf-8")
             self.assertIsNone(fulltext.cached_result(manifest_path))
 
+    def write_cached_selection(self, root, suffix, text_value, statistics):
+        artifact = root / f"paper.{suffix}"
+        text = root / "paper.txt"
+        artifact.write_text("artifact", encoding="utf-8")
+        text.write_text(text_value, encoding="utf-8")
+        manifest_path = root / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "status": "fulltext",
+                    "selected": {
+                        "actual_format": suffix,
+                        "artifact_path": str(artifact),
+                        "text_path": str(text),
+                        "sha256": fulltext.sha256_file(artifact),
+                        "text_sha256": fulltext.sha256_file(text),
+                        "content_sha256": fulltext.canonical_text_sha256(text_value),
+                        "statistics": statistics,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return manifest_path
+
+    def test_cached_landing_page_is_retrieved_again(self):
+        abstract = " ".join(["The detectors observed a transient signal."] * 30)
+        body = " ".join(["The fitted model describes the data well."] * 60)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            current = {"text_mode": fulltext.HTML_TEXT_MODE}
+            landing = self.write_cached_selection(
+                root,
+                "html",
+                f"Title\n\nAbstract\n\n{abstract}\n\nReferences (118)",
+                current,
+            )
+            self.assertIsNone(fulltext.cached_result(landing))
+            # The cached artifact is no article, so it cannot be prepared again.
+            self.assertIsNone(fulltext.prepare_cached_again(landing, {}))
+            article = self.write_cached_selection(
+                root,
+                "html",
+                f"Title\n\nAbstract\n\n{abstract}\n\n1 Introduction\n\n{body}",
+                current,
+            )
+            self.assertIsNotNone(fulltext.cached_result(article))
+            earlier = self.write_cached_selection(
+                root,
+                "html",
+                f"Title\n\nAbstract\n\n{abstract}\n\n1 Introduction\n\n{body}",
+                {},
+            )
+            self.assertIsNone(fulltext.cached_result(earlier))
+
+    def test_cached_pdf_text_from_layout_extraction_is_retrieved_again(self):
+        text_value = "result method evidence " * 400
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            layout = self.write_cached_selection(
+                root, "pdf", text_value, {"extractor": "pdftotext"}
+            )
+            self.assertIsNone(fulltext.cached_result(layout))
+            current = self.write_cached_selection(
+                root, "pdf", text_value, {"text_mode": fulltext.PDF_TEXT_MODE}
+            )
+            self.assertIsNotNone(fulltext.cached_result(current))
+
+    def test_reading_headings_fill_sections_joined_to_their_first_sentence(self):
+        text = "\n".join(
+            [
+                "Front text",
+                "I. INTRODUCTION",
+                "Introduction body.",
+                "matched-filter analyses and V. SEARCHES",
+                # Reading-order extraction keeps a paragraph on one long line.
+                "V. SEARCHES We searched the data with templates "
+                + "covering the parameter space of the expected sources " * 4,
+                "Search body.",
+                "Results of the search are shown below.",
+                "VI. SOURCE DISCUSSION",
+                "Discussion body.",
+            ]
+        )
+        sections = fulltext.article_outline(
+            text,
+            reading_headings=[
+                "I. Introduction",
+                "V. Searches",
+                "Results",
+                "VI. Source Discussion",
+            ],
+        )
+        placed = {section["heading"]: section["line"] for section in sections}
+        self.assertEqual(placed["V. Searches"], 5)
+        # Unnumbered headings need a whole line; prose starting with one is no heading.
+        self.assertNotIn("Results", placed)
+        self.assertNotIn("I. Introduction", placed)
+        self.assertEqual(placed["I. INTRODUCTION"], 2)
+        self.assertEqual(placed["VI. SOURCE DISCUSSION"], 8)
+
     def test_page_ranges_are_limited_to_twenty_pages(self):
         self.assertEqual(fulltext.parse_page_range("3-20"), (3, 20))
         with self.assertRaises(fulltext.FullTextError):
             fulltext.parse_page_range("1-21")
+
+
+ABSTRACT_TEXT = " ".join(["The detectors observed a transient signal."] * 30)
+BODY_TEXT = " ".join(["The fitted model describes the data well."] * 60)
+
+
+def article_html(title="Magnetar bursts", extra=""):
+    return (
+        f"<html><head><title>{title}</title></head><body><article>"
+        f"<h1>{title}</h1><h2>Abstract</h2><p>{ABSTRACT_TEXT}</p>"
+        f"<h2>1 Introduction</h2><p>{BODY_TEXT} {extra}</p>"
+        "</article></body></html>"
+    )
+
+
+class MathMarkupTests(unittest.TestCase):
+    def parse(self, html):
+        parser = fulltext.ReadableHTMLParser()
+        parser.feed(html)
+        return parser.full_text()
+
+    def test_superscripts_and_subscripts_keep_their_position(self):
+        self.assertEqual(
+            self.parse(
+                "<p>B/P &gt; 2 × 10<sup>16</sup> G s<sup>−1</sup> and "
+                "n<sub>e</sub> ~ 10<sup>5</sup> cm<sup>-3</sup>.</p>"
+            ),
+            "B/P > 2 × 10^{16} G s^{−1} and n_{e} ~ 10^{5} cm^{-3}.",
+        )
+
+    def test_empty_and_unclosed_scripts_end_at_their_block(self):
+        self.assertEqual(
+            self.parse("<p>value<sup> </sup> next</p><p>H<sub>2</p><p>tail</p>"),
+            "value next\n\nH_{2}\n\ntail",
+        )
+
+    def test_mathml_contributes_its_tex(self):
+        html = (
+            r'<p>The luminosity is <math alttext="L=3.2\times 10^{42}" display="inline">'
+            r"<semantics><mrow><mi>L</mi><mo>=</mo><mn>3.2</mn></mrow>"
+            r'<annotation encoding="application/x-tex">L=3.2\times 10^{42}</annotation>'
+            r"</semantics></math> erg.</p>"
+        )
+        self.assertEqual(self.parse(html), r"The luminosity is $L=3.2\times 10^{42}$ erg.")
+        annotated = (
+            "<p>Density <math><semantics><msup><mn>10</mn><mn>5</mn></msup>"
+            '<annotation encoding="application/x-tex">10^{5}</annotation>'
+            "</semantics></math>.</p>"
+        )
+        self.assertEqual(self.parse(annotated), "Density $10^{5}$.")
+
+    def test_mathml_without_tex_keeps_scripts_fractions_and_roots(self):
+        html = (
+            "<p>A <math><msup><mn>10</mn><mn>42</mn></msup></math> and "
+            "<math><mfrac><mi>a</mi><mi>b</mi></mfrac></math> and "
+            "<math><msubsup><mi>x</mi><mi>i</mi><mn>2</mn></msubsup></math> and "
+            "<math><msqrt><mi>y</mi></msqrt></math>.</p>"
+        )
+        self.assertEqual(
+            self.parse(html), "A 10^{42} and (a)/(b) and x_{i}^{2} and sqrt(y)."
+        )
+
+    def test_displayed_math_stands_on_its_own_line(self):
+        html = (
+            '<p>Energy</p><math display="block" alttext="E=mc^{2}"><mi>E</mi></math>'
+            "<p>follows.</p>"
+        )
+        self.assertEqual(self.parse(html), "Energy\n\n$$E=mc^{2}$$\n\nfollows.")
+
+    def test_tex_scripts_replace_formula_images(self):
+        html = (
+            r'<p>dispersion of <span><img alt="$-5\sim -3$" role="math"></span>'
+            r'<script type="math/tex">-5\sim -3</script> km s<sup>−1</sup>.</p>'
+            r'<img alt="Equation (1)">'
+            r'<script type="math/tex; mode=display">\frac{d\rho}{dt}=0</script>'
+            "<script>var tracker = 1;</script>"
+        )
+        self.assertEqual(
+            self.parse(html),
+            "dispersion of $-5\\sim -3$ km s^{−1}.\n\n$$\\frac{d\\rho}{dt}=0$$",
+        )
+
+    def test_prose_detection_reads_past_math_markup(self):
+        paragraph = (
+            "We find that $L=3.2\\times 10^{42}$ erg s^{-1} for the burst, and the "
+            "spectrum of the source steepens toward the lower band"
+        )
+        self.assertTrue(fulltext.is_prose(paragraph))
+        self.assertEqual(fulltext.prose_words(paragraph), 19)
+
+    def test_extracted_html_records_its_text_mode(self):
+        text, statistics = fulltext.extract_html(
+            article_html(extra="The field exceeds 2 × 10<sup>16</sup> G.").encode(),
+            "Magnetar bursts",
+        )
+        self.assertEqual(statistics["text_mode"], fulltext.HTML_TEXT_MODE)
+        self.assertIn("2 × 10^{16} G", text)
+
+
+class CachedPreparationTests(unittest.TestCase):
+    identifier = "arXiv:2401.00001"
+
+    def cached_selection(self, cache_root, body, suffix, statistics, title):
+        record_dir = cache_root / fulltext.cache_key(self.identifier)
+        artifact = record_dir / "artifacts" / f"arxiv-preprint-{suffix}-0000.{suffix}"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(body)
+        earlier_text = artifact.with_suffix(".txt")
+        earlier_text.write_text("flattened 2 × 1016 G", encoding="utf-8")
+        manifest_path = record_dir / "manifest-auto-resolver.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "status": "fulltext",
+                    "input": self.identifier,
+                    "normalized_identifier": "2401.00001",
+                    "title": title,
+                    "warnings": ["selected_fulltext_is_preprint"],
+                    "selected": {
+                        "candidate": {
+                            "source": "arxiv",
+                            "version": "preprint",
+                            "format": suffix,
+                            "url": f"https://arxiv.org/{suffix}/2401.00001",
+                            "priority": 10,
+                        },
+                        "actual_format": suffix,
+                        "final_url": f"https://arxiv.org/{suffix}/2401.00001",
+                        "artifact_path": str(artifact),
+                        "text_path": str(earlier_text),
+                        "sha256": fulltext.sha256_file(artifact),
+                        "text_sha256": fulltext.sha256_file(earlier_text),
+                        "content_sha256": fulltext.canonical_text_sha256(
+                            earlier_text.read_text(encoding="utf-8")
+                        ),
+                        "statistics": statistics,
+                        "retrieved_at": "2026-01-01T00:00:00Z",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return manifest_path, earlier_text
+
+    def fetch(self, cache_root):
+        with patch.object(
+            fulltext, "discover", side_effect=AssertionError("network request")
+        ):
+            return fulltext.fetch_one(
+                self.identifier,
+                source="auto",
+                cache_root=cache_root,
+                refresh=False,
+                use_unpaywall=False,
+                timeout=5,
+                max_bytes=10_000_000,
+                environ={},
+            )
+
+    def test_cached_html_from_an_earlier_extraction_is_prepared_again_locally(self):
+        html = article_html(extra="The field exceeds 2 × 10<sup>16</sup> G.")
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_root = Path(temporary)
+            manifest_path, earlier_text = self.cached_selection(
+                cache_root, html.encode(), "html", {"words": 10}, "Magnetar bursts"
+            )
+            result = self.fetch(cache_root)
+            selected = result["selected"]
+            self.assertEqual(selected["statistics"]["text_mode"], fulltext.HTML_TEXT_MODE)
+            self.assertIn(
+                "10^{16}", Path(selected["text_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(selected["retrieved_at"], "2026-01-01T00:00:00Z")
+            self.assertTrue(result["cache_hit"])
+            self.assertIn("text_prepared_again_from_cached_artifact", result["warnings"])
+            self.assertIn("selected_fulltext_is_preprint", result["warnings"])
+            # Earlier text stays in place for manifests that still name it.
+            self.assertEqual(
+                earlier_text.read_text(encoding="utf-8"), "flattened 2 × 1016 G"
+            )
+            self.assertIsNotNone(fulltext.cached_result(manifest_path))
+
+    def test_cached_pdf_from_layout_extraction_is_prepared_again_locally(self):
+        text = "Pulsar timing " + "residuals constrain the binary orbit well " * 60
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_root = Path(temporary)
+            self.cached_selection(
+                cache_root,
+                b"%PDF-1.4 cached article",
+                "pdf",
+                {"extractor": "pdftotext", "pages": 10},
+                "Pulsar timing",
+            )
+            with patch.object(
+                fulltext, "pdf_page_count", return_value=(10, "pdfinfo")
+            ), patch.object(
+                fulltext, "extract_pdf_text", return_value=(text, "pdftotext", None)
+            ) as extract:
+                result = self.fetch(cache_root)
+            extract.assert_called_once()
+            self.assertEqual(result["status"], "fulltext")
+            self.assertEqual(
+                result["selected"]["statistics"]["text_mode"], fulltext.PDF_TEXT_MODE
+            )
+
+    def test_cached_artifact_that_no_longer_validates_is_retrieved_again(self):
+        landing = (
+            "<html><head><title>Magnetar bursts</title></head><body><article>"
+            f"<h1>Magnetar bursts</h1><h2>Abstract</h2><p>{ABSTRACT_TEXT}</p>"
+            "<h2>References</h2></article></body></html>"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_root = Path(temporary)
+            manifest_path, _text = self.cached_selection(
+                cache_root, landing.encode(), "html", {}, "Magnetar bursts"
+            )
+            self.assertIsNone(fulltext.prepare_cached_again(manifest_path, {}))
+            with self.assertRaisesRegex(AssertionError, "network request"):
+                self.fetch(cache_root)
+
+
+DISCOVERED = {
+    "input": "2017ApJ...834..199L",
+    "input_type": "bibcode",
+    "normalized_identifier": "2017ApJ...834..199L",
+    "bibcode": "2017ApJ...834..199L",
+    "title": "Magnetar bursts",
+    "author": ["Lieu, Richard"],
+    "abstract": "A model of fast radio bursts from young magnetars.",
+    "doi": ["10.3847/1538-4357/834/2/199"],
+    "arxiv_ids": [],
+    "property": ["REFEREED"],
+    "doctype": "article",
+    "year": "2017",
+    "pub": "The Astrophysical Journal",
+    "citation_count": None,
+    "read_count": None,
+    "uat": [],
+    "has": [],
+    "volume": "834",
+    "issue": "2",
+    "page": ["199"],
+    "eid": None,
+    "pubdate": "2017-01-00",
+    "requested_format": "auto",
+    "candidates": [],
+    "warnings": [],
+}
+
+
+class ImportTests(unittest.TestCase):
+    def import_file(self, path, root, **kwargs):
+        with patch.object(fulltext, "discover", return_value=dict(DISCOVERED)) as discover:
+            manifest = fulltext.import_local(
+                path,
+                "2017ApJ...834..199L",
+                version=kwargs.pop("version", "published"),
+                source_url=kwargs.pop("source_url", None),
+                cache_root=root / "cache",
+                timeout=5,
+                max_bytes=10_000_000,
+                environ={},
+            )
+        return manifest, discover
+
+    def test_user_supplied_html_becomes_a_full_text_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "Lieu 2017.html"
+            path.write_text(article_html(), encoding="utf-8")
+            manifest, discover = self.import_file(
+                path, root, source_url="https://doi.org/10.3847/1538-4357/834/2/199"
+            )
+            self.assertFalse(discover.call_args.kwargs["find_candidates"])
+            selected = manifest["selected"]
+            self.assertEqual(manifest["status"], "fulltext")
+            self.assertEqual(
+                (selected["candidate"]["source"], selected["candidate"]["version"]),
+                ("user", "published"),
+            )
+            self.assertEqual(
+                selected["final_url"], "https://doi.org/10.3847/1538-4357/834/2/199"
+            )
+            self.assertEqual(manifest["volume"], "834")
+            self.assertIn("user_supplied_artifact", manifest["warnings"])
+            self.assertTrue(Path(manifest["manifest_path"]).is_file())
+            self.assertTrue(Path(selected["text_path"]).is_file())
+            # The local source path stays out of the manifest.
+            self.assertNotIn(json.dumps(str(path))[1:-1], json.dumps(manifest))
+
+    def test_import_checks_the_article_identity_and_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            other = root / "other.html"
+            other.write_text(article_html(title="Solar wind turbulence"), encoding="utf-8")
+            with self.assertRaisesRegex(fulltext.FullTextError, "title"):
+                self.import_file(other, root)
+            with self.assertRaisesRegex(fulltext.FullTextError, "HTTPS"):
+                self.import_file(other, root, source_url="http://example.org/paper")
+            with self.assertRaisesRegex(fulltext.FullTextError, "does not exist"):
+                self.import_file(root / "missing.pdf", root)
+
+    def test_import_command_captures_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "article.html"
+            path.write_text(article_html(), encoding="utf-8")
+            output = io.StringIO()
+            with patch.object(fulltext, "discover", return_value=dict(DISCOVERED)):
+                code = fulltext.run(
+                    [
+                        "import",
+                        str(path),
+                        "--identifier",
+                        "2017ApJ...834..199L",
+                        "--version",
+                        "accepted",
+                        "--cache-dir",
+                        str(root / "cache"),
+                        "--library-dir",
+                        str(root / "library"),
+                    ],
+                    environ={},
+                    stdout=output,
+                )
+            self.assertEqual(code, 0)
+            result = json.loads(output.getvalue())["results"][0]
+            self.assertEqual(result["selected"]["candidate"]["version"], "accepted")
+            self.assertEqual(result["literature"]["status"], "captured")
+            with self.assertRaises(SystemExit), patch("sys.stderr", io.StringIO()):
+                fulltext.build_parser().parse_args(
+                    ["import", str(path), "--identifier", "2017ApJ...834..199L"]
+                )
+
+
+class MetadataFieldTests(unittest.TestCase):
+    def test_full_text_metadata_carries_the_bibliographic_fields_of_search(self):
+        requests = []
+
+        def fake_request(method, path, token, *, query=None, timeout=None, **_kwargs):
+            requests.append(dict(query))
+            body = {
+                "response": {
+                    "docs": [
+                        {
+                            "bibcode": "2017ApJ...834..199L",
+                            "title": ["Magnetar bursts"],
+                            "volume": "834",
+                            "issue": "2",
+                            "page": ["199"],
+                            "eid": "199",
+                            "pubdate": "2017-01-00",
+                        }
+                    ]
+                }
+            }
+            return fulltext.ads_api.ApiResponse(json.dumps(body).encode(), {})
+
+        with patch.object(fulltext.ads_api, "request_api", side_effect=fake_request):
+            discovered = fulltext.discover(
+                "2017ApJ...834..199L",
+                source="auto",
+                use_unpaywall=False,
+                timeout=5,
+                max_bytes=1_000_000,
+                environ={"ADS_API_TOKEN": "test-token"},
+                find_candidates=False,
+            )
+        self.assertEqual(requests[0]["fl"], fulltext.ads_api.DEFAULT_FIELDS)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            {field: discovered[field] for field in ("volume", "issue", "page", "eid", "pubdate")},
+            {"volume": "834", "issue": "2", "page": ["199"], "eid": "199", "pubdate": "2017-01-00"},
+        )
+        self.assertEqual(discovered["candidates"], [])
 
 
 
