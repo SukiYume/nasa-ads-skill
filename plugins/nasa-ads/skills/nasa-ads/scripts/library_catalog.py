@@ -6,8 +6,10 @@ and an explicit pending state until a summary is supplied.
 
 from __future__ import annotations
 
+import html
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -86,6 +88,9 @@ CREATE TABLE IF NOT EXISTS version_labels (
 """
 
 WRITING_ROLES = ("review", "intro", "methods", "discussion", "comparison")
+READABLE_ARTICLE_STATUSES = ("fulltext", "needs_visual_reading")
+MARKUP_TAG_PATTERN = re.compile(r"</?[A-Za-z][^<>]*>")
+DASH_PATTERN = re.compile("--+|[" + chr(0x2010) + "-" + chr(0x2015) + chr(0x2212) + "]")
 
 
 def db():
@@ -139,12 +144,16 @@ def summary_source(snapshot: dict[str, Any]) -> dict[str, Any]:
     """The source content an agent-authored summary paraphrases.
 
     A summary rests on the title and abstract, so it stays valid when a later
-    snapshot changes only bibliographic locators such as volume, page, or date.
-    A metadata-only identity summary also names the authors and venue.
+    snapshot changes only bibliographic locators such as volume, page, or date,
+    or carries the same text with other markup: character entities, inline tags,
+    or dash styles. A metadata-only identity summary also names the authors and venue.
     """
 
     def text(value: Any) -> str:
-        return " ".join(str(fulltext.first_value(value) or "").split()).casefold()
+        plain = html.unescape(str(fulltext.first_value(value) or ""))
+        plain = MARKUP_TAG_PATTERN.sub("", plain)
+        plain = DASH_PATTERN.sub("-", plain)
+        return " ".join(plain.split()).casefold()
 
     source: dict[str, Any] = {
         "title": text(snapshot.get("title")),
@@ -386,27 +395,91 @@ def capture_search(
             )
             library.reindex_paper_documents(connection, paper_id)
     unique = list({item["paper_id"]: item for item in captured}.values())
+    report = completion_report(connection, run_id=run_id)
+    owed = []
+    if report["pending_summaries"]:
+        owed.append(
+            f"Author the pending source summaries ({report['pending_summaries']}): "
+            f"pending --run-id {run_id}, then summarize."
+        )
+    if report["uncategorized"]:
+        owed.append(
+            f"Assign a topic to each paper without one ({report['uncategorized']}) "
+            "through summarize collections, annotate, or organize."
+        )
+    for article in report["needs_reading"]:
+        owed.append(
+            f"Read {article['identifier']} in full and ingest its digest: ingest "
+            f"--manifest \"{article['manifest_path']}\" --digest <digest.json>."
+        )
+    if owed:
+        owed.append(f"Confirm with check --run-id {run_id} before answering.")
     return {
         "status": "captured",
         "run_id": run_id,
         "captured": len(unique),
-        "pending_summaries": sum(
-            item["summary_status"] == "pending" for item in unique
-        ),
+        "pending_summaries": report["pending_summaries"],
         "reused_summaries": sum(
             item["summary_status"] == "complete" for item in unique
         ),
-        "uncategorized": completion_report(connection, run_id=run_id)["uncategorized"],
+        "uncategorized": report["uncategorized"],
+        "unread_articles": report["unread_articles"],
+        "owed": owed,
         "records": unique,
     }
 
 
-def pending_summaries(connection, *, run_id=None, limit=50, offset=0) -> dict:
-    where = "WHERE b.summary = ''"
-    params = []
+def run_scope(run_id=None, since=None) -> tuple[str, list]:
+    """SQL condition on ``h.run_id`` for one run, the runs since a time, or all runs."""
     if run_id is not None:
-        where += " AND EXISTS (SELECT 1 FROM search_hits h WHERE h.brief_id = b.id AND h.run_id = ?)"
-        params.append(run_id)
+        return "h.run_id = ?", [run_id]
+    if since is not None:
+        return (
+            "h.run_id IN (SELECT id FROM search_runs WHERE created_at >= ?)",
+            [since],
+        )
+    return "", []
+
+
+def unread_articles(connection, *, run_id=None, since=None) -> list[dict]:
+    """Papers whose article a fetch or import prepared and no complete digest covers."""
+    condition, params = run_scope(run_id, since)
+    rows = connection.execute(
+        "SELECT r.id AS run_id, r.parameters_json, p.id, p.bibcode, p.canonical_key, p.title "
+        "FROM search_runs r JOIN search_hits h ON h.run_id = r.id "
+        "JOIN papers p ON p.id = h.paper_id "
+        "WHERE r.parameters_json LIKE '%\"article_status\"%' "
+        + (f"AND {condition} " if condition else "")
+        + "AND NOT EXISTS (SELECT 1 FROM versions v JOIN digests d ON d.version_id = v.id "
+        "WHERE v.paper_id = p.id AND d.reading_status IN ('full', 'visual')) "
+        "ORDER BY r.id",
+        params,
+    )
+    unread: dict[int, dict] = {}
+    for row in rows:
+        parameters = json.loads(row["parameters_json"])
+        if parameters.get("article_status") in READABLE_ARTICLE_STATUSES:
+            unread[row["id"]] = {
+                "paper_id": row["id"],
+                "identifier": row["bibcode"] or row["canonical_key"].split(":", 1)[1],
+                "title": row["title"],
+                "run_id": row["run_id"],
+                "article_status": parameters["article_status"],
+                "manifest_path": parameters.get("manifest_path"),
+            }
+    return list(unread.values())
+
+
+def pending_summaries(
+    connection, *, run_id=None, since=None, limit=50, offset=0
+) -> dict:
+    where = "WHERE b.summary = ''"
+    condition, params = run_scope(run_id, since)
+    if condition:
+        where += (
+            " AND EXISTS (SELECT 1 FROM search_hits h WHERE h.brief_id = b.id "
+            f"AND {condition})"
+        )
     total = connection.execute(
         f"SELECT COUNT(*) FROM briefs b {where}", params
     ).fetchone()[0]
@@ -529,8 +602,8 @@ def summarize(connection, raw: Any) -> dict:
     return {"status": "summarized", "count": len(prepared), "reused": reused}
 
 
-def completion_report(connection, *, run_id=None) -> dict:
-    """Report both authorship and organization before a research task is complete."""
+def completion_report(connection, *, run_id=None, recent_hours=None) -> dict:
+    """Report authorship, organization, and reading owed by one run, recent runs, or all."""
     if (
         run_id is not None
         and not connection.execute(
@@ -538,12 +611,19 @@ def completion_report(connection, *, run_id=None) -> dict:
         ).fetchone()
     ):
         raise db().LiteratureError("Unknown search run.", 2)
-    pending = pending_summaries(connection, run_id=run_id, limit=0)["count"]
-    where = ""
-    params = ()
-    if run_id is not None:
-        where = "WHERE EXISTS (SELECT 1 FROM search_hits h WHERE h.paper_id = p.id AND h.run_id = ?)"
-        params = (run_id,)
+    since = None
+    if run_id is None and recent_hours is not None:
+        since = (
+            datetime.now(timezone.utc) - timedelta(hours=recent_hours)
+        ).isoformat().replace("+00:00", "Z")
+    pending = pending_summaries(connection, run_id=run_id, since=since, limit=0)["count"]
+    unread = unread_articles(connection, run_id=run_id, since=since)
+    condition, params = run_scope(run_id, since)
+    where = (
+        f"WHERE EXISTS (SELECT 1 FROM search_hits h WHERE h.paper_id = p.id AND {condition})"
+        if condition
+        else ""
+    )
     papers = connection.execute(
         "SELECT p.id, p.bibcode, p.canonical_key, p.title FROM papers p "
         + where
@@ -562,11 +642,13 @@ def completion_report(connection, *, run_id=None) -> dict:
         ).fetchone()
     ]
     return {
-        "status": "complete" if not pending and not uncategorized else "incomplete",
+        "status": "incomplete" if pending or uncategorized or unread else "complete",
         "papers": len(papers),
         "pending_summaries": pending,
         "uncategorized": len(uncategorized),
+        "unread_articles": len(unread),
         "needs_classification": uncategorized,
+        "needs_reading": unread,
     }
 
 
@@ -1111,9 +1193,17 @@ def add_parser_commands(subparsers):
     pending.add_argument("--limit", type=ads_api.positive_int, default=50)
     pending.add_argument("--offset", type=ads_api.nonnegative_int, default=0)
     check = subparsers.add_parser(
-        "check", help="check summary and topic classification completion"
+        "check",
+        help="check summaries, topics, and reading owed by captured searches and fetches",
     )
-    check.add_argument("--run-id", type=ads_api.positive_int)
+    check_scope = check.add_mutually_exclusive_group()
+    check_scope.add_argument("--run-id", type=ads_api.positive_int)
+    check_scope.add_argument(
+        "--recent",
+        type=ads_api.positive_int,
+        metavar="HOURS",
+        help="cover every search and fetch captured in the last HOURS hours",
+    )
     reading = subparsers.add_parser(
         "reading-check", help="verify full reading, artifact integrity, and topics for a refined list"
     )
@@ -1192,7 +1282,9 @@ def execute_command(args, connection, fts5, library_dir, environ, stdin):
     if args.command == "summarize":
         return summarize(connection, library.load_json(args.summaries, stdin))
     if args.command == "check":
-        return completion_report(connection, run_id=args.run_id)
+        return completion_report(
+            connection, run_id=args.run_id, recent_hours=args.recent
+        )
     if args.command == "reading-check":
         identifiers = list(args.identifiers)
         if args.identifiers_file:

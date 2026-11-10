@@ -26,10 +26,11 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 DATABASE_SCHEMA_VERSION = 4
 DIGEST_SCHEMA_VERSION = 4
 DIGEST_REQUIRED_FIELDS = ("schema_version", "language", "facets", "reading")
+DIGEST_LANGUAGE = "zh-CN"
 DIGEST_LIST_FIELDS = (
     "keywords",
     "entities",
@@ -437,6 +438,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="new backup directory; defaults to a timestamped sibling backup",
     )
     subparsers.add_parser("reindex", help="rebuild the local search index")
+    subparsers.add_parser(
+        "compact", help="return the space of removed records to the file system"
+    )
     migrate = subparsers.add_parser(
         "migrate",
         help="back up a library from the previous release and convert it to this release",
@@ -1216,6 +1220,48 @@ def validate_digest(
     return digest
 
 
+def require_chinese_digest(digest: Mapping[str, Any]) -> None:
+    """Authored digests are written in Chinese so one library reads in one language."""
+    if digest["language"] != DIGEST_LANGUAGE:
+        raise LiteratureError(
+            f"digest.language must be {DIGEST_LANGUAGE}; write the prose fields in "
+            "Chinese and keep quotes, names, symbols, and units as the article prints them.",
+            2,
+        )
+    prose: list[tuple[str, str]] = [
+        (f"overview.{field}", digest["overview"].get(field, ""))
+        for field in ("tldr", "summary")
+    ]
+    prose += [
+        (f"overview.questions[{index}]", question)
+        for index, question in enumerate(digest["overview"].get("questions", []))
+    ]
+    for layer in ("datasets", "methods"):
+        prose += [
+            (f"{layer}[{index}].description", record.get("description", ""))
+            for index, record in enumerate(digest[layer])
+        ]
+    for index, facet in enumerate(digest["facets"]):
+        prose.append((f"facets[{index}].summary", facet["summary"]))
+    prose += [
+        (f"finding {identifier}", finding["statement"])
+        for identifier, _facet, finding in iter_findings(digest)
+    ]
+    prose += [
+        (f"reading.sections[{index}].gist", section.get("gist", ""))
+        for index, section in enumerate(digest["reading"]["sections"])
+    ]
+    for field in ("global_limitations", "assessment"):
+        prose += [
+            (f"{field}[{index}]", text) for index, text in enumerate(digest[field])
+        ]
+    foreign = [path for path, text in prose if text and not contains_cjk(text)]
+    if foreign:
+        raise LiteratureError(
+            "Write these digest fields in Chinese: " + listed_ids(foreign) + ".", 2
+        )
+
+
 def finding_id(facet_key: str, index: int) -> str:
     """Stable reference to the ``index``-th (zero-based) finding of a facet."""
     return f"{facet_key}.{index + 1}"
@@ -1230,14 +1276,17 @@ def iter_findings(
 
 
 STATEMENT_REFERENCE_PATTERN = re.compile(
-    r"\b(?:FRB|PSR|SGR|GRB|AT|SN|XTE|GW|J|B)\s?\d[\w.+-]*"
+    r"\b(?:FRB|PSR|SGR|GRB|AT|SN|XTE|GW|J|B|AR|Abell|NGC|IC|UGC|HD|Mrk)\s?\d[\w.+-]*"
     r"|\b(?:19|20)\d{2}[a-z]?\b"
     r"|\b(?:fig(?:ure)?s?|tab(?:le)?s?|sect(?:ion)?s?|eqs?|equations?|appendix|"
-    r"chapter|paper|model|case|run|component)\.?\s*\(?[a-z]?\d[\d.]*",
+    r"chapter|paper|model|case|run|component|stage|phase|step)\.?\s*\(?[a-z]?\d[\d.]*"
+    r"|(?:图|表|式|公式|方程|附录|节|章|模型|情形|成分|阶段|步骤)\s*\(?[A-Za-z]?\d[\d.]*"
+    r"|第\s*\d+",
     re.IGNORECASE,
 )
-# A digit right after a comma is a subscript such as \u03a0_L,0, not a reported number.
-STATEMENT_NUMBER_PATTERN = re.compile(r"(?<![\w.,])[-+\u2212]?\d+(?:\.\d+)?")
+# A digit right after a comma is a subscript, and one right after an operator belongs
+# to an expression such as a slope plus one; neither is a reported number.
+STATEMENT_NUMBER_PATTERN = re.compile(r"(?<![\w.,+\-^_*/])[-+\u2212]?\d+(?:\.\d+)?")
 RANGE_TEXT_PATTERN = re.compile(
     r"\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*(?:-|\u2013|\u2014|to|~)\s*"
     r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*"
@@ -5007,6 +5056,24 @@ def rebuild_index(connection: sqlite3.Connection, fts5: bool) -> dict[str, Any]:
     return {"status": "rebuilt", "documents": len(rows), "fts5": fts5}
 
 
+def compact_library(connection: sqlite3.Connection, library_dir: Path) -> dict[str, Any]:
+    """Rewrite the database file without the pages that removed records left free."""
+    database = library_dir / "literature.sqlite3"
+    before = database.stat().st_size
+    connection.execute("VACUUM")
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
+    after = database.stat().st_size
+    return {
+        "status": "compacted",
+        "database_path": str(database),
+        "bytes_before": before,
+        "bytes_after": after,
+        "bytes_freed": before - after,
+        "integrity": integrity,
+    }
+
+
 def execute(
     args: argparse.Namespace,
     *,
@@ -5019,6 +5086,7 @@ def execute(
         return 0
     if args.command == "validate-digest":
         digest = validate_digest(load_json(args.digest, stdin))
+        require_chinese_digest(digest)
         anchors = None
         if args.text:
             text_path = Path(args.text).expanduser()
@@ -5104,7 +5172,8 @@ def execute(
         elif args.command == "ingest":
             manifest_payload = load_json(args.manifest, stdin)
             manifest = select_manifest_result(manifest_payload, args.identifier)
-            digest = load_json(args.digest, stdin)
+            digest = validate_digest(load_json(args.digest, stdin))
+            require_chinese_digest(digest)
             result = ingest_record(
                 connection,
                 fts5,
@@ -5241,6 +5310,8 @@ def execute(
             )
         elif args.command == "reindex":
             result = rebuild_index(connection, fts5)
+        elif args.command == "compact":
+            result = compact_library(connection, library_dir)
         else:
             result = library_catalog.execute_command(
                 args, connection, fts5, library_dir, environ, stdin

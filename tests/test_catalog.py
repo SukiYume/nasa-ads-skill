@@ -94,6 +94,106 @@ class CatalogTests(unittest.TestCase):
             result["version_id"],
         )
 
+    def test_fetched_article_stays_owed_until_its_digest_is_ingested(self):
+        def fetch_run(status):
+            return catalog.capture_search(
+                self.connection,
+                self.fts,
+                {"response": {"numFound": 1, "docs": [source_record()]}},
+                query="2023ApJ...955..142Z",
+                parameters={
+                    "command": "fulltext",
+                    "article_status": status,
+                    "manifest_path": "cache/manifest.json",
+                },
+                collections=["FRB/Polarization"],
+                refresh_metadata=False,
+            )
+
+        abstract_only = fetch_run("abstract_only")
+        self.assertEqual(abstract_only["unread_articles"], 0)
+        self.assertFalse(any("ingest" in step for step in abstract_only["owed"]))
+
+        fetched = fetch_run("fulltext")
+        self.assertEqual(fetched["unread_articles"], 1)
+        self.assertTrue(
+            any('ingest --manifest "cache/manifest.json"' in step for step in fetched["owed"])
+        )
+        self.assertIn(f"check --run-id {fetched['run_id']}", fetched["owed"][-1])
+        report = catalog.completion_report(self.connection, run_id=fetched["run_id"])
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(
+            [item["identifier"] for item in report["needs_reading"]],
+            ["2023ApJ...955..142Z"],
+        )
+        earlier = catalog.completion_report(
+            self.connection, run_id=abstract_only["run_id"]
+        )
+        self.assertEqual(earlier["unread_articles"], 0)
+        self.assertEqual(
+            catalog.completion_report(self.connection, recent_hours=1)["unread_articles"],
+            1,
+        )
+        self.assertEqual(
+            catalog.completion_report(self.connection)["unread_articles"], 1
+        )
+        output = io.StringIO()
+        self.assertEqual(
+            lib.run(
+                ["--library-dir", str(self.library), "check", "--recent", "1"],
+                stdout=output,
+            ),
+            1,
+        )
+        self.assertEqual(json.loads(output.getvalue())["unread_articles"], 1)
+
+        self.ingest()
+        report = catalog.completion_report(self.connection, run_id=fetched["run_id"])
+        self.assertEqual((report["unread_articles"], report["needs_reading"]), (0, []))
+
+    def test_recent_check_covers_only_runs_inside_the_window(self):
+        result = self.capture()
+        self.connection.execute(
+            "UPDATE search_runs SET created_at = '2020-01-01T00:00:00Z' WHERE id = ?",
+            (result["run_id"],),
+        )
+        self.connection.commit()
+        recent = catalog.completion_report(self.connection, recent_hours=24)
+        self.assertEqual(
+            (recent["status"], recent["papers"], recent["pending_summaries"]),
+            ("complete", 0, 0),
+        )
+        self.assertEqual(
+            catalog.completion_report(self.connection)["pending_summaries"], 1
+        )
+        self.assertTrue(any("pending --run-id" in step for step in result["owed"]))
+
+    def test_summary_survives_markup_changes_in_the_same_abstract(self):
+        first = source_record()
+        first["abstract"] = "Fluxes > 1 mJy in the T–T plots of H ii regions."
+        result = self.capture([first])
+        record = result["records"][0]
+        catalog.summarize(
+            self.connection,
+            [
+                {
+                    "identifier": record["identifier"],
+                    "source_hash": record["source_hash"],
+                    "summary": "A source-grounded summary.",
+                }
+            ],
+        )
+        second = source_record()
+        second["abstract"] = "Fluxes &gt; 1 mJy in the <i>T</i>--T plots of H II regions."
+        again = self.capture([second])
+        self.assertEqual((again["pending_summaries"], again["reused_summaries"]), (0, 1))
+        self.assertEqual(
+            again["records"][0]["summary_reused_from"], record["source_hash"]
+        )
+        third = source_record()
+        third["abstract"] = "Fluxes > 2 mJy in the T-T plots of H II regions."
+        self.assertEqual(self.capture([third])["pending_summaries"], 1)
+
     def test_completion_requires_summary_and_classification(self):
         result = self.capture()
         record = result["records"][0]

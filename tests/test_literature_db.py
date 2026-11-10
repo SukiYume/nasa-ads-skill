@@ -245,6 +245,34 @@ def legacy_digest() -> dict:
     return digest
 
 
+def in_chinese(digest: dict) -> dict:
+    """Mark the fixture's prose as Chinese, as the authoring commands require."""
+
+    def mark(text: str) -> str:
+        return "中文：" + text
+
+    digest["language"] = "zh-CN"
+    overview = digest.get("overview", {})
+    for field in ("tldr", "summary"):
+        if overview.get(field):
+            overview[field] = mark(overview[field])
+    overview["questions"] = [mark(item) for item in overview.get("questions", [])]
+    for layer in ("datasets", "methods"):
+        for record in digest.get(layer, []):
+            if record.get("description"):
+                record["description"] = mark(record["description"])
+    for facet in digest["facets"]:
+        facet["summary"] = mark(facet["summary"])
+        for finding in facet["findings"]:
+            finding["statement"] = mark(finding["statement"])
+    for section in digest["reading"]["sections"]:
+        if isinstance(section, dict) and section.get("gist"):
+            section["gist"] = mark(section["gist"])
+    for field in ("global_limitations", "assessment"):
+        digest[field] = [mark(item) for item in digest.get(field, [])]
+    return digest
+
+
 def current_digest(*, facets: list[dict] | None = None) -> dict:
     """The shared fixture with an assessment, mixed statuses, and a limitation."""
     digest = sample_digest(facets=facets)
@@ -719,6 +747,30 @@ class DigestSchemaFourTests(unittest.TestCase):
             )
         ]
         self.assertIn("facets", paths)
+
+    def test_labels_and_expressions_are_not_numbers_left_in_prose(self):
+        digest = current_digest()
+        findings = digest["facets"][1]["findings"]
+
+        def flagged(statement):
+            findings[0]["statement"] = statement
+            findings[0].pop("values", None)
+            return "facets[1].findings[0]" in [
+                warning["path"]
+                for warning in literature_db.digest_warnings(
+                    literature_db.validate_digest(json.loads(json.dumps(digest)))
+                )
+            ]
+
+        for statement in (
+            "式 2 的折断幂律拟合累计分布，图 3 给出结果。",
+            "第 3 阶段没有硬 X 射线对应体，耀斑主要来自 AR 12241。",
+            "Abell 370 相对标度关系偏暗；高能渐近斜率为 β+1。",
+            "Stage 3 lacks a hard X-ray counterpart.",
+        ):
+            self.assertFalse(flagged(statement), statement)
+        self.assertTrue(flagged("平均 RM 为 -411 rad/m2。"))
+        self.assertTrue(flagged("上限为 6%（1652 个爆发）。"))
 
     def test_warnings_flag_numbers_left_in_prose(self):
         digest = current_digest()
@@ -2311,7 +2363,7 @@ class PassageTests(unittest.TestCase):
         digest = current_digest()
         digest["facets"][1]["findings"][0]["quote"] = "a sentence the paper never wrote"
         digest_path = self.root / "digest.json"
-        digest_path.write_text(json.dumps(digest), encoding="utf-8")
+        digest_path.write_text(json.dumps(in_chinese(digest)), encoding="utf-8")
         output = io.StringIO()
         code = literature_db.run(
             [
@@ -2620,7 +2672,9 @@ class CliTests(unittest.TestCase):
             self.assertFalse((Path(temporary) / "literature.sqlite3").exists())
 
             digest_path = Path(temporary) / "digest.json"
-            digest_path.write_text(json.dumps(sample_digest()), encoding="utf-8")
+            digest_path.write_text(
+                json.dumps(in_chinese(sample_digest())), encoding="utf-8"
+            )
             output = io.StringIO()
             code = literature_db.run(
                 ["--library-dir", temporary, "validate-digest", str(digest_path)],
@@ -2629,6 +2683,96 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(json.loads(output.getvalue())["status"], "valid")
             self.assertFalse((Path(temporary) / "literature.sqlite3").exists())
+
+    def test_authoring_commands_require_chinese_digests(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            english = sample_digest()
+            mislabeled = in_chinese(sample_digest())
+            mislabeled["language"] = "en"
+            for name, digest, message in (
+                ("english", english, "finding activity-event-rate.1"),
+                ("mislabeled", mislabeled, "digest.language must be zh-CN"),
+            ):
+                digest_path = root / f"{name}.json"
+                digest_path.write_text(json.dumps(digest), encoding="utf-8")
+                stderr = io.StringIO()
+                code = literature_db.run(
+                    ["validate-digest", str(digest_path)],
+                    stdout=io.StringIO(),
+                    stderr=stderr,
+                )
+                self.assertEqual(code, 2)
+                self.assertIn(message, stderr.getvalue())
+
+            source = root / "source"
+            source.mkdir()
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(sample_manifest(source)), encoding="utf-8"
+            )
+            library = root / "library"
+            stderr = io.StringIO()
+            code = literature_db.run(
+                [
+                    "--library-dir",
+                    str(library),
+                    "ingest",
+                    "--manifest",
+                    str(manifest_path),
+                    "--digest",
+                    str(root / "english.json"),
+                ],
+                stdout=io.StringIO(),
+                stderr=stderr,
+            )
+            self.assertEqual(code, 2)
+            self.assertIn("in Chinese", stderr.getvalue())
+
+            chinese_path = root / "chinese.json"
+            chinese_path.write_text(
+                json.dumps(in_chinese(sample_digest())), encoding="utf-8"
+            )
+            output = io.StringIO()
+            code = literature_db.run(
+                [
+                    "--library-dir",
+                    str(library),
+                    "ingest",
+                    "--manifest",
+                    str(manifest_path),
+                    "--digest",
+                    str(chinese_path),
+                ],
+                stdout=output,
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.getvalue())["status"], "ingested")
+
+    def test_compact_returns_freed_pages_and_keeps_the_library_intact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            library = Path(temporary) / "library"
+            connection, _fts5 = literature_db.connect_library(library)
+            with connection:
+                connection.execute("CREATE TABLE filler(body TEXT)")
+                connection.executemany(
+                    "INSERT INTO filler VALUES (?)", [("x" * 4000,)] * 500
+                )
+            with connection:
+                connection.execute("DROP TABLE filler")
+            connection.close()
+            output = io.StringIO()
+            code = literature_db.run(
+                ["--library-dir", str(library), "compact"], stdout=output
+            )
+            self.assertEqual(code, 0)
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["status"], "compacted")
+            self.assertEqual(report["integrity"], ["ok"])
+            self.assertGreater(report["bytes_freed"], 1_000_000)
+            self.assertEqual(
+                report["bytes_after"], (library / "literature.sqlite3").stat().st_size
+            )
 
     def test_audit_uses_a_read_only_database_connection(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -2679,7 +2823,7 @@ class CliTests(unittest.TestCase):
             digest = current_digest()
             digest["facets"][1]["findings"][0]["statement"] = "About 40 percent reverse sign."
             digest_path = Path(temporary) / "digest.json"
-            digest_path.write_text(json.dumps(digest), encoding="utf-8")
+            digest_path.write_text(json.dumps(in_chinese(digest)), encoding="utf-8")
             output = io.StringIO()
             code = literature_db.run(
                 ["--library-dir", temporary, "validate-digest", str(digest_path)],

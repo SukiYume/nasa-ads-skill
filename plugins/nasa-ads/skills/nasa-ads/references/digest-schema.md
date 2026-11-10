@@ -41,7 +41,7 @@ The stored article keeps background restated from other work (unless the paper a
 
 Merge statements that a manuscript would always cite together, and separate a measurement from the authors' interpretation of it. A statement takes one or two sentences. As a calibration, a letter yields about 4–10 findings, a research article 10–25, and a long survey or review up to about 40; values cover headline numbers and usually number zero to three per finding. Depth follows the paper's evidence structure, and the schema has no domain vocabulary or quota.
 
-Prose fields (tldr, summaries, gists, statements, descriptions, and assessment) use the digest `language`. Quantity names, symbols, units, model names, and dataset, method, and entity names keep the article's own terminology, usually English, so queries match across digest languages. The overview describes the paper's own contribution and limits, so the digest stays meaningful across projects.
+Digests are written in Chinese: `language` is `zh-CN`, and the prose fields (tldr, summaries, questions, gists, statements, descriptions, limitations, and assessment) are Chinese, so one library reads in one language. `validate-digest` and `ingest` reject another `language` and list the prose fields without Chinese. Quotes stay verbatim, and quantity names, symbols, units, model names, and dataset, method, and entity names keep the article's own terminology, usually English, so queries match the literature. The overview describes the paper's own contribution and limits, so the digest stays meaningful across projects.
 
 ## Template
 
@@ -64,7 +64,7 @@ A `locator` object names at least one of `section`, `page`, `figure`, `table`, `
 
 ## Facets and Findings
 
-A facet groups the findings that answer one future scientific question with a distinguishable evidence chain: a distinct observable, population, regime, mechanism, prediction family, or method validation. Derive facets from the article. A facet has a lowercase ASCII slug `key`, a `label`, a one-sentence `summary`, and its `findings`; `aliases`, `keywords`, and `methods` (names of `methods` entries) are optional retrieval aids. Labels and summaries can be multilingual.
+A facet groups the findings that answer one future scientific question with a distinguishable evidence chain: a distinct observable, population, regime, mechanism, prediction family, or method validation. Derive facets from the article. A facet has a lowercase ASCII slug `key`, a `label`, a one-sentence `summary`, and its `findings`; `aliases`, `keywords`, and `methods` (names of `methods` entries) are optional retrieval aids. A label can pair the Chinese name with the article's English term, and aliases carry the English forms a later query would use.
 
 Each finding records one citable result:
 

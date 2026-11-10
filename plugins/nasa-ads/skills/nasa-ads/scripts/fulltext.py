@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -2510,6 +2510,8 @@ def execute(
                         "version": args.version,
                         "format": result["selected"]["actual_format"],
                     }
+                parameters["article_status"] = result.get("status")
+                parameters["manifest_path"] = result.get("manifest_path")
                 if not args.no_store and capture_manifest(
                     result, identifier, parameters, args.library_dir, environ
                 ):

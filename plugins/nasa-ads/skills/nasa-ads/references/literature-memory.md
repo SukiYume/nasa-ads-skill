@@ -37,7 +37,7 @@ An empty retained set needs no capture. Exact metadata retrieval for already sel
 
 ## Automatic Capture and Summary Completion
 
-`ads_api.py search`, `ads_api.py bigquery`, and `fulltext.py fetch` capture their returned records by default. The output adds a `literature` object with `run_id`, `captured`, `pending_summaries`, `reused_summaries`, and source hashes. Capture never writes summaries; the agent authors them from the stored source:
+`ads_api.py search`, `ads_api.py bigquery`, and `fulltext.py fetch` capture their returned records by default. The output adds a `literature` object with `run_id`, `captured`, `pending_summaries`, `reused_summaries`, `unread_articles`, source hashes, and `owed`, the steps this run still needs: source summaries, topics, and the full reading of a fetched article. An empty `owed` means the run is complete. Capture never writes summaries; the agent authors them from the stored source:
 
 ```bash
 pending --run-id <id>
@@ -63,15 +63,16 @@ For each entry, paraphrase the question, approach, result, and relevance support
 
 `identifier`, `source_hash`, and `summary` are required. Supply `collections` here or keep existing memberships; every paper needs a topic before the task is complete. Keywords also become tags, and notes are appended. Repeating the same summary is idempotent; a different summary for the same source is rejected to protect earlier work.
 
-A summary rests on the title and abstract. A new snapshot of the same paper with the same title and abstract, such as the full-text fetch of a captured search record or a publication update that changes only volume and pages, reuses the earlier summary; capture counts it under `reused_summaries` and names the source in `summary_reused_from`. `summarize` fills pending snapshots of the same title and abstract the same way and reports them as `reused`. Records without an abstract also need the same authors, venue, year, and document type.
+A summary rests on the title and abstract. A new snapshot of the same paper with the same title and abstract, such as the full-text fetch of a captured search record, a publication update that changes only volume and pages, or the same abstract with other character entities, inline tags, or dash styles, reuses the earlier summary; capture counts it under `reused_summaries` and names the source in `summary_reused_from`. `summarize` fills pending snapshots of the same title and abstract the same way and reports them as `reused`. Records without an abstract also need the same authors, venue, year, and document type.
 
 ```bash
 summarize --summaries "<summaries.json>"
 check --run-id <id>
+check --recent 12
 runs
 ```
 
-`pending` pages with `--limit` and `--offset`; without `--run-id` it lists every unfinished snapshot, including historical ones. `check --run-id` exits 1 and reports `needs_classification` while summaries or topics remain. `runs` lists query parameters, retrieval counts, and remaining summaries. Capture commits each batch atomically; `capture --results <response-or-manifest.json>` recovers from a saved SciX response or full-text manifest.
+`pending` pages with `--limit` and `--offset`; without `--run-id` it lists every unfinished snapshot, including historical ones. `check` exits 1 while its scope has pending summaries, papers without a topic (`needs_classification`), or articles that a fetch or import prepared and no complete digest covers (`needs_reading`, with each `manifest_path`). `--run-id` covers one run; `--recent <hours>` covers every search and fetch captured within that window, so one command closes a task; plain `check` covers the whole library. `runs` lists query parameters, retrieval counts, and remaining summaries. Capture commits each batch atomically; `capture --results <response-or-manifest.json>` recovers from a saved SciX response or full-text manifest.
 
 ## Local Lookup and Reading
 

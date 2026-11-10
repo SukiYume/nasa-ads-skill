@@ -34,7 +34,7 @@ Reference responsibilities:
 | `fulltext.md` | Lawful retrieval, import of user-supplied copies, manifest states, prepared text, reading procedure |
 | `digest-schema.md` | What a digest retains, layers and vocabularies, values, validation warnings, ingest, merge |
 | `literature-memory.md` | Capture, summaries, lookup, stored passages, search, `findings`, `parameters`, classification, citations, Web library |
-| `library-maintenance.md` | Audit, backup, restore, identity merges, metadata refresh |
+| `library-maintenance.md` | Audit, backup, restore, identity merges, metadata refresh, compaction |
 | `libraries.md` | Remote SciX account libraries |
 | `http-fallback.md` | Direct HTTP rules and clients |
 

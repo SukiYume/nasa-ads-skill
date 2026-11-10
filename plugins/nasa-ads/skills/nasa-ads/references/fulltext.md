@@ -32,7 +32,7 @@ Useful options:
 
 `--format auto` selects validated structured HTML within the best available version and falls back to PDF. Use `--format pdf` for equations, figures, tables, pagination, or visual review. Explicit format requests validate the response format.
 
-Fetch captures available article metadata and abstracts by default, including an abstract-only result. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
+Fetch captures available article metadata and abstracts by default, including an abstract-only result. Each result's `literature.owed` lists what the paper still needs: its source summary, a topic, and, for a prepared article without a complete digest, the full reading and `ingest` with that manifest. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`; `check` keeps reporting the fetch under `needs_reading` until the digest is ingested. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
 
 After a text-bearing fetch, inventory the article structure:
 

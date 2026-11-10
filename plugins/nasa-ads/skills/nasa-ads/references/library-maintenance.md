@@ -1,6 +1,6 @@
 # Library Maintenance
 
-Load this reference for health checks, backup and restore, metadata refresh, duplicate identities, digest conflicts, citation-cache import, and index rebuilds. Destructive and whole-library work follows the write scope in [Core Invariants](../SKILL.md#core-invariants). Commands run `python3 "<skill-dir>/scripts/literature_db.py" [--library-dir <dir>] <subcommand>`.
+Load this reference for health checks, backup and restore, metadata refresh, duplicate identities, digest conflicts, citation-cache import, index rebuilds, and compaction. Destructive and whole-library work follows the write scope in [Core Invariants](../SKILL.md#core-invariants). Commands run `python3 "<skill-dir>/scripts/literature_db.py" [--library-dir <dir>] <subcommand>`.
 
 ## Health Checks
 
@@ -13,7 +13,7 @@ check
 
 `lookup`, `passage`, `show`, `search`, `findings`, `parameters`, `list`, `stats`, `pending`, `check`, `reading-check`, `runs`, plain `collections`, offline `citations`, Web requests, and `audit` use read-only connections, and reads of a missing library create no files. `audit` and `backup` require an existing database.
 
-`audit` checks SQLite integrity, foreign keys, digest validity, complete reading state, search-index parity, primary and historical objects and their hashes, paper metadata, source-snapshot hashes and evidence levels, historical pending summaries, topic assignments, and missing citation caches. An unhealthy audit exits nonzero; `--skip-hashes` gives a faster structural pass. Some document types and unindexed publications legitimately lack metadata fields, so verify reported gaps against the source. Plain `check` reports unfinished summaries and topics across the whole library.
+`audit` checks SQLite integrity, foreign keys, digest validity, complete reading state, search-index parity, primary and historical objects and their hashes, paper metadata, source-snapshot hashes and evidence levels, historical pending summaries, topic assignments, and missing citation caches. An unhealthy audit exits nonzero; `--skip-hashes` gives a faster structural pass. Some document types and unindexed publications legitimately lack metadata fields, so verify reported gaps against the source. Plain `check` reports unfinished summaries, topics, and fetched articles without a digest across the whole library.
 
 ## Backup and Restore
 
@@ -69,6 +69,6 @@ migrate --destination "<new backup directory>"
 
 `migrate` converts every digest in memory first and stops without changes if any record fails. It then writes a verified backup, rebuilds the digest table and the search index, and compacts the database. Earlier records keep their content: significance joins the summary, the first summary sentence becomes the tldr, separate dataset and method fields join their descriptions, coverage records give way to section headings, and facet-level limitations join `global_limitations`. Value statuses, entity and dataset types, and study types that a record left unclassified are assigned by rule, and the record's `reading.notes` says which, so check them in the article before citing. Converted records carry no quotes; `passage` resolves their findings through locators. Run `audit` afterwards. A library already on the current schema reports `current`.
 
-## Rebuild and Replace
+## Rebuild, Compact, and Replace
 
-`reindex` rebuilds the complete-digest search documents and the full-text index from scratch. Replacing a complete digest uses `backup` followed by an approved `ingest --replace-digest`, described in [digest-schema.md](digest-schema.md#validation-and-ingest).
+`reindex` rebuilds the complete-digest search documents and the full-text index from scratch. `compact` rewrites the database file without the pages that removed or replaced records left free and reports the bytes returned to the file system; run it after large maintenance. Replacing a complete digest uses `backup` followed by an approved `ingest --replace-digest`, described in [digest-schema.md](digest-schema.md#validation-and-ingest).
