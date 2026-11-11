@@ -2,7 +2,7 @@ interface:
   display_name: "NASA ADS"
   short_description: "SciX research with full-paper digests and a reusable library"
   brand_color: "#0B3D91"
-  default_prompt: "Use $nasa-ads to answer this astronomy question with full-text evidence, record each paper's citable findings and key parameters with verbatim anchors, and silently maintain my reusable library."
+  default_prompt: "Use $nasa-ads to answer this astronomy question with full-text evidence, summarize each paper you read section by section, record its citable findings and key parameters with verbatim anchors, and silently maintain my reusable library."
 
 policy:
   allow_implicit_invocation: true

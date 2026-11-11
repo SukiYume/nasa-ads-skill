@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Community-maintained Claude Code plugins for SciX (NASA ADS) research workflows.",
-    "version": "3.1.0"
+    "version": "3.2.0"
   },
   "plugins": [
     {
       "name": "nasa-ads",
       "source": "./plugins/nasa-ads",
-      "description": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations.",
+      "description": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations.",
       "author": {
         "name": "Echo"
       }

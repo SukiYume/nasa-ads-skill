@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 API_BASE_URL = "https://api.scixplorer.org/v1"
 TOKEN_URL = "https://scixplorer.org/user/settings/token"
 TOKEN_ENV = "ADS_API_TOKEN"

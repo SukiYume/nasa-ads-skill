@@ -7,7 +7,7 @@
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-3.1.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-3.2.0-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -31,7 +31,7 @@ Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 Every task also builds a library you keep:
 
-- **Whole papers, not abstracts.** Each paper the agent assesses is read in full, once. What is worth citing is saved in layers: a one-line summary, a paragraph summary, a map of the sections, and each citable result with its key numbers, its section, table, figure, or equation, and a short verbatim quote.
+- **Whole papers, not abstracts.** Each paper the agent opens is read in full, once, and the whole article is summarized into your library, whatever the question was: a one-line summary, a paragraph summary, a summary of every section, and each citable result with its key numbers, its section, table, figure, or equation, and a short verbatim quote. The next question about that paper starts from the saved summary.
 - **Cite the exact result.** A manuscript often cites a paper for one number or one inference. You can later retrieve that specific result with its location, citation key, and original source, and reopen only the paragraph of the saved article that states it.
 - **Browse and export.** A local Web page lets you browse the library by topic and writing role, and export BibTeX.
 
@@ -247,7 +247,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/ads_api.py" --no-store search --query 'bibcode:2016PhRvL.116f1102A' --fields 'bibcode,title,year' --rows 1
 ```
 
-All four versions should read `3.1.0`, and the search should return `2016PhRvL.116f1102A`. Use `py -3` where Windows registers Python that way. `--no-store` keeps test results out of your library.
+All four versions should read `3.2.0`, and the search should return `2016PhRvL.116f1102A`. Use `py -3` where Windows registers Python that way. `--no-store` keeps test results out of your library.
 
 <details>
 <summary><strong>Full-text and library checks</strong></summary>
@@ -322,14 +322,14 @@ Your library lives on this computer, separate from the installed skill; a new co
 | **Abstract** | Statements about what the abstract reports |
 | **Complete or visual reading** | Claims about the paper's data, methods, values, figures, tables, and conclusions, for one exact article version |
 
-Papers found in a broad search usually stay at the metadata or abstract level. Papers the agent investigates receive a complete reading; a scanned PDF is read page by page as a visual reading. A paper can have several saved versions, such as a preprint and its journal article, so paper counts and reading counts can differ.
+Papers found in a broad search usually stay at the metadata or abstract level. Papers the agent investigates receive a complete reading; a scanned PDF is read page by page as a visual reading. A paper can have several saved versions, such as a preprint and its journal article, so paper counts and reading counts can differ. A journal version fetched after its preprint was read gets its own reading.
 
 ### Inside a Complete Reading
 
 A complete reading is layered, so a later question reads only as deep as it needs:
 
 - **One-line and paragraph summaries**: what the paper did and found, with its headline numbers, research questions, and study type.
-- **Section map**: each section that was read, with a short note on what it contains when the heading alone does not say.
+- **Section summaries**: every section of the article with a summary of what it says: its argument, data, methods, results, and caveats. Together they form a summary of the whole article.
 - **Findings**: the results a manuscript would cite, grouped by scientific topic: measurements, constraints, non-detections, the authors' inferences, model predictions, comparisons with other work, and stated limitations. Each has its section, figure, table, or equation, how firmly the authors state it, a numbered id such as `polarization.2`, and a short verbatim quote that locates its paragraph in the saved article.
 - **Values**: the headline numbers, with symbol, unit, uncertainty or range, whether each was measured, fitted, derived, assumed, predicted, or a limit, and the model and conditions it applies to.
 - **Objects, data, and methods**: named sources and facilities with their alternative names, each observation or sample, and each analysis method with its assumptions.
@@ -337,7 +337,7 @@ A complete reading is layered, so a later question reads only as deep as it need
 - **Assessment**: the reader's own evaluation of robustness and caveats, kept apart from what the paper states.
 - **Data products**: released data, code, and tables.
 
-Readings are written in Chinese, so the whole library reads in one language; quotes, object names, symbols, and units stay as the article prints them, and English search terms still match. A typical research article yields 10 to 25 findings. Instrument settings, observation logs, long tables, and background stay in the saved article, where the agent reopens the exact paragraph or section when a question needs them.
+Readings are written in Chinese, so the whole library reads in one language; quotes, object names, symbols, and units stay as the article prints them, and English search terms still match. A typical research article yields 10 to 25 findings. Observation logs, long tables, and the full wording stay in the saved article, where the agent reopens the exact paragraph or section when a question needs them.
 
 ### Topics, Roles, and Notes
 
@@ -383,7 +383,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --
 python "$nasaAdsSkill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --grep "false alarm"
 ```
 
-`passage <paper> --outline` lists the saved sections with their notes.
+`passage <paper> --outline` lists the saved sections with their summaries, the quickest way to recall what a paper says.
 
 ### Export Citations
 
@@ -500,7 +500,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" check
 python "$nasaAdsSkill/scripts/literature_db.py" audit
 ```
 
-`stats` shows counts and the library folder. `check` lists papers still waiting for a summary or a topic, and articles that were downloaded and never read into the library, and exits with 1 while any remain; `check --recent 12` limits it to the last 12 hours of work. `audit` checks the database, saved files, metadata, and citation caches; some publications legitimately lack fields such as an abstract, and the report separates those from real errors. After large cleanups, `compact` shrinks the database file to its real size.
+`stats` shows counts and the library folder. `check` lists papers still waiting for a summary or a topic, and article versions that were downloaded and never read into the library, such as a journal version fetched after its preprint was read, and exits with 1 while any remain; `check --recent 12` limits it to the last 12 hours of work. `audit` checks the database, saved files, metadata, and citation caches; some publications legitimately lack fields such as an abstract, and the report separates those from real errors. After large cleanups, `compact` shrinks the database file to its real size.
 
 If the agent reports two different readings of the same article, a preprint and its journal version were saved separately and each was read in full. Nothing is lost; ask the agent to reconcile them, and the two entries become one.
 

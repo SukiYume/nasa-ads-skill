@@ -6,17 +6,17 @@ Load this reference when an investigated article version needs a new digest, a t
 
 ## What a Digest Retains
 
-A digest is the reusable record of one complete reading of one exact article version. Its layers let later work stop at the depth a task needs:
+A digest is the reusable record of one complete reading of one exact article version, written for the whole article as the [Core Invariants](../SKILL.md#core-invariants) require. Its layers let later work stop at the depth a task needs:
 
 | Layer | Fields | Answers |
 |---|---|---|
 | 1 | `overview.tldr` | Whether the paper matters for a question, in one sentence |
 | 2 | `overview.summary`, `questions`, `study_types` | What the paper did and found, in one paragraph with its headline numbers |
-| 3 | `reading.sections` with gists | Where each topic sits in the article; the map for later passage reads |
+| 3 | `reading.sections`, each with its summary in `gist` | What every section says: its argument, data, procedure, results, and caveats; also the map for later passage reads |
 | 4 | `facets` → `findings` → `values` | What a manuscript can cite, with a locator and a verbatim quote of the stating passage |
 | Context | `entities`, `datasets`, `methods`, `global_limitations`, `assessment`, `data_products` | Object filters and the data, procedures, and caveats that bound the results |
 
-The stored article keeps every other detail. [`passage`](literature-memory.md#read-stored-passages) returns the paragraph that a finding's quote anchors, one section, or the paragraphs matching a term, so rechecking a citation or answering a new question reads a paragraph or a section of the stored text.
+The stored article keeps the full wording and every remaining detail. [`passage`](literature-memory.md#read-stored-passages) returns the paragraph that a finding's quote anchors, one section, or the paragraphs matching a term, so rechecking a citation or taking a detail beyond the summaries reads a paragraph or a section of the stored text.
 
 The digest keeps three kinds of content apart:
 
@@ -37,11 +37,11 @@ A finding is a result that a manuscript sentence would cite. Record:
 - methodological facts that condition results: adopted inputs and priors, thresholds and cuts, validation, completeness;
 - limitations the authors state.
 
-The stored article keeps background restated from other work (unless the paper adopts or contests it), instrument and search configuration, observation logs, per-object table rows, intermediate fit statistics, and derivation steps; locators and `passage` reach them.
+Background restated from other work (unless the paper adopts or contests it), instrument and search configuration, and the line of a derivation go into the [section summaries](#reading-coverage) in brief. The stored article keeps their full detail, with observation logs, per-object table rows, and intermediate fit statistics; locators and `passage` reach them.
 
 Merge statements that a manuscript would always cite together, and separate a measurement from the authors' interpretation of it. A statement takes one or two sentences. As a calibration, a letter yields about 4–10 findings, a research article 10–25, and a long survey or review up to about 40; values cover headline numbers and usually number zero to three per finding. Depth follows the paper's evidence structure, and the schema has no domain vocabulary or quota.
 
-Digests are written in Chinese: `language` is `zh-CN`, and the prose fields (tldr, summaries, questions, gists, statements, descriptions, limitations, and assessment) are Chinese, so one library reads in one language. `validate-digest` and `ingest` reject another `language` and list the prose fields without Chinese. Quotes stay verbatim, and quantity names, symbols, units, model names, and dataset, method, and entity names keep the article's own terminology, usually English, so queries match the literature. The overview describes the paper's own contribution and limits, so the digest stays meaningful across projects.
+Digests are written in Chinese: `language` is `zh-CN`, and the prose fields (tldr, summaries, questions, section summaries, statements, descriptions, limitations, and assessment) are Chinese, so one library reads in one language. `validate-digest` and `ingest` reject another `language` and list the prose fields without Chinese. Quotes stay verbatim, and quantity names, symbols, units, model names, and dataset, method, and entity names keep the article's own terminology, usually English, so queries match the literature. The overview describes the paper's own contribution and limits, so the digest stays meaningful across projects.
 
 ## Template
 
@@ -134,43 +134,50 @@ Values from the same fit share one finding so the parameter set stays together, 
 
 `reading.status` is one of:
 
-- `full`: every body section and every appendix carrying results, validation, or data and code statements was read; the reference list was consulted for the entries that `cited_from` and `compared_with` name;
-- `visual`: every page of a scan or sparse-text PDF was inspected, listed in `visual_page_ranges`;
-- `targeted`: complete sections relevant to new topics were read for a version that already has a complete digest; `unread_sections` describes the rest.
+- `full`: every body section and appendix was read and summarized; the reference list was consulted for the entries that `cited_from` and `compared_with` name;
+- `visual`: every page of a scan or sparse-text PDF was inspected, listed in `visual_page_ranges`, and every section summarized;
+- `targeted`: complete sections were read and summarized for a version that already has a complete digest; `unread_sections` describes the rest.
 
-`reading.sections` lists each read section with its article heading, copied with its number as printed so `passage --section` can locate it in the stored text, and an optional one-sentence `gist` of what it contributes, written when the heading alone leaves that unclear:
+`reading.sections` holds one entry for each body section, subsection, and appendix read, in article order; the title block, abstract, keywords, reference list, and acknowledgments need no entry:
+
+- `heading` is the article heading, copied with its number as printed so `passage --section` can locate it in the stored text.
+- `gist` is the summary of that section: what it establishes, in two to five sentences that carry its question or argument, its data and procedure, its results with their headline numbers, and its caveats. A later question about the section should find its answer here and open the stored passage only for exact wording. A parent heading with a few lines of its own takes one sentence naming what its subsections cover.
+
+Every entry carries its summary. An example of the expected depth, with illustrative values:
 
 ```json
 "sections": [
-  {"heading": "2 Observations and Data Reduction"},
-  {"heading": "3 Results", "gist": "Burst rates, spectra, and polarization of the 1076 bursts."}
+  {"heading": "2 Observations and Data Reduction", "gist": "FAST 的 19 波束接收机在 1.0–1.5 GHz 对该源做了 17 次观测。数据消色散后用单脉冲搜索流程处理，取信噪比 7 为探测阈值，并经人工复核剔除干扰；偏振用每次观测前注入的噪声二极管信号定标。"},
+  {"heading": "3.1 Burst Rate", "gist": "共探测到 1076 个爆发，事件率最高达 390 hr^-1，并在各次观测之间变化超过一个量级。等待时间呈双峰分布，作者把短等待时间峰归因于同一爆发事件内的子结构。"}
 ]
 ```
 
-A plain heading string is accepted for a section without a gist. `reading.notes` records which version was read and how it was retrieved. `full` and `visual` digests keep `unread_sections` empty.
+`reading.notes` records which version was read and how it was retrieved. `full` and `visual` digests keep `unread_sections` empty.
 
-The structural minimum is a tldr, a summary, one research question, one study type, one facet with one finding carrying a real locator, and the list of read sections.
+The structural minimum is a tldr, a summary, one research question, one study type, one facet with one finding carrying a real locator, and the read sections, each with its summary.
 
 ## Validation and Ingest
 
-Before validating, review the draft against the article: each main result, inference, prediction, and stated limitation appears once at the right kind; numbers, signs, and exponents match the article; restated and adopted content carries `cited_from`; the reader's evaluation sits in `assessment`; quotes are verbatim. This content review complements the CLI's structural checks.
+Before validating, review the draft against the article: every section has a summary that states its content; each main result, inference, prediction, and stated limitation appears once at the right kind; numbers, signs, and exponents match the article; restated and adopted content carries `cited_from`; the reader's evaluation sits in `assessment`; quotes are verbatim. This content review complements the CLI's structural checks.
 
 ```bash
-python3 "<skill-dir>/scripts/literature_db.py" validate-digest "<digest.json>" --text "<selected.text_path>"
+python3 "<skill-dir>/scripts/literature_db.py" validate-digest "<digest.json>" --text "<manifest_path>"
 python3 "<skill-dir>/scripts/literature_db.py" ingest --manifest "<manifest.json>" --digest "<digest.json>"
 ```
 
-`--text` checks every quote against the prepared article text and reports `anchors` with the ids of quotes it cannot find. Validation and ingest report `warnings` for likely problems: a statement that reports a number without `values`; value strings or qualifiers that embed a limit, an uncertainty, an interval, or several numbers; a value whose digits look computed; a `fitted` value without `model`; a `section` locator holding a table, figure, or equation label; a `cited_from` naming several works; findings of a `full` reading without quotes, or quotes absent from the text; and excess detail, meaning a statement over 400 characters, a quote over 300, more than 8 values in one finding, more than 60 values, or more than 40 findings in one digest. Fix each warning in the digest, or confirm it is a false positive, before ingest. Dataset and method references are checked for complete readings; a targeted digest reports `references_checked: false`, and its references are checked against the merged record.
+Validation and ingest reject a digest that lists a read section without a summary. `--text` takes the fetch manifest, or `selected.text_path` for the text alone, and checks the digest against the prepared article as ingest does. A `full` digest must summarize every article section of 150 words or more, apart from the title block, the abstract, the reference list, and acknowledgments; the error names the sections it leaves out by their headings in the article outline. The report adds `anchors`, with the ids of quotes absent from the text, and `section_summaries`, with the number of article sections summarized and the summaries that are `thin`: shorter than one character per 20 words of the section, up to 200 characters.
 
-The first ingest of an exact version requires `full` or whole-document `visual` coverage. It verifies artifact, text, and canonical-content hashes, checks eligibility before copying objects, reconciles identifiers, commits one transaction, rebuilds the search document, and reports quote `anchors` against the stored text. `needs_visual_reading` manifests require `visual` status with page ranges covering every recorded page. `abstract_only` manifests supply metadata and abstract summaries through `capture` and cannot be ingested as complete readings.
+Validation and ingest report `warnings` for likely problems: thin section summaries; a statement that reports a number without `values`; value strings or qualifiers that embed a limit, an uncertainty, an interval, or several numbers; a value whose digits look computed; a `fitted` value without `model`; a `section` locator holding a table, figure, or equation label; a `cited_from` naming several works; findings of a `full` reading without quotes, or quotes absent from the text; and excess detail, meaning a statement over 400 characters, a quote over 300, more than 8 values in one finding, more than 60 values, or more than 40 findings in one digest. Fix each warning in the digest, or confirm it is a false positive, before ingest. Dataset and method references are checked for complete readings; a targeted digest reports `references_checked: false`, and its references are checked against the merged record.
 
-For a later targeted reading of a version that already has a complete digest, find the relevant sections with `passage --outline` or `passage --grep`, read them completely with `passage --section`, write a targeted digest holding the new facets and findings, and merge it with the durable `manifest_path` that `lookup` returns:
+The first ingest of an exact version requires `full` or whole-document `visual` coverage. It verifies artifact, text, and canonical-content hashes, checks eligibility and section coverage before copying objects, reconciles identifiers, commits one transaction, rebuilds the search document, and reports quote `anchors` against the stored text. `needs_visual_reading` manifests require `visual` status with page ranges covering every recorded page. `abstract_only` manifests supply metadata and abstract summaries through `capture` and cannot be ingested as complete readings.
+
+For a later targeted reading of a version that already has a complete digest, find the relevant sections with `passage --outline` or `passage --grep`, read them completely with `passage --section`, write a targeted digest holding the summary of each section read and the new facets and findings, and merge it with the durable `manifest_path` that `lookup` returns:
 
 ```bash
 python3 "<skill-dir>/scripts/literature_db.py" ingest --manifest "<manifest.json>" --digest "<targeted-digest.json>" --merge
 ```
 
-A targeted digest needs only `schema_version`, `language`, `facets`, and `reading`. The merge keeps the paper-wide overview, accumulated records, and limitations; updates matching facet summaries; appends new findings, facets, and assessment points; merges sections and gists; and retries on concurrent changes. A merge with the same statement and locator replaces that finding in place, which also corrects a quote. Changed article content needs its own complete digest.
+A targeted digest needs only `schema_version`, `language`, `facets`, and `reading`. The merge keeps the paper-wide overview, accumulated records, and limitations; updates matching facet summaries; appends new findings, facets, and assessment points; adds new sections and gives a stored section its summary when it had none; and retries on concurrent changes. A merge with the same statement and locator replaces that finding in place, which also corrects a quote. Changed article content needs its own complete digest.
 
 An approved repair starts with `backup`, rebuilds the complete digest from the stored article, and replaces it:
 

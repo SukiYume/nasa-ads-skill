@@ -16,7 +16,7 @@ Find the target with `findings` for statements and inferences, or `parameters` f
 2. Carry the value with its `uncertainty`, `unit`, `qualifier`, and `condition`, and keep the `dataset`, `method`, and `model` that bound it in the sentence or its caveats.
 3. A row with `cited_from` restates another work's result. Read and cite that original source; cite the restating paper for its own use or reanalysis of the result.
 4. Before the sentence is final, run `passage "<citekey>" --finding "<finding_id>"`, since digests store paraphrases, and check the number, sign, exponent, and the authors' wording of the inference in the returned paragraph. Add `--context 1` or read the `--section` when the paragraph lacks the needed setup.
-5. When the needed result is absent from a complete digest, find it with `passage --grep`, read its complete section with `passage --section`, and merge it as a [targeted reading](digest-schema.md#validation-and-ingest) before citing it.
+5. When the needed result is absent from a complete digest, locate it through the section summaries in `passage --outline` or with `passage --grep`, read its complete section with `passage --section`, and merge it as a [targeted reading](digest-schema.md#validation-and-ingest) before citing it.
 6. An `assessment` point is the reader's evaluation of the paper. A manuscript states it as its own argument, supported by the findings it rests on.
 
 ## Plan the Search

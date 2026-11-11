@@ -14,7 +14,7 @@ The default root is `%LOCALAPPDATA%/nasa-ads/literature` on Windows and `${XDG_D
 |---|---|---|
 | Metadata record | Bibliographic identity without an abstract | Identification and relevance triage |
 | Abstract record | Source abstract plus an agent-authored source summary | Abstract-level statements and later selection |
-| Complete article version | Verified article and text, full or whole-document visual reading, one complete digest | Claims about data, methods, parameters, figures, tables, and limitations, with locators |
+| Complete article version | Verified article and text, full or whole-document visual reading, one digest of the whole article | Claims about data, methods, parameters, figures, tables, and limitations, with locators |
 | Organization | Hierarchical collections, tags, writing roles, personal notes | Reuse across projects and manuscript sections |
 
 Abstract summaries and article digests have separate source identities. A changed abstract keeps earlier snapshots and summaries; changed article content receives a new exact-version digest. A pending record never claims completed reading.
@@ -37,7 +37,7 @@ An empty retained set needs no capture. Exact metadata retrieval for already sel
 
 ## Automatic Capture and Summary Completion
 
-`ads_api.py search`, `ads_api.py bigquery`, and `fulltext.py fetch` capture their returned records by default. The output adds a `literature` object with `run_id`, `captured`, `pending_summaries`, `reused_summaries`, `unread_articles`, source hashes, and `owed`, the steps this run still needs: source summaries, topics, and the full reading of a fetched article. An empty `owed` means the run is complete. Capture never writes summaries; the agent authors them from the stored source:
+`ads_api.py search`, `ads_api.py bigquery`, and `fulltext.py fetch` capture their returned records by default. The output adds a `literature` object with `run_id`, `captured`, `pending_summaries`, `reused_summaries`, `unread_articles`, source hashes, and `owed`, the steps this run still needs: source summaries, topics, and the full reading of a prepared article version. An empty `owed` means the run is complete. Capture never writes summaries; the agent authors them from the stored source:
 
 ```bash
 pending --run-id <id>
@@ -72,7 +72,7 @@ check --recent 12
 runs
 ```
 
-`pending` pages with `--limit` and `--offset`; without `--run-id` it lists every unfinished snapshot, including historical ones. `check` exits 1 while its scope has pending summaries, papers without a topic (`needs_classification`), or articles that a fetch or import prepared and no complete digest covers (`needs_reading`, with each `manifest_path`). `--run-id` covers one run; `--recent <hours>` covers every search and fetch captured within that window, so one command closes a task; plain `check` covers the whole library. `runs` lists query parameters, retrieval counts, and remaining summaries. Capture commits each batch atomically; `capture --results <response-or-manifest.json>` recovers from a saved SciX response or full-text manifest.
+`pending` pages with `--limit` and `--offset`; without `--run-id` it lists every unfinished snapshot, including historical ones. `check` exits 1 while its scope has pending summaries, papers without a topic (`needs_classification`), or article versions that a fetch or import prepared and no complete digest settles (`needs_reading`, with each `version_kind` and `manifest_path`). A complete digest settles a prepared version when it belongs to that article, to a more authoritative version of the paper, or to a version of the same authority that is no other explicit arXiv version. A published version fetched after its preprint was read is therefore owed, each explicit arXiv version such as `v1` and `v2` is owed on its own, and another container of a version already read, such as its PDF after its HTML, owes nothing. Reading the most authoritative prepared version settles the less authoritative ones. `--run-id` covers one run; `--recent <hours>` covers every search and fetch captured within that window, so one command closes a task; plain `check` covers the whole library. `runs` lists query parameters, retrieval counts, and remaining summaries. Capture commits each batch atomically; `capture --results <response-or-manifest.json>` recovers from a saved SciX response or full-text manifest.
 
 ## Local Lookup and Reading
 
@@ -82,14 +82,14 @@ Use `lookup` to decide whether a paper needs reading:
 lookup "<identifier>" --topic "<scientific dimension>"
 ```
 
-`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Retrieve the citable results with `findings --paper "<identifier>"` and their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version. A `--topic` is covered when it occurs in a facet's text, findings, quotes, or value names, models, and conditions, or among the paper's entities, keywords, datasets, and methods.
+`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Read the stored summary of each section with `passage "<identifier>" --outline`, retrieve the citable results with `findings --paper "<identifier>"`, and read their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version. A `--topic` is covered when it occurs in a facet's text, findings, quotes, or value names, models, and conditions, among the paper's entities, keywords, datasets, and methods, or in the heading and summary of one section.
 
 | Lookup state | Action |
 |---|---|
 | `not_found` | Retrieve metadata and the article version, or [import](fulltext.md#import-a-local-copy) a copy the user supplies, then complete its source summary and digest. |
-| `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the paper-wide reading and digest. |
-| `reusable` | Reuse the complete version through `findings`, `parameters`, and `passage`. |
-| `targeted_reading` | Find the relevant sections with `passage --outline` or `--grep`, read them with `passage --section`, and merge the missing facets. |
+| `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the whole-article reading and digest. |
+| `reusable` | Reuse the complete version: section summaries through `passage --outline`, results through `findings` and `parameters`, and exact wording through `passage`. |
+| `targeted_reading` | Find the relevant sections with `passage --outline` or `--grep`, read them with `passage --section`, and merge their summaries and the missing facets. |
 | `version_changed` | Retrieve and read the exact requested version. |
 
 An explicit arXiv suffix such as `v2` requires matching stored version provenance. `--sha256` selects a known artifact, text, or canonical-content hash, including historical artifacts. Lookup verifies stored article and text integrity, and its `version.manifest_path` points to durable stored objects suitable for later merging, so clearing the download cache keeps local reuse intact.
@@ -116,7 +116,7 @@ passage "<identifier>" --grep "<term>" --grep "<second term>"
 
 | Request | Returns |
 |---|---|
-| `--outline` (also the default) | Stored section headings with starting line, word count, and the digest's gist |
+| `--outline` (also the default) | Stored section headings with starting line, word count, and the digest's summary of each section in `gist` |
 | `--finding` | The paragraph its quote anchors; without a quote, the paragraph naming its table, figure, or equation, or the start of its locator section; the finding's statement and locator come with it |
 | `--section` | One section, matched by number, heading, or heading words, such as `2.3`, `Sec. 4`, or `Discussion`; headings in the digest's `reading.sections` locate sections that the stored outline missed |
 | `--grep` | Paragraphs containing every term, with their section headings; `term_matches` counts all matches |

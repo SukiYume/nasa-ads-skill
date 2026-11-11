@@ -409,8 +409,9 @@ def capture_search(
         )
     for article in report["needs_reading"]:
         owed.append(
-            f"Read {article['identifier']} in full and ingest its digest: ingest "
-            f"--manifest \"{article['manifest_path']}\" --digest <digest.json>."
+            f"Read the {article['version_kind']} version of "
+            f"{article['identifier']} in full and ingest its whole-article digest: "
+            f"ingest --manifest \"{article['manifest_path']}\" --digest <digest.json>."
         )
     if owed:
         owed.append(f"Confirm with check --run-id {run_id} before answering.")
@@ -441,8 +442,57 @@ def run_scope(run_id=None, since=None) -> tuple[str, list]:
     return "", []
 
 
+def read_versions(connection, paper_id: int) -> list[dict]:
+    """The paper's versions that carry a complete digest, with their identities."""
+    versions = []
+    for row in connection.execute(
+        "SELECT v.id, v.version_kind, v.sha256, v.content_sha256 FROM versions v "
+        "JOIN digests d ON d.version_id = v.id "
+        "WHERE v.paper_id = ? AND d.reading_status IN ('full', 'visual')",
+        (paper_id,),
+    ):
+        hashes = {row["sha256"], row["content_sha256"]}
+        hashes.update(
+            item[0]
+            for item in connection.execute(
+                "SELECT sha256 FROM artifacts WHERE version_id = ?", (row["id"],)
+            )
+        )
+        labels = {
+            item[0]
+            for item in connection.execute(
+                "SELECT arxiv_id FROM version_labels WHERE version_id = ?", (row["id"],)
+            )
+        }
+        versions.append(
+            {"version_kind": row["version_kind"], "hashes": hashes, "labels": labels}
+        )
+    return versions
+
+
+def reading_settles(version: dict, article: dict) -> bool:
+    """Whether a completely read version stands for the article a run prepared.
+
+    It does when it holds that article, is the more authoritative text, or has
+    the same authority and is not another explicit arXiv version.
+    """
+    prepared = {article.get("artifact_sha256"), article.get("content_sha256")}
+    if (prepared - {None}) & version["hashes"]:
+        return True
+    read = fulltext.version_authority(version["version_kind"])
+    wanted = fulltext.version_authority(article.get("version_kind"))
+    if read != wanted:
+        return read < wanted
+    labels = set(article.get("arxiv_versions", []))
+    return not (labels and version["labels"] and labels.isdisjoint(version["labels"]))
+
+
 def unread_articles(connection, *, run_id=None, since=None) -> list[dict]:
-    """Papers whose article a fetch or import prepared and no complete digest covers."""
+    """Article versions a fetch or import prepared that no complete digest settles.
+
+    Each prepared version of a paper is owed on its own; repeated fetches of one
+    version report its latest run.
+    """
     condition, params = run_scope(run_id, since)
     rows = connection.execute(
         "SELECT r.id AS run_id, r.parameters_json, p.id, p.bibcode, p.canonical_key, p.title "
@@ -450,23 +500,31 @@ def unread_articles(connection, *, run_id=None, since=None) -> list[dict]:
         "JOIN papers p ON p.id = h.paper_id "
         "WHERE r.parameters_json LIKE '%\"article_status\"%' "
         + (f"AND {condition} " if condition else "")
-        + "AND NOT EXISTS (SELECT 1 FROM versions v JOIN digests d ON d.version_id = v.id "
-        "WHERE v.paper_id = p.id AND d.reading_status IN ('full', 'visual')) "
-        "ORDER BY r.id",
+        + "ORDER BY r.id",
         params,
-    )
-    unread: dict[int, dict] = {}
+    ).fetchall()
+    unread: dict[tuple, dict] = {}
+    read: dict[int, list[dict]] = {}
     for row in rows:
-        parameters = json.loads(row["parameters_json"])
-        if parameters.get("article_status") in READABLE_ARTICLE_STATUSES:
-            unread[row["id"]] = {
-                "paper_id": row["id"],
-                "identifier": row["bibcode"] or row["canonical_key"].split(":", 1)[1],
-                "title": row["title"],
-                "run_id": row["run_id"],
-                "article_status": parameters["article_status"],
-                "manifest_path": parameters.get("manifest_path"),
-            }
+        article = json.loads(row["parameters_json"])
+        if article.get("article_status") not in READABLE_ARTICLE_STATUSES:
+            continue
+        if row["id"] not in read:
+            read[row["id"]] = read_versions(connection, row["id"])
+        if any(reading_settles(version, article) for version in read[row["id"]]):
+            continue
+        kind = article.get("version_kind", "unknown")
+        labels = sorted(article.get("arxiv_versions", []))
+        unread[(row["id"], kind, *labels)] = {
+            "paper_id": row["id"],
+            "identifier": row["bibcode"] or row["canonical_key"].split(":", 1)[1],
+            "title": row["title"],
+            "run_id": row["run_id"],
+            "article_status": article["article_status"],
+            "version_kind": kind,
+            **({"arxiv_versions": labels} if labels else {}),
+            "manifest_path": article.get("manifest_path"),
+        }
     return list(unread.values())
 
 
@@ -1165,17 +1223,11 @@ def import_ads_citations(connection, text: str) -> dict:
 
 
 def record_version_label(connection, version_id: int, manifest: dict):
-    selected = manifest.get("selected") or {}
-    for value in (
-        selected.get("final_url"),
-        (selected.get("candidate") or {}).get("url"),
-    ):
-        arxiv_id = fulltext.arxiv_id_from_value(str(value or ""))
-        if arxiv_id and re.search(r"v\d+$", arxiv_id):
-            connection.execute(
-                "INSERT OR IGNORE INTO version_labels VALUES (?, ?)",
-                (version_id, arxiv_id.casefold()),
-            )
+    for arxiv_id in fulltext.arxiv_version_labels(manifest):
+        connection.execute(
+            "INSERT OR IGNORE INTO version_labels VALUES (?, ?)",
+            (version_id, arxiv_id),
+        )
 
 
 def add_parser_commands(subparsers):

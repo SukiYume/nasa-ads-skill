@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -1721,12 +1721,19 @@ def unpaywall_candidates(
     return candidates
 
 
+VERSION_AUTHORITY = {"published": 0, "accepted": 1, "preprint": 2, "scan": 3}
+
+
+def version_authority(kind: Any) -> int:
+    """Rank of a version kind; a lower rank is the more authoritative text."""
+    return VERSION_AUTHORITY.get(str(kind), len(VERSION_AUTHORITY))
+
+
 def deduplicate_candidates(candidates: Iterable[Candidate]) -> list[Candidate]:
     result: list[Candidate] = []
     seen: set[str] = set()
-    authority = {"published": 0, "accepted": 1, "preprint": 2, "scan": 3, "unknown": 4}
     for candidate in sorted(
-        candidates, key=lambda item: (authority.get(item.version, 4), item.priority)
+        candidates, key=lambda item: (version_authority(item.version), item.priority)
     ):
         key = candidate.url.rstrip("/")
         if key in seen:
@@ -2076,19 +2083,51 @@ def prepare_cached_again(
     return manifest
 
 
+def arxiv_version_labels(manifest: Mapping[str, Any]) -> list[str]:
+    """Explicit arXiv versions, such as ``2304.14665v2``, that the selected article names."""
+    selected = manifest.get("selected")
+    if not isinstance(selected, Mapping):
+        return []
+    candidate = selected.get("candidate")
+    labels: list[str] = []
+    for value in (
+        selected.get("final_url"),
+        candidate.get("url") if isinstance(candidate, Mapping) else None,
+    ):
+        arxiv_id = arxiv_id_from_value(str(value or ""))
+        if arxiv_id and re.search(r"v\d+$", arxiv_id):
+            labels.append(arxiv_id.casefold())
+    return ordered_unique_strings(labels)
+
+
+def prepared_article(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """What a fetch or import run records about the article version it prepared."""
+    record: dict[str, Any] = {
+        "article_status": manifest.get("status"),
+        "manifest_path": manifest.get("manifest_path"),
+    }
+    selected = manifest.get("selected")
+    if isinstance(selected, Mapping):
+        candidate = selected.get("candidate")
+        record.update(
+            version_kind=str(
+                (candidate.get("version") if isinstance(candidate, Mapping) else None)
+                or "unknown"
+            ),
+            artifact_sha256=selected.get("sha256"),
+            content_sha256=selected.get("content_sha256"),
+            arxiv_versions=arxiv_version_labels(manifest),
+        )
+    return record
+
+
 def manifest_selection_rank(manifest: Mapping[str, Any]) -> tuple[int, int]:
     selected = manifest.get("selected")
     if not isinstance(selected, Mapping):
         return (99, 99)
     candidate = selected.get("candidate")
     version = candidate.get("version") if isinstance(candidate, Mapping) else None
-    version_rank = {
-        "published": 0,
-        "accepted": 1,
-        "preprint": 2,
-        "scan": 3,
-        "unknown": 4,
-    }.get(str(version), 4)
+    version_rank = version_authority(version)
     status_rank = {
         "fulltext": 0,
         "needs_visual_reading": 1,
@@ -2423,6 +2462,27 @@ def render_pdf(
     }
 
 
+def prepared_text(source: str) -> tuple[Path, str, dict[str, Any] | None]:
+    """Prepared article text from its own path, or from a fetch manifest.
+
+    Returns the text path, the text, and the manifest when one was given, whose
+    HTML headings then inform the outline.
+    """
+    path = Path(source).expanduser().resolve()
+    manifest: dict[str, Any] | None = None
+    text_path = path
+    if path.suffix.casefold() == ".json" and path.is_file():
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FullTextError(f"Unable to read manifest {path}: {exc}", 2) from exc
+        selected = manifest.get("selected") if isinstance(manifest, dict) else None
+        text_path = Path(str((selected or {}).get("text_path") or ""))
+    if not text_path.is_file():
+        raise FullTextError(f"Prepared article text does not exist: {text_path}", 2)
+    return text_path, text_path.read_text(encoding="utf-8", errors="replace"), manifest
+
+
 def capture_manifest(
     result: dict[str, Any],
     query: str,
@@ -2510,8 +2570,7 @@ def execute(
                         "version": args.version,
                         "format": result["selected"]["actual_format"],
                     }
-                parameters["article_status"] = result.get("status")
-                parameters["manifest_path"] = result.get("manifest_path")
+                parameters.update(prepared_article(result))
                 if not args.no_store and capture_manifest(
                     result, identifier, parameters, args.library_dir, environ
                 ):
@@ -2546,18 +2605,7 @@ def execute(
         stdout.write("\n")
         return 0
     if args.command == "outline":
-        source = Path(args.text).expanduser().resolve()
-        manifest: dict[str, Any] | None = None
-        text_path = source
-        if source.suffix.casefold() == ".json" and source.is_file():
-            try:
-                manifest = json.loads(source.read_text(encoding="utf-8-sig"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise FullTextError(f"Unable to read manifest {source}: {exc}", 2) from exc
-            text_path = Path(str((manifest.get("selected") or {}).get("text_path") or ""))
-        if not text_path.is_file():
-            raise FullTextError(f"Prepared article text does not exist: {text_path}", 2)
-        article_text = text_path.read_text(encoding="utf-8", errors="replace")
+        text_path, article_text, manifest = prepared_text(args.text)
         sections = article_outline(article_text, manifest, limit=args.limit)
         result = {
             "status": "outlined",

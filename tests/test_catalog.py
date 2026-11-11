@@ -14,6 +14,7 @@ from test_literature_db import literature_db as lib, sample_digest, sample_manif
 from test_ads_api import FakeResponse, RecordingOpener
 
 import ads_api
+import fulltext
 import library_catalog as catalog
 import library_web
 
@@ -95,29 +96,21 @@ class CatalogTests(unittest.TestCase):
         )
 
     def test_fetched_article_stays_owed_until_its_digest_is_ingested(self):
-        def fetch_run(status):
-            return catalog.capture_search(
-                self.connection,
-                self.fts,
-                {"response": {"numFound": 1, "docs": [source_record()]}},
-                query="2023ApJ...955..142Z",
-                parameters={
-                    "command": "fulltext",
-                    "article_status": status,
-                    "manifest_path": "cache/manifest.json",
-                },
-                collections=["FRB/Polarization"],
-                refresh_metadata=False,
-            )
-
-        abstract_only = fetch_run("abstract_only")
+        manifest = self.prepared("published", version="published")
+        abstract_only = self.fetch_run(
+            {**manifest, "status": "abstract_only", "selected": None}
+        )
         self.assertEqual(abstract_only["unread_articles"], 0)
         self.assertFalse(any("ingest" in step for step in abstract_only["owed"]))
 
-        fetched = fetch_run("fulltext")
+        fetched = self.fetch_run(manifest)
         self.assertEqual(fetched["unread_articles"], 1)
         self.assertTrue(
-            any('ingest --manifest "cache/manifest.json"' in step for step in fetched["owed"])
+            any(
+                "Read the published version" in step
+                and f'ingest --manifest "{manifest["manifest_path"]}"' in step
+                for step in fetched["owed"]
+            )
         )
         self.assertIn(f"check --run-id {fetched['run_id']}", fetched["owed"][-1])
         report = catalog.completion_report(self.connection, run_id=fetched["run_id"])
@@ -147,9 +140,119 @@ class CatalogTests(unittest.TestCase):
         )
         self.assertEqual(json.loads(output.getvalue())["unread_articles"], 1)
 
-        self.ingest()
+        self.ingest(manifest)
         report = catalog.completion_report(self.connection, run_id=fetched["run_id"])
         self.assertEqual((report["unread_articles"], report["needs_reading"]), (0, []))
+
+    def prepared(self, name, *, version, url=None, body=None):
+        """A manifest as fetch prepares it, in its own cache directory."""
+        directory = self.root / name
+        directory.mkdir()
+        manifest = sample_manifest(
+            directory,
+            body=body or f"<html>{name}</html>".encode(),
+            text_body=f"The {name} text of the article.",
+        )
+        manifest["manifest_path"] = str(directory / "manifest.json")
+        manifest["selected"]["candidate"]["version"] = version
+        if url:
+            manifest["selected"]["candidate"]["url"] = url
+            manifest["selected"]["final_url"] = url
+        return manifest
+
+    def fetch_run(self, manifest):
+        """Record a fetch of a prepared article as ``fulltext.py fetch`` does."""
+        return catalog.capture_search(
+            self.connection,
+            self.fts,
+            {"response": {"numFound": 1, "docs": [manifest]}},
+            query=manifest["input"],
+            parameters={"command": "fulltext", **fulltext.prepared_article(manifest)},
+            collections=["FRB/Polarization"],
+            refresh_metadata=False,
+        )
+
+    def owed_readings(self, **scope):
+        report = catalog.completion_report(self.connection, **scope)
+        self.assertEqual(report["unread_articles"], len(report["needs_reading"]))
+        return [
+            (item["version_kind"], item["manifest_path"])
+            for item in report["needs_reading"]
+        ]
+
+    def test_published_version_stays_owed_after_its_preprint_was_read(self):
+        preprint = self.prepared("preprint", version="preprint")
+        published = self.prepared("published", version="published")
+        self.ingest(preprint)
+        fetched = self.fetch_run(published)
+        self.assertEqual(fetched["unread_articles"], 1)
+        self.assertTrue(
+            any(published["manifest_path"] in step for step in fetched["owed"])
+        )
+        self.assertEqual(
+            self.owed_readings(run_id=fetched["run_id"]),
+            [("published", published["manifest_path"])],
+        )
+        self.ingest(published)
+        self.assertEqual(self.owed_readings(), [])
+
+    def test_reading_the_published_version_settles_a_fetched_preprint(self):
+        preprint = self.prepared("preprint", version="preprint")
+        published = self.prepared("published", version="published")
+        self.fetch_run(preprint)
+        self.fetch_run(published)
+        self.assertEqual(
+            self.owed_readings(),
+            [
+                ("preprint", preprint["manifest_path"]),
+                ("published", published["manifest_path"]),
+            ],
+        )
+        self.ingest(published)
+        self.assertEqual(self.owed_readings(), [])
+
+    def test_another_container_of_a_read_version_owes_no_second_reading(self):
+        html = self.prepared("html", version="published")
+        pdf = self.prepared("pdf", version="published")
+        self.ingest(html)
+        self.assertEqual(self.fetch_run(pdf)["unread_articles"], 0)
+        self.assertEqual(self.fetch_run(html)["unread_articles"], 0)
+
+    def test_explicit_arxiv_versions_are_owed_separately(self):
+        first = self.prepared(
+            "v1", version="preprint", url="https://arxiv.org/html/2304.14665v1"
+        )
+        second = self.prepared(
+            "v2", version="preprint", url="https://arxiv.org/html/2304.14665v2"
+        )
+        unversioned = self.prepared("latest", version="preprint")
+        self.fetch_run(first)
+        self.fetch_run(second)
+        self.assertEqual(
+            self.owed_readings(),
+            [
+                ("preprint", first["manifest_path"]),
+                ("preprint", second["manifest_path"]),
+            ],
+        )
+        self.ingest(first)
+        self.assertEqual(
+            self.owed_readings(), [("preprint", second["manifest_path"])]
+        )
+        self.assertEqual(self.fetch_run(unversioned)["unread_articles"], 0)
+        self.ingest(second)
+        self.assertEqual(self.owed_readings(), [])
+
+    def test_repeated_fetches_of_one_version_are_owed_once(self):
+        published = self.prepared("published", version="published")
+        self.fetch_run(published)
+        again = self.fetch_run(published)
+        self.assertEqual(again["unread_articles"], 1)
+        self.assertEqual(len(self.owed_readings()), 1)
+        self.assertEqual(
+            catalog.completion_report(self.connection)["needs_reading"][0]["run_id"],
+            again["run_id"],
+        )
 
     def test_recent_check_covers_only_runs_inside_the_window(self):
         result = self.capture()

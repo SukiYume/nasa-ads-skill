@@ -400,7 +400,7 @@ async function openPaper(id, {historyMode = 'push', detailTab = 0} = {}) {
           if (item.text_path) actions.append(downloadLink('下载提取文本', `/api/artifact?version=${item.id}&kind=text`));
           content.append(actions);
           const reading = item.digest?.digest?.reading;
-          if (reading) lines(content, '阅读章节', reading.sections.map(item => [item.heading, item.gist].filter(Boolean).join(' — ')));
+          if (reading) lines(content, '章节摘要', reading.sections.map(item => [item.heading, item.gist].filter(Boolean).join(' — ')));
           if (reading?.visual_page_ranges?.length) paragraph(content, '视觉阅读页码', reading.visual_page_ranges.join(', '));
           if (reading?.notes) paragraph(content, '阅读说明', reading.notes);
           paragraph(content, '内容指纹', item.content_sha256);

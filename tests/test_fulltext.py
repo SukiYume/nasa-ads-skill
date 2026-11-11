@@ -1355,6 +1355,37 @@ class ImportTests(unittest.TestCase):
             result = json.loads(output.getvalue())["results"][0]
             self.assertEqual(result["selected"]["candidate"]["version"], "accepted")
             self.assertEqual(result["literature"]["status"], "captured")
+            self.assertEqual(result["literature"]["unread_articles"], 1)
+            self.assertTrue(
+                any(
+                    "the accepted version" in step and result["manifest_path"] in step
+                    for step in result["literature"]["owed"]
+                )
+            )
+            self.assertEqual(
+                fulltext.prepared_article(result),
+                {
+                    "article_status": "fulltext",
+                    "manifest_path": result["manifest_path"],
+                    "version_kind": "accepted",
+                    "artifact_sha256": result["selected"]["sha256"],
+                    "content_sha256": result["selected"]["content_sha256"],
+                    "arxiv_versions": [],
+                },
+            )
+            self.assertEqual(
+                fulltext.prepared_article({"status": "abstract_only", "selected": None}),
+                {"article_status": "abstract_only", "manifest_path": None},
+            )
+            versioned = {
+                "selected": {
+                    "final_url": "https://arxiv.org/html/2304.14665v2",
+                    "candidate": {"url": "https://arxiv.org/html/2304.14665V2"},
+                }
+            }
+            self.assertEqual(
+                fulltext.arxiv_version_labels(versioned), ["2304.14665v2"]
+            )
             with self.assertRaises(SystemExit), patch("sys.stderr", io.StringIO()):
                 fulltext.build_parser().parse_args(
                     ["import", str(path), "--identifier", "2017ApJ...834..199L"]

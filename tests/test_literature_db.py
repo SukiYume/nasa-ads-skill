@@ -93,10 +93,14 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
         },
     ]
     chosen_facets = facets if facets is not None else default_facets
-    sections = ["1", "2", "3.1", "3.2", "3.3", "4", "5"]
     gists = {
+        "1": "Repeater activity and polarization constrain emission models.",
+        "2": "FAST L-band observing setup and the burst search.",
         "3.1": "Burst detections and the event rate across sessions.",
+        "3.2": "Waiting times and spectral bandwidths of the bursts.",
         "3.3": "Polarization measurements and rotation measures.",
+        "4": "Implications for the emission mechanism and the local environment.",
+        "5": "Summary of the campaign and its main results.",
     }
     digest = {
         "schema_version": literature_db.DIGEST_SCHEMA_VERSION,
@@ -157,10 +161,7 @@ def sample_digest(*, facets: list[dict] | None = None) -> dict:
         "reading": {
             "status": "full",
             "sections": [
-                {"heading": section, "gist": gists[section]}
-                if section in gists
-                else section
-                for section in sections
+                {"heading": heading, "gist": gist} for heading, gist in gists.items()
             ],
             "notes": "Publisher HTML was read in full.",
         },
@@ -1270,6 +1271,22 @@ class LibraryWorkflowTests(unittest.TestCase):
         self.assertEqual(len(covered["matched_topics"]), 2)
         self.assertIn("digest", covered)
 
+    def test_section_summaries_cover_lookup_topics(self):
+        self.ingest()
+
+        def lookup(topic):
+            return literature_db.lookup_one(
+                self.connection,
+                "2023ApJ...955..142Z",
+                topics=[topic],
+                artifact_hash=None,
+                include_digest=False,
+            )
+
+        self.assertEqual(lookup("spectral bandwidths")["reuse_status"], "reusable")
+        # Words spread over the summaries of different sections cover no topic.
+        self.assertEqual(lookup("observing environment")["reuse_status"], "targeted_reading")
+
     def test_audit_rejects_schema1_digest(self):
         result = self.ingest()
         row = self.connection.execute(
@@ -2267,6 +2284,7 @@ class PassageTests(unittest.TestCase):
         self.assertEqual(
             self.result["anchors"], {"quoted": 5, "located": 5, "unlocated": []}
         )
+        self.assertEqual(self.result["section_summaries"], {"summarized": 4, "thin": []})
         self.assertEqual(self.result["warnings"], [])
 
     def test_finding_returns_its_paragraph(self):
@@ -2384,7 +2402,147 @@ class PassageTests(unittest.TestCase):
         )
         self.assertFalse((self.root / "unused").exists())
 
-    def test_targeted_merge_into_schema4_keeps_section_gists(self):
+    def test_validate_digest_reads_the_text_and_headings_of_a_manifest(self):
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
+        digest_path = self.root / "digest.json"
+        digest_path.write_text(json.dumps(in_chinese(current_digest())), encoding="utf-8")
+        output = io.StringIO()
+        code = literature_db.run(
+            ["validate-digest", str(digest_path), "--text", str(manifest_path)],
+            stdout=output,
+        )
+        self.assertEqual(code, 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["anchors"]["located"], 5)
+        self.assertEqual(report["section_summaries"], {"summarized": 4, "thin": []})
+        stderr = io.StringIO()
+        code = literature_db.run(
+            ["validate-digest", str(digest_path), "--text", str(self.root / "none.txt")],
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("does not exist", stderr.getvalue())
+
+    def test_full_reading_must_summarize_every_article_section(self):
+        body = " ".join(["The fitted model describes the observed burst energies well."] * 30)
+        text = (
+            "A Study of Bursts\n\nAbstract\nA short abstract.\n\n"
+            f"1 Introduction\n{body}\n\n2 Observations\n{body}\n\n"
+            f"3 Results\nA short section.\n\nReferences\n{body}\n"
+        )
+        digest = minimal_digest()
+        digest["reading"]["sections"] = [
+            {"heading": "1 Introduction", "gist": "背景。"},
+            {"heading": "3 Results", "gist": "结果。"},
+        ]
+        with self.assertRaisesRegex(
+            literature_db.LiteratureError, "each with its gist: 2 Observations[.]$"
+        ):
+            literature_db.section_coverage(literature_db.validate_digest(digest), text)
+
+        digest["reading"]["sections"].append(
+            {"heading": "2 Observations", "gist": "FAST 的 L 波段观测配置与爆发搜索流程。"}
+        )
+        coverage = literature_db.section_coverage(
+            literature_db.validate_digest(digest), text
+        )
+        self.assertEqual(coverage, {"summarized": 3, "thin": ["1 Introduction"]})
+        messages = [
+            warning["message"]
+            for warning in literature_db.digest_warnings(digest, None, coverage)
+        ]
+        self.assertTrue(any("1 Introduction" in m and "short" in m for m in messages))
+        digest["reading"]["sections"][0]["gist"] = "综述重复暴的活动性与偏振如何约束辐射模型。"
+        self.assertEqual(
+            literature_db.section_coverage(literature_db.validate_digest(digest), text),
+            {"summarized": 3, "thin": []},
+        )
+
+        # An HTML outline starts with the title, whose section holds the author list.
+        authors = " ".join(["A. Author"] * 100)
+        digest["reading"]["sections"] = digest["reading"]["sections"][:1]
+
+        def coverage_of(front, headings, **kwargs):
+            page = f"A Study of Bursts\n{authors}\n\n{front}1 Introduction\n{body}\n"
+            manifest = {"selected": {"statistics": {"outline": headings}}}
+            validated = literature_db.validate_digest(json.loads(json.dumps(digest)))
+            return literature_db.section_coverage(
+                validated,
+                page,
+                literature_db.article_sections(page, manifest, validated),
+                **kwargs,
+            )
+
+        titled = ["A Study of Bursts", "1 Introduction"]
+        with self.assertRaisesRegex(literature_db.LiteratureError, "A Study of Bursts"):
+            coverage_of("", titled)
+        self.assertEqual(coverage_of("", titled, title="A study of bursts")["summarized"], 1)
+        with_abstract = ["A Study of Bursts", "Abstract", "1 Introduction"]
+        self.assertEqual(
+            coverage_of("Abstract\nShort.\n\n", with_abstract)["summarized"], 1
+        )
+
+        targeted = minimal_digest()
+        targeted.pop("overview")
+        targeted["reading"] = {
+            "status": "targeted",
+            "sections": [{"heading": "3 Results", "gist": "结果。"}],
+            "unread_sections": ["Other sections"],
+        }
+        self.assertEqual(
+            literature_db.section_coverage(literature_db.validate_digest(targeted), text),
+            {"summarized": 1, "thin": []},
+        )
+
+    def test_ingest_rejects_a_full_reading_that_leaves_out_an_article_section(self):
+        body = " ".join(["The fitted model describes the observed burst energies well."] * 30)
+        source = self.root / "longer"
+        source.mkdir()
+        manifest = sample_manifest(
+            source,
+            body=b"<html>longer article</html>",
+            text_body=ARTICLE_TEXT.replace(
+                "References\n", f"6 Outlook\n{body}\n\nReferences\n"
+            ),
+        )
+        digest = current_digest()
+        with self.assertRaisesRegex(
+            literature_db.LiteratureError, "each with its gist: 6 Outlook"
+        ):
+            literature_db.ingest_record(
+                self.connection, self.fts5, self.library, manifest, digest, merge=False
+            )
+        artifact_hash = manifest["selected"]["sha256"]
+        self.assertFalse(
+            (self.library / "objects" / artifact_hash[:2] / artifact_hash).exists()
+        )
+        self.assertEqual(
+            self.connection.execute("SELECT COUNT(*) FROM versions").fetchone()[0], 1
+        )
+        digest["reading"]["sections"].append(
+            {"heading": "6 Outlook", "gist": "Planned follow-up observations."}
+        )
+        result = literature_db.ingest_record(
+            self.connection, self.fts5, self.library, manifest, digest, merge=False
+        )
+        self.assertEqual(result["section_summaries"], {"summarized": 5, "thin": []})
+
+    def test_targeted_merge_fills_missing_section_summaries_and_keeps_stored_ones(self):
+        stored = json.loads(
+            self.connection.execute(
+                "SELECT digest_json FROM digests WHERE id = ?", (self.result["digest_id"],)
+            ).fetchone()["digest_json"]
+        )
+        for entry in stored["reading"]["sections"]:
+            if entry["heading"] == "4":
+                entry.pop("gist")
+        self.connection.execute(
+            "UPDATE digests SET digest_json = ? WHERE id = ?",
+            (literature_db.json_text(stored), self.result["digest_id"]),
+        )
+        self.connection.commit()
         incoming = minimal_digest()
         incoming.pop("overview")
         incoming["facets"][0].update(key="cadence", label="Cadence")
@@ -2748,6 +2906,41 @@ class CliTests(unittest.TestCase):
             )
             self.assertEqual(code, 0)
             self.assertEqual(json.loads(output.getvalue())["status"], "ingested")
+
+    def test_authoring_commands_require_a_summary_of_every_read_section(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            digest = in_chinese(sample_digest())
+            digest["reading"]["sections"][1].pop("gist")
+            digest["reading"]["sections"].append("6 Outlook")
+            digest_path = root / "digest.json"
+            digest_path.write_text(json.dumps(digest), encoding="utf-8")
+            source = root / "source"
+            source.mkdir()
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(sample_manifest(source)), encoding="utf-8"
+            )
+            for command in (
+                ["validate-digest", str(digest_path)],
+                [
+                    "--library-dir",
+                    str(root / "library"),
+                    "ingest",
+                    "--manifest",
+                    str(manifest_path),
+                    "--digest",
+                    str(digest_path),
+                ],
+            ):
+                with self.subTest(command=command[0]):
+                    stderr = io.StringIO()
+                    code = literature_db.run(
+                        command, stdout=io.StringIO(), stderr=stderr
+                    )
+                    self.assertEqual(code, 2)
+                    self.assertIn("Summarize each read section", stderr.getvalue())
+                    self.assertIn("2, 6 Outlook", stderr.getvalue())
 
     def test_compact_returns_freed_pages_and_keeps_the_library_intact(self):
         with tempfile.TemporaryDirectory() as temporary:

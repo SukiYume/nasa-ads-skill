@@ -26,7 +26,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 DATABASE_SCHEMA_VERSION = 4
 DIGEST_SCHEMA_VERSION = 4
 DIGEST_REQUIRED_FIELDS = ("schema_version", "language", "facets", "reading")
@@ -114,15 +114,6 @@ VALUE_TEXT_FIELDS = (
 )
 PARAMETER_FIELDS = ("name", "value", "range", "status", *VALUE_TEXT_FIELDS)
 DATA_PRODUCT_TYPES = {"data", "code", "catalog", "table", "software", "other"}
-COVERAGE_ROLES = {
-    "scientific",
-    "methods",
-    "context",
-    "limitations",
-    "data-products",
-    "references",
-    "administrative",
-}
 GENERIC_SECTION_LABELS = {
     "all sections",
     "complete article",
@@ -226,7 +217,10 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("digest", help="digest JSON path or - for stdin")
     validate.add_argument(
         "--text",
-        help="prepared article text; checks that each finding quote occurs in it",
+        help=(
+            "prepared article text, or its fetch manifest to also use the HTML "
+            "headings; checks each finding quote and the section summaries against it"
+        ),
     )
 
     ingest = subparsers.add_parser(
@@ -303,7 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     passage.add_argument(
         "--outline",
         action="store_true",
-        help="list stored section headings with sizes and digest gists",
+        help="list stored section headings with sizes and the digest's section summaries",
     )
     passage.add_argument(
         "--sha256",
@@ -1262,6 +1256,26 @@ def require_chinese_digest(digest: Mapping[str, Any]) -> None:
         )
 
 
+def require_authored_digest(digest: Mapping[str, Any]) -> None:
+    """Rules for a digest written now, beyond the structure every stored one has.
+
+    Its prose is Chinese, and it summarizes every section it records as read, so
+    the stored record stands for the whole article and later work starts from it.
+    """
+    require_chinese_digest(digest)
+    missing = [
+        section["heading"]
+        for section in digest["reading"]["sections"]
+        if not section.get("gist")
+    ]
+    if missing:
+        raise LiteratureError(
+            "Summarize each read section in its gist, whatever the current "
+            "question needs: " + listed_ids(missing) + ".",
+            2,
+        )
+
+
 def finding_id(facet_key: str, index: int) -> str:
     """Stable reference to the ``index``-th (zero-based) finding of a facet."""
     return f"{facet_key}.{index + 1}"
@@ -1325,9 +1339,14 @@ def listed_ids(ids: Sequence[str], limit: int = 12) -> str:
 
 
 def digest_warnings(
-    digest: Mapping[str, Any], anchors: Mapping[str, Any] | None = None
+    digest: Mapping[str, Any],
+    anchors: Mapping[str, Any] | None = None,
+    coverage: Mapping[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Flag likely losses of citable structure and excess detail; the reader confirms each."""
+    """Flag likely losses of citable structure, thin summaries, and excess detail.
+
+    The reader fixes each warning or confirms it is a false positive.
+    """
     warnings: list[dict[str, str]] = []
 
     def warn(path: str, message: str) -> None:
@@ -1395,6 +1414,13 @@ def digest_warnings(
             "Quotes for "
             f"{listed_ids(anchors['unlocated'])} do not occur in the article text; "
             "copy each one verbatim from the prepared text.",
+        )
+    if coverage and coverage["thin"]:
+        warn(
+            "reading.sections",
+            f"The summaries of {listed_ids(coverage['thin'])} are short for those "
+            "sections; state what each establishes: its argument, procedure, "
+            "results, and numbers.",
         )
     return warnings
 
@@ -2690,16 +2716,17 @@ def ingest_record(
         merge=merge,
         replace_digest=replace_digest,
     )
+    anchors = coverage = None
+    text_source = Path(str(manifest["selected"].get("text_path") or ""))
+    if text_source.is_file():
+        article_text = text_source.read_text(encoding="utf-8", errors="replace")
+        sections = article_sections(article_text, manifest, incoming)
+        coverage = section_coverage(
+            incoming, article_text, sections, title=manifest.get("title")
+        )
+        anchors = quote_anchors(incoming, article_text, sections)
     stored = store_objects(library_dir, manifest)
-    anchors = None
-    if stored.get("text_path"):
-        article_text = Path(stored["text_path"]).read_text(
-            encoding="utf-8", errors="replace"
-        )
-        anchors = quote_anchors(
-            incoming, article_text, article_sections(article_text, manifest, incoming)
-        )
-    warnings = digest_warnings(incoming, anchors)
+    warnings = digest_warnings(incoming, anchors, coverage)
     try:
         connection.execute("BEGIN IMMEDIATE")
         matching_papers = resolve_paper_identity(connection, aliases)
@@ -2755,6 +2782,7 @@ def ingest_record(
         "reading_status": digest["reading"]["status"],
         "facets": [facet["key"] for facet in digest["facets"]],
         **({"anchors": anchors} if anchors is not None else {}),
+        **({"section_summaries": coverage} if coverage is not None else {}),
         "warnings": warnings,
         "classification_status": "complete"
         if library_catalog.paper_organization(connection, paper_id)["collections"]
@@ -2815,6 +2843,15 @@ def find_paper_by_identifier(
     ).fetchone()
 
 
+VERSION_AUTHORITY_SQL = (
+    "CASE v.version_kind "
+    + " ".join(
+        f"WHEN '{kind}' THEN {rank}" for kind, rank in fulltext.VERSION_AUTHORITY.items()
+    )
+    + f" ELSE {len(fulltext.VERSION_AUTHORITY)} END"
+)
+
+
 def preferred_version(
     connection: sqlite3.Connection,
     paper_id: int,
@@ -2841,13 +2878,7 @@ def preferred_version(
         LEFT JOIN digests d ON d.version_id = v.id
         WHERE v.paper_id = ? {hash_clause}
         ORDER BY
-            CASE v.version_kind
-                WHEN 'published' THEN 0
-                WHEN 'accepted' THEN 1
-                WHEN 'preprint' THEN 2
-                WHEN 'scan' THEN 3
-                ELSE 4
-            END,
+            {VERSION_AUTHORITY_SQL},
             COALESCE((SELECT MAX(CAST(substr(vl.arxiv_id, length(rtrim(vl.arxiv_id, '0123456789')) + 1) AS INTEGER))
                       FROM version_labels vl WHERE vl.version_id = v.id), 0) DESC,
             v.retrieved_at DESC,
@@ -2898,7 +2929,13 @@ def topic_match(facet: Mapping[str, Any], topic: str) -> bool:
 
 
 def digest_context_match(digest: Mapping[str, Any], topic: str) -> bool:
-    """Whether a topic names the paper's own objects, keywords, data, or methods."""
+    """Whether a topic names the paper's objects, keywords, data, or methods, or
+    occurs in the summary of one of its sections."""
+    if any(
+        text_covers(f"{section['heading']}\n{section.get('gist', '')}", topic)
+        for section in digest.get("reading", {}).get("sections", [])
+    ):
+        return True
     haystack = "\n".join(
         [
             *[str(value) for value in digest.get("keywords", [])],
@@ -3366,6 +3403,94 @@ def quote_anchors(
     return {"quoted": quoted, "located": located, "unlocated": unlocated}
 
 
+SUMMARIZED_SECTION_WORDS = 150
+WORDS_PER_SUMMARY_CHAR = 20
+MAX_REQUIRED_SUMMARY_CHARS = 200
+UNSUMMARIZED_HEADINGS = {
+    fulltext.FRONT_MATTER_HEADING.casefold(),
+    "abstract",
+    "references",
+    "bibliography",
+    "acknowledgments",
+    "acknowledgements",
+    "acknowledgment",
+    "acknowledgement",
+    "author contributions",
+    "competing interests",
+    "conflict of interest",
+    "orcid ids",
+}
+
+
+def summaries_by_section(
+    digest: Mapping[str, Any], sections: Sequence[Mapping[str, Any]]
+) -> dict[int, str]:
+    """The digest's section summaries, keyed by the start of the section each matches."""
+    summaries: dict[int, str] = {}
+    for entry in digest["reading"]["sections"]:
+        section = match_section(sections, entry["heading"])
+        if section is not None and entry.get("gist"):
+            summaries.setdefault(section["start"], entry["gist"])
+    return summaries
+
+
+def section_coverage(
+    digest: Mapping[str, Any],
+    text: str,
+    sections: Sequence[Mapping[str, Any]] | None = None,
+    *,
+    title: str | None = None,
+) -> dict[str, Any]:
+    """Check the digest's section summaries against the article's own sections.
+
+    A full reading summarizes every section of at least ``SUMMARIZED_SECTION_WORDS``
+    words, apart from the front matter (the text under the article ``title`` and
+    before the abstract), the abstract, the reference list, and acknowledgments;
+    one that leaves such a section out is rejected. Returns the number of article
+    sections with a summary and the headings whose summary is thin: shorter than
+    one character per ``WORDS_PER_SUMMARY_CHAR`` words of the section, up to
+    ``MAX_REQUIRED_SUMMARY_CHARS``.
+    """
+    sections = sections if sections is not None else article_sections(text, None, digest)
+    summaries = summaries_by_section(digest, sections)
+    full = digest["reading"]["status"] == "full"
+    names = [
+        HEADING_NUMBER_PATTERN.sub("", normalized_heading(section["heading"])).strip(
+            " .:)"
+        )
+        for section in sections
+    ]
+    body_start = sections[names.index("abstract")]["start"] if "abstract" in names else 0
+    title_key = fulltext.heading_key(title or "")
+    unsummarized: list[str] = []
+    thin: list[str] = []
+    for section, name in zip(sections, names):
+        words = fulltext.count_words(text[section["start"] : section["end"]])
+        summary = summaries.get(section["start"])
+        if summary is None:
+            if (
+                full
+                and words >= SUMMARIZED_SECTION_WORDS
+                and name not in UNSUMMARIZED_HEADINGS
+                and section["start"] >= body_start
+                and fulltext.heading_key(section["heading"]) != title_key
+            ):
+                unsummarized.append(section["heading"])
+        elif len(summary) < min(
+            MAX_REQUIRED_SUMMARY_CHARS, words // WORDS_PER_SUMMARY_CHAR
+        ):
+            thin.append(section["heading"])
+    if unsummarized:
+        raise LiteratureError(
+            "A full reading summarizes every section of the article. Add these "
+            "sections under their printed headings, each with its gist: "
+            + listed_ids(unsummarized, len(unsummarized))
+            + ".",
+            2,
+        )
+    return {"summarized": len(summaries), "thin": thin}
+
+
 def line_number(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
@@ -3557,11 +3682,7 @@ def article_passages(
         outline = True
     if outline:
         if spans:
-            gists: dict[int, str] = {}
-            for entry in digest["reading"]["sections"] if digest else []:
-                span = match_section(spans, entry["heading"])
-                if span is not None and entry.get("gist"):
-                    gists.setdefault(span["start"], entry["gist"])
+            gists = summaries_by_section(digest, spans) if digest else {}
             result["outline"] = []
             for span in spans:
                 entry = {
@@ -5086,15 +5207,18 @@ def execute(
         return 0
     if args.command == "validate-digest":
         digest = validate_digest(load_json(args.digest, stdin))
-        require_chinese_digest(digest)
-        anchors = None
+        require_authored_digest(digest)
+        anchors = coverage = None
         if args.text:
-            text_path = Path(args.text).expanduser()
             try:
-                text = text_path.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                raise LiteratureError(f"Unable to read article text: {exc}", 2) from exc
-            anchors = quote_anchors(digest, text)
+                _path, text, manifest = fulltext.prepared_text(args.text)
+            except fulltext.FullTextError as exc:
+                raise LiteratureError(str(exc), 2) from exc
+            sections = article_sections(text, manifest, digest)
+            coverage = section_coverage(
+                digest, text, sections, title=(manifest or {}).get("title")
+            )
+            anchors = quote_anchors(digest, text, sections)
         report: dict[str, Any] = {
             "status": "valid",
             "schema_version": digest["schema_version"],
@@ -5110,7 +5234,9 @@ def execute(
         }
         if anchors is not None:
             report["anchors"] = anchors
-        report["warnings"] = digest_warnings(digest, anchors)
+        if coverage is not None:
+            report["section_summaries"] = coverage
+        report["warnings"] = digest_warnings(digest, anchors, coverage)
         stdout.write(pretty_json(report))
         return 0
     if args.command == "restore":
@@ -5173,7 +5299,7 @@ def execute(
             manifest_payload = load_json(args.manifest, stdin)
             manifest = select_manifest_result(manifest_payload, args.identifier)
             digest = validate_digest(load_json(args.digest, stdin))
-            require_chinese_digest(digest)
+            require_authored_digest(digest)
             result = ingest_record(
                 connection,
                 fts5,

@@ -17,7 +17,7 @@ Map the request to the narrowest operation and load its reference section:
 
 | Need | Commands | Reference |
 |---|---|---|
-| Find stored papers, findings, or text | `lookup`, `show`, `search`, `list`, `passage` | `references/literature-memory.md` (Local Lookup, Read Stored Passages, Query Stored Evidence) |
+| Find stored papers, findings, or text; recall what a read paper says | `lookup`, `show`, `search`, `list`, `passage`; `passage --outline` for the section summaries | `references/literature-memory.md` (Local Lookup, Read Stored Passages, Query Stored Evidence) |
 | Reuse or cite a stored result, inference, or value | `findings "<topic>"`, `parameters "<quantity>"`, `--paper`, `--entity`, `--kind`, `--status`, `--format csv`; `passage --finding <finding_id>` to recheck the source paragraph | `references/literature-memory.md` (Query Stored Evidence, Read Stored Passages) |
 | Finish summaries and reading | `pending`, `summarize`, `check --run-id`, `check --recent`, `reading-check` | `references/literature-memory.md` |
 | Organize | `collections`, `annotate`, `organize` | `references/literature-memory.md` (Classification) |

@@ -32,7 +32,7 @@ Useful options:
 
 `--format auto` selects validated structured HTML within the best available version and falls back to PDF. Use `--format pdf` for equations, figures, tables, pagination, or visual review. Explicit format requests validate the response format.
 
-Fetch captures available article metadata and abstracts by default, including an abstract-only result. Each result's `literature.owed` lists what the paper still needs: its source summary, a topic, and, for a prepared article without a complete digest, the full reading and `ingest` with that manifest. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`; `check` keeps reporting the fetch under `needs_reading` until the digest is ingested. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
+Fetch captures available article metadata and abstracts by default, including an abstract-only result. Each result's `literature.owed` lists what the paper still needs: its source summary, a topic, and, for a prepared article version that no complete digest settles, the full reading and `ingest` with that manifest. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`; `check` keeps reporting the fetched version under `needs_reading` until its digest is ingested. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
 
 After a text-bearing fetch, inventory the article structure:
 
@@ -131,11 +131,11 @@ For an exact version requiring complete ingest, read the body once and write the
 
 1. Confirm title, authorship, identifiers, document type, and selected version.
 2. Run `outline` and reconcile headings with the artifact.
-3. Read the sections in order by line range: front matter and abstract, introduction, data, methods, results, discussion, conclusions, and every appendix carrying results, validation, or data and code statements. Skip the reference list, acknowledgments, author lists, and affiliations; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
-4. After each section, add its findings at [citation granularity](digest-schema.md#granularity), each with a locator and a quote copied from the text just read; the section heading with a gist where the heading is uninformative; and any new entity, dataset, or method. Keep restated content under `cited_from` and the reader's evaluation in `assessment`.
+3. Read the sections in order by line range: front matter and abstract, introduction, data, methods, results, discussion, conclusions, and the appendices. Skip the reference list, acknowledgments, author lists, and affiliations; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
+4. After each section or subsection, write its entry in `reading.sections`: the printed heading and a [summary](digest-schema.md#reading-coverage) of what the section establishes, with its key numbers. Then add its findings at [citation granularity](digest-schema.md#granularity), each with a locator and a quote copied from the text just read, and any new entity, dataset, or method. Keep restated content under `cited_from` and the reader's evaluation in `assessment`.
 5. For tables and figures, read the captions and the rows or panels the text discusses. A long table becomes one finding with counts and ranges plus a `data_products` entry; only headline numbers become [values](digest-schema.md#values).
 6. Open the artifact where text extraction leaves a decisive value, sign, exponent, equation, or table cell ambiguous, such as a PDF exponent read inline or an equation missing from HTML text, and copy the value as printed.
-7. Write `overview.tldr` and `overview.summary` last, from the drafted findings.
+7. Write `overview.tldr` and `overview.summary` last, from the section summaries and findings.
 8. Follow [digest-schema.md](digest-schema.md#validation-and-ingest) to review, validate with `--text`, and ingest the record.
 
 Verify the task's investigation set with [reading-check](literature-memory.md#local-lookup-and-reading) and apply the shared [handoff criteria](../SKILL.md#completion-and-handoff).

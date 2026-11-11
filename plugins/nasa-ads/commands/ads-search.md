@@ -17,6 +17,6 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` and follow its Literature 
 2. Check local evidence first with `search`, `parameters`, and `lookup` from `references/literature-memory.md`.
 3. Discover missing or current work with `references/ads-cli.md`: preview with `--no-store`, screen, then capture retained records and complete their summaries and topics.
 4. Load `references/research-writing.md` for reviews or manuscript sections.
-5. Read every paper in the investigation set in full, as the Reading Scope requires.
+5. Read every paper in the investigation set in full and store its whole-article digest, as the Reading Scope requires.
 6. Run `check --recent <hours>` and finish the summaries, topics, and readings it reports.
 7. Return the synthesis or results with traceable sources, the searched scope (total matches, returned records, retained candidates), and evidence limits. A search without matches reports its queries, filters, and coverage gap.

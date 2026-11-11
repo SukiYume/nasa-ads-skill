@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
-  "version": "3.1.0",
-  "description": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations.",
+  "version": "3.2.0",
+  "description": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations.",
   "author": {
     "name": "Echo",
     "url": "https://github.com/SukiYume"
@@ -27,7 +27,7 @@
   "interface": {
     "displayName": "NASA ADS",
     "shortDescription": "SciX research and a reusable personal literature library",
-    "longDescription": "Search SciX (formerly NASA ADS), read papers in full, and silently build a classified literature library of layered digests: one-line and paragraph summaries, a section map, and citable findings with key values, locators, and verbatim anchors. Reuse them in research and writing, reread the exact paragraph behind a citation, browse with adslib, and export citations. Every investigated paper keeps a version-specific digest whose findings and values can be queried later for comparison tables and citations, and the stored article returns the paragraph that states each result.",
+    "longDescription": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations. Every investigated paper keeps a version-specific digest whose findings and values can be queried later for comparison tables and citations, and the stored article returns the paragraph that states each result.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [
