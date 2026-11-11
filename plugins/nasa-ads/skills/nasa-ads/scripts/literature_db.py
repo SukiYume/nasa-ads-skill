@@ -26,7 +26,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 DATABASE_SCHEMA_VERSION = 4
 DIGEST_SCHEMA_VERSION = 4
 DIGEST_REQUIRED_FIELDS = ("schema_version", "language", "facets", "reading")

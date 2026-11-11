@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -564,6 +564,7 @@ def count_words(value: str) -> int:
 APPENDIX_HEADING_RE = re.compile(
     r"^(?:Appendix|Supplement)\s+[A-Z0-9]+[:.)]?\s+", re.IGNORECASE
 )
+HEADING_WORD_RE = re.compile(r"[^\W\d_]{2,}")
 REFERENCE_HEADINGS = {"references", "bibliography"}
 
 
@@ -604,7 +605,9 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
         match = numbered.match(line)
         if match:
             heading_text = match.group(1)
-            if not any(character.isalpha() for character in heading_text):
+            # A title opens with a letter or digit and holds a word; equation and
+            # table fragments such as "2 = 3.529) is" or "10 3 p = 10 4" do neither.
+            if not heading_text[0].isalnum() or not HEADING_WORD_RE.search(heading_text):
                 continue
             if ". " in heading_text or heading_text[0].islower():
                 continue
@@ -646,11 +649,17 @@ def article_outline(
 
     The candidate that places more headings on lines of ``text`` wins. Headings
     a reader recorded in a digest then fill sections that the outline missed.
+    A PDF manifest holds the outline its own preparation inferred, so the text
+    is inferred again here.
     """
     candidates = [infer_text_outline(text, limit=limit)]
-    statistics = ((manifest or {}).get("selected") or {}).get("statistics") or {}
-    outline = statistics.get("outline")
-    if isinstance(outline, list) and all(isinstance(item, str) for item in outline):
+    selected = (manifest or {}).get("selected") or {}
+    outline = (selected.get("statistics") or {}).get("outline")
+    if (
+        str(selected.get("actual_format") or "").lower() != "pdf"
+        and isinstance(outline, list)
+        and all(isinstance(item, str) for item in outline)
+    ):
         candidates.insert(0, outline)
     best: list[dict[str, Any]] = []
     for headings in candidates:

@@ -267,6 +267,45 @@ i) the first criterion
             ],
         )
 
+    def test_outline_rejects_equation_and_table_fragments(self):
+        article = """2 Data and models
+1 + z 1028 cm
+2 = 4.916) for the TPL model; and
+2 = 3.529) is
+10 3 p = 10 4
+5. $\\tau_{s}$ ranges between 2.4 and 1.25 ms in the band
+3 ($11\\leq\\log(M_{*}/M_{\\odot})\\leq 11.5$)
+III.1.1 2025 October
+5.2 21 cm power spectrum at z = 2
+6 Conclusions
+"""
+        self.assertEqual(
+            fulltext.infer_text_outline(article),
+            [
+                "2 Data and models",
+                "III.1.1 2025 October",
+                "5.2 21 cm power spectrum at z = 2",
+                "6 Conclusions",
+            ],
+        )
+
+    def test_pdf_manifest_outline_is_inferred_again_from_the_text(self):
+        text = "1 Introduction\nBody.\n2 = 3.529) is\nMore body.\n2 Results\nEnd.\n"
+        stored = ["1 Introduction", "2 = 3.529) is", "2 Results"]
+
+        def headings(actual_format):
+            manifest = {
+                "selected": {
+                    "actual_format": actual_format,
+                    "statistics": {"outline": stored},
+                }
+            }
+            return [s["heading"] for s in fulltext.article_outline(text, manifest)]
+
+        self.assertEqual(headings("pdf"), ["1 Introduction", "2 Results"])
+        # Headings of an HTML source come from its markup and are kept as stored.
+        self.assertEqual(headings("html"), stored)
+
     def test_outline_skips_a_leading_table_of_contents(self):
         article = """Article contents
 Abstract
