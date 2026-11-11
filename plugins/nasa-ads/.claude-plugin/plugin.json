@@ -1,7 +1,7 @@
 {
   "name": "nasa-ads",
   "description": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations.",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "homepage": "https://github.com/SukiYume/nasa-ads-skill",
   "repository": "https://github.com/SukiYume/nasa-ads-skill",
   "license": "MIT",

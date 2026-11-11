@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import ads_api
 
-VERSION = "3.2.1"
+VERSION = "3.2.2"
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_TIMEOUT = 45.0
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
@@ -566,6 +566,96 @@ APPENDIX_HEADING_RE = re.compile(
 )
 HEADING_WORD_RE = re.compile(r"[^\W\d_]{2,}")
 REFERENCE_HEADINGS = {"references", "bibliography"}
+SECTION_NUMBER_RE = re.compile(
+    r"^(?:§\s*)?(\d{1,2}(?:\.\d{1,2}){0,3}|[IVXLC]+(?:\.\d{1,2}){0,3})([.)]?)\s",
+    re.IGNORECASE,
+)
+ROMAN_VALUES = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100}
+MAX_NUMBER_STEP = 6
+
+
+def section_number(heading: str) -> tuple[tuple[int, ...], tuple[bool, str]] | None:
+    """Number of an Arabic or Roman numbered heading, with its notation.
+
+    ``3.1 Data`` gives ``(3, 1)`` and ``IV. RESULTS`` gives ``(4,)``. The
+    notation tells Roman from Arabic numerals and records the mark after the
+    number.
+    """
+    match = SECTION_NUMBER_RE.match(heading)
+    if not match:
+        return None
+    top, *rest = match.group(1).split(".")
+    if top.isdigit():
+        value = int(top)
+    else:
+        value = previous = 0
+        for character in reversed(top.lower()):
+            digit = ROMAN_VALUES[character]
+            value += -digit if digit < previous else digit
+            previous = max(previous, digit)
+    return (value, *(int(part) for part in rest)), (not top.isdigit(), match.group(2))
+
+
+def follows(previous: tuple[int, ...], current: tuple[int, ...]) -> bool:
+    """Whether ``current`` can be the next section number after ``previous``.
+
+    A sibling or an ancestor's sibling advances by a few steps at most, and a
+    section opened below another starts at a low number.
+    """
+    shared = 0
+    while (
+        shared < min(len(previous), len(current))
+        and previous[shared] == current[shared]
+    ):
+        shared += 1
+    if shared == len(current):
+        return False
+    if shared < len(previous):
+        if not 1 <= current[shared] - previous[shared] <= MAX_NUMBER_STEP:
+            return False
+        shared += 1
+    return all(part <= MAX_NUMBER_STEP for part in current[shared:])
+
+
+def ordered_numbering(headings: list[str]) -> list[str]:
+    """Keep the numbered headings whose numbers ascend in reading order.
+
+    The section numbers of an article form one ascending chain, so the longest
+    such chain marks the real headings, and a stray numbered line between them,
+    such as ``28 January to 29 August`` or ``1 Jy ms`` after section 3.1, falls
+    outside it. Among chains of equal length the one in a single notation wins.
+    Numbering may start again after an unnumbered heading such as Methods.
+    Unnumbered and appendix headings are kept as they are.
+    """
+    numbers = [section_number(heading) for heading in headings]
+    numbered = [index for index, number in enumerate(numbers) if number is not None]
+    best: dict[int, tuple[int, int]] = {}
+    before: dict[int, int | None] = {}
+    for position, index in enumerate(numbered):
+        number, notation = numbers[index]
+        best[index], before[index] = (1, 0), None
+        for earlier in numbered[:position]:
+            earlier_number, earlier_notation = numbers[earlier]
+            restart = number[0] <= 1 and any(
+                numbers[between] is None for between in range(earlier + 1, index)
+            )
+            if not (restart or follows(earlier_number, number)):
+                continue
+            length, uniform = best[earlier]
+            score = (length + 1, uniform + (notation == earlier_notation))
+            if score >= best[index]:
+                best[index], before[index] = score, earlier
+    kept: set[int] = set()
+    if numbered:
+        last: int | None = max(numbered, key=lambda index: (best[index], index))
+        while last is not None:
+            kept.add(last)
+            last = before[last]
+    return [
+        heading
+        for index, heading in enumerate(headings)
+        if numbers[index] is None or index in kept
+    ]
 
 
 def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
@@ -574,7 +664,8 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
     Publisher pages often repeat the heading list as a table of contents before
     the article, so a repeated heading keeps its last occurrence, an unnumbered
     entry gives way to the numbered heading of the same title, and the
-    reference list starts at the last ``References`` heading.
+    reference list starts at the last ``References`` heading. Numbered lines
+    outside the ascending order of section numbers are dropped.
     """
     # Section numbers have at most two digits per level, so years and
     # measurements at the start of a wrapped text line are not headings.
@@ -633,9 +724,7 @@ def infer_text_outline(value: str, *, limit: int = 200) -> list[str]:
         if last_index[key] != index or (title is None and key in numbered_titles):
             continue
         headings.append(line)
-        if len(headings) >= limit:
-            break
-    return headings
+    return ordered_numbering(headings)[:limit]
 
 
 def article_outline(
@@ -647,12 +736,13 @@ def article_outline(
 ) -> list[dict[str, Any]]:
     """Section spans from the manifest's HTML headings or the inferred outline.
 
-    The candidate that places more headings on lines of ``text`` wins. Headings
-    a reader recorded in a digest then fill sections that the outline missed.
-    A PDF manifest holds the outline its own preparation inferred, so the text
-    is inferred again here.
+    The headings of an HTML source come from its markup and are used whenever
+    they place ``MARKUP_OUTLINE_SECTIONS`` sections or as many as the inference
+    from the text. A PDF manifest holds the outline its own preparation
+    inferred, so the text is inferred again here. Headings a reader recorded in
+    a digest then fill sections that the outline missed.
     """
-    candidates = [infer_text_outline(text, limit=limit)]
+    best = locate_headings(text, infer_text_outline(text, limit=limit))
     selected = (manifest or {}).get("selected") or {}
     outline = (selected.get("statistics") or {}).get("outline")
     if (
@@ -660,18 +750,16 @@ def article_outline(
         and isinstance(outline, list)
         and all(isinstance(item, str) for item in outline)
     ):
-        candidates.insert(0, outline)
-    best: list[dict[str, Any]] = []
-    for headings in candidates:
-        located = locate_headings(text, headings)
-        if len(located) > len(best):
-            best = located
+        markup = locate_headings(text, outline)
+        if len(markup) >= min(MARKUP_OUTLINE_SECTIONS, len(best)):
+            best = markup
     if reading_headings:
         best = add_reading_headings(text, best, reading_headings)
     return best
 
 
 FRONT_MATTER_HEADING = "Front matter"
+MARKUP_OUTLINE_SECTIONS = 5
 NUMBERED_HEADING_RE = re.compile(
     r"^(?:§\s*)?(?:\d{1,2}(?:\.\d{1,2}){0,3}[.):]?|[A-Z](?:\.\d{1,2}){1,3}[.):]?|"
     r"[A-Z][.)]|(?-i:[IVXLC]+)[.):]?|(?:appendix|supplement)\s+[A-Z0-9]+[.):]?)"
@@ -700,7 +788,8 @@ def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
 
     Returns sections with the heading, its one-based ``line``, character
     ``start`` and ``end`` offsets, and the number of ``lines`` it spans. Text
-    before the first heading becomes a front-matter section.
+    before the first heading becomes a front-matter section. A heading wrapped
+    over two lines is placed on the first of them.
     """
     lines, _starts = line_starts(text)
     normalized = [" ".join(line.split()).casefold() for line in lines]
@@ -709,8 +798,13 @@ def locate_headings(text: str, headings: Sequence[str]) -> list[dict[str, Any]]:
     for heading in headings:
         key = " ".join(str(heading).split()).casefold()
         for index in range(cursor, len(lines)):
-            if normalized[index] == key:
-                placed.append((str(heading), index))
+            line = normalized[index]
+            if line == key or (
+                line
+                and index + 1 < len(lines)
+                and key == f"{line} {normalized[index + 1]}"
+            ):
+                placed.append((" ".join(str(heading).split()), index))
                 cursor = index + 1
                 break
     return sections_from_placements(text, placed)

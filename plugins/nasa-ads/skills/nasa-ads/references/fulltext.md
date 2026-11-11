@@ -42,7 +42,7 @@ python3 "<skill-dir>/scripts/fulltext.py" outline \
   --limit 200
 ```
 
-Pass the result's `manifest_path` so the outline can use the headings of an HTML source, or `selected.text_path` for the text alone. The outline lists each inferred section with its `heading`, starting `line`, length in `lines`, and `words`; text before the first heading appears as `Front matter`. Reconcile noisy, duplicated, or missing headings against the artifact. The line numbers let a reader open one section at a time and skip the reference list, and the headings become the digest's `reading.sections`.
+Pass the result's `manifest_path` so the outline can use the headings of an HTML source, or `selected.text_path` for the text alone. The outline lists each inferred section with its `heading`, starting `line`, length in `lines`, and `words`; text before the first heading appears as `Front matter`. An HTML source's own headings are used when it has them, and headings inferred from text keep the numbered lines whose numbers ascend in reading order. Reconcile noisy, duplicated, or missing headings against the artifact. The line numbers let a reader open one section at a time and skip the reference list, and the headings become the digest's `reading.sections`.
 
 `--use-unpaywall` requires `UNPAYWALL_EMAIL`. The address is sent to the Unpaywall API as its required query parameter.
 
@@ -127,16 +127,14 @@ Identifier, credential, network, or input processing failed before a complete ma
 
 ## Reading Procedure
 
-For an exact version requiring complete ingest, read the body once and write the digest while reading:
+For an exact version that needs a complete digest, read the body once and write the digest while reading:
 
-1. Confirm title, authorship, identifiers, document type, and selected version.
-2. Run `outline` and reconcile headings with the artifact.
-3. Read the sections in order by line range: front matter and abstract, introduction, data, methods, results, discussion, conclusions, and the appendices. Skip the reference list, acknowledgments, author lists, and affiliations; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
-4. After each section or subsection, write its entry in `reading.sections`: the printed heading and a [summary](digest-schema.md#reading-coverage) of what the section establishes, with its key numbers. Then add its findings at [citation granularity](digest-schema.md#granularity), each with a locator and a quote copied from the text just read, and any new entity, dataset, or method. Keep restated content under `cited_from` and the reader's evaluation in `assessment`.
-5. For tables and figures, read the captions and the rows or panels the text discusses. A long table becomes one finding with counts and ranges plus a `data_products` entry; only headline numbers become [values](digest-schema.md#values).
-6. Open the artifact where text extraction leaves a decisive value, sign, exponent, equation, or table cell ambiguous, such as a PDF exponent read inline or an equation missing from HTML text, and copy the value as printed.
-7. Write `overview.tldr` and `overview.summary` last, from the section summaries and findings.
-8. Follow [digest-schema.md](digest-schema.md#validation-and-ingest) to review, validate with `--text`, and ingest the record.
+1. Confirm the title, authors, identifiers, and selected version.
+2. Run `outline` and reconcile its headings with the artifact.
+3. Read the body in order by line range, appendices included. Skip the reference list, acknowledgments, and author lists; look up a single reference entry when a finding needs `cited_from` or `compared_with`.
+4. After each section, write its [summary](digest-schema.md#reading-coverage) and its [findings](digest-schema.md#findings), with quotes copied from the text just read.
+5. Open the artifact where text extraction leaves a value, sign, exponent, equation, or table cell ambiguous.
+6. Write the overview last, then [validate and ingest](digest-schema.md#validation-and-ingest) the digest.
 
 Verify the task's investigation set with [reading-check](literature-memory.md#local-lookup-and-reading) and apply the shared [handoff criteria](../SKILL.md#completion-and-handoff).
 

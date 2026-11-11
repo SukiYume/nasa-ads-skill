@@ -711,88 +711,32 @@ class DigestSchemaFourTests(unittest.TestCase):
         with self.assertRaisesRegex(literature_db.LiteratureError, "digest.datasets"):
             literature_db.validate_digest(digest, check_references=True)
 
-    def test_warnings_keep_digests_at_citation_level(self):
+    def test_size_numbers_and_value_forms_raise_no_warning(self):
         digest = current_digest()
         finding = digest["facets"][0]["findings"][0]
         finding["locator"] = {"section": "3.1; Table 2"}
         finding["cited_from"] = "Zhou et al. 2022; Li et al. 2021"
-        finding["values"][0].update(status="fitted", value=7.399999999999999e27)
-        finding["values"].extend(
-            {"name": f"burst {index} DM", "value": 560, "status": "measured"}
-            for index in range(15)
-        )
-        messages = {
-            warning["message"]
-            for warning in literature_db.digest_warnings(
-                literature_db.validate_digest(digest)
-            )
-        }
-        for expected in (
-            "summarize long tables",
-            "own locator fields",
-            "split findings",
-            "Copy the value as printed",
-            "Name the model",
-        ):
-            with self.subTest(expected=expected):
-                self.assertTrue(any(expected in message for message in messages))
-        digest = current_digest()
-        digest["facets"][1]["findings"][1]["values"] = [
-            {"name": f"row {index}", "value": index, "status": "measured"}
-            for index in range(151)
-        ]
-        paths = [
-            warning["path"]
-            for warning in literature_db.digest_warnings(
-                literature_db.validate_digest(digest)
-            )
-        ]
-        self.assertIn("facets", paths)
-
-    def test_labels_and_expressions_are_not_numbers_left_in_prose(self):
-        digest = current_digest()
-        findings = digest["facets"][1]["findings"]
-
-        def flagged(statement):
-            findings[0]["statement"] = statement
-            findings[0].pop("values", None)
-            return "facets[1].findings[0]" in [
-                warning["path"]
-                for warning in literature_db.digest_warnings(
-                    literature_db.validate_digest(json.loads(json.dumps(digest)))
-                )
-            ]
-
-        for statement in (
-            "式 2 的折断幂律拟合累计分布，图 3 给出结果。",
-            "第 3 阶段没有硬 X 射线对应体，耀斑主要来自 AR 12241。",
-            "Abell 370 相对标度关系偏暗；高能渐近斜率为 β+1。",
-            "Stage 3 lacks a hard X-ray counterpart.",
-        ):
-            self.assertFalse(flagged(statement), statement)
-        self.assertTrue(flagged("平均 RM 为 -411 rad/m2。"))
-        self.assertTrue(flagged("上限为 6%（1652 个爆发）。"))
-
-    def test_warnings_flag_numbers_left_in_prose(self):
-        digest = current_digest()
-        findings = digest["facets"][1]["findings"]
-        findings[0]["statement"] = "About 40 percent of bursts in Figure 9 reverse sign."
-        findings[1]["values"] = [
-            {"name": "RM limit", "value": "<0.1", "unit": "rad m^-2", "status": "upper-limit"},
+        finding["statement"] = "The campaign detected 1076 bursts at 1.25 GHz. " * 12
+        finding["values"] = [
+            {"name": f"burst {index} DM", "value": 560, "status": "fitted"}
+            for index in range(80)
+        ] + [
+            {"name": "RM limit", "value": "<0.1", "status": "upper-limit"},
             {"name": "RM", "value": "0.49 +/- 0.08", "status": "measured"},
-            {"name": "DM span", "value": "100-400", "status": "measured"},
-            {"name": "widths", "value": "0.23, 0.22", "status": "measured"},
-            {"name": "rate", "value": 2, "qualifier": "plus or minus 0.5", "status": "measured"},
-            {"name": "precise", "value": "1.2e-3", "status": "measured"},
-            {"name": "count", "value": "1,076", "status": "measured"},
+            {"name": "computed", "value": 7.399999999999999e27, "status": "measured"},
         ]
-        warnings = literature_db.digest_warnings(literature_db.validate_digest(digest))
+        digest["facets"][0]["findings"].extend(
+            {
+                "statement": f"Result {index} holds for 40 percent of the sample.",
+                "kind": "interpretation",
+                "confidence": "medium",
+                "locator": {"section": "4"},
+                "quote": "the measured rate depends on the observing cadence",
+            }
+            for index in range(50)
+        )
         self.assertEqual(
-            [warning["path"] for warning in warnings],
-            [
-                "facets[1].findings[0]",
-                *[f"facets[1].findings[1].values[{index}]" for index in range(5)],
-            ],
+            literature_db.digest_warnings(literature_db.validate_digest(digest)), []
         )
 
 
@@ -2100,30 +2044,18 @@ class CompactDigestTests(unittest.TestCase):
         with self.assertRaisesRegex(literature_db.LiteratureError, "overview"):
             literature_db.validate_digest(digest)
 
-    def test_warnings_flag_missing_quotes_and_excess_detail(self):
+    def test_warnings_flag_findings_without_a_quote_in_full_readings(self):
         digest = minimal_digest()
-        finding = digest["facets"][0]["findings"][0]
-        finding.pop("quote")
-        finding["statement"] = "The campaign detected 1076 bursts. " * 15
-        digest["facets"][0]["findings"].extend(
-            {
-                "statement": f"Result {index} is stated.",
-                "kind": "interpretation",
-                "confidence": "medium",
-                "locator": {"section": "4"},
-                "quote": "word " * 80,
-            }
-            for index in range(40)
-        )
+        digest["facets"][0]["findings"][0].pop("quote")
         warnings = literature_db.digest_warnings(literature_db.validate_digest(digest))
-        messages = [warning["message"] for warning in warnings]
-        self.assertTrue(any("shorten or split the statement" in m for m in messages))
-        self.assertTrue(any("Shorten the quote" in m for m in messages))
-        self.assertTrue(any("merge findings that are always cited" in m for m in messages))
-        self.assertTrue(any(m.startswith("Add a short verbatim quote to activity.1 ") for m in messages))
+        self.assertEqual(len(warnings), 1)
+        self.assertTrue(
+            warnings[0]["message"].startswith("Add a short verbatim quote to activity.1 ")
+        )
         digest["reading"].update(status="visual", visual_page_ranges=["1-4"])
-        visual = literature_db.digest_warnings(literature_db.validate_digest(digest))
-        self.assertFalse(any("verbatim quote" in w["message"] for w in visual))
+        self.assertEqual(
+            literature_db.digest_warnings(literature_db.validate_digest(digest)), []
+        )
 
     def test_quotes_match_across_extraction_differences(self):
         text = (
@@ -2432,6 +2364,9 @@ class PassageTests(unittest.TestCase):
             f"1 Introduction\n{body}\n\n2 Observations\n{body}\n\n"
             f"3 Results\nA short section.\n\nReferences\n{body}\n"
         )
+        for exempt in ("references and notes", "funding", "author contributions", "keywords"):
+            self.assertTrue(literature_db.UNSUMMARIZED_HEADING_RE.fullmatch(exempt), exempt)
+        self.assertIsNone(literature_db.UNSUMMARIZED_HEADING_RE.fullmatch("reference frames"))
         digest = minimal_digest()
         digest["reading"]["sections"] = [
             {"heading": "1 Introduction", "gist": "背景。"},
@@ -3014,7 +2949,7 @@ class CliTests(unittest.TestCase):
     def test_validate_digest_reports_warnings_and_reference_mode(self):
         with tempfile.TemporaryDirectory() as temporary:
             digest = current_digest()
-            digest["facets"][1]["findings"][0]["statement"] = "About 40 percent reverse sign."
+            digest["facets"][1]["findings"][0].pop("quote")
             digest_path = Path(temporary) / "digest.json"
             digest_path.write_text(json.dumps(in_chinese(digest)), encoding="utf-8")
             output = io.StringIO()
@@ -3028,7 +2963,7 @@ class CliTests(unittest.TestCase):
             self.assertTrue(report["references_checked"])
             self.assertEqual(
                 [warning["path"] for warning in report["warnings"]],
-                ["facets[1].findings[0]"],
+                ["facets"],
             )
 
     def test_parameters_cli_is_read_only_and_exports_csv(self):

@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-3.2.1-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-3.2.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -247,7 +247,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/ads_api.py" --no-store search --query 'bibcode:2016PhRvL.116f1102A' --fields 'bibcode,title,year' --rows 1
 ```
 
-四个版本号都应为 `3.2.1`，检索结果应包含 `2016PhRvL.116f1102A`。如果 Windows 上以 `py -3` 注册 Python，请改用 `py -3`。`--no-store` 让测试结果不进入你的文献库。
+四个版本号都应为 `3.2.2`，检索结果应包含 `2016PhRvL.116f1102A`。如果 Windows 上以 `py -3` 注册 Python，请改用 `py -3`。`--no-store` 让测试结果不进入你的文献库。
 
 <details>
 <summary><strong>全文与文献库检查</strong></summary>
@@ -337,7 +337,7 @@ Claude Code 还提供斜杠命令：
 - **阅读评估**：读者对结论稳健性和注意事项的评价，与文章本身的陈述分开存放。
 - **数据产品**：公开的数据、代码和表格。
 
-阅读记录统一用中文书写，整个文献库只用一种语言；原文摘句、天体名称、符号和单位保持文章中的写法，英文检索词照样能匹配。一篇典型的研究论文会记录 10 到 25 条结论。观测日志、长表格和完整的原文表述保留在已存原文中，问题需要时，Agent 会直接打开对应的段落或章节。
+阅读记录统一用中文书写，整个文献库只用一种语言；原文摘句、天体名称、符号和单位保持文章中的写法，英文检索词照样能匹配。观测日志、长表格和完整的原文表述保留在已存原文中，问题需要时，Agent 会直接打开对应的段落或章节。
 
 ### 主题、用途与笔记
 

@@ -223,8 +223,8 @@ I employ parallaxes from Gaia.
 § 2. I describe the data used in this paper
 § 2 Definitions
 Figure 1: simulated sky
-2 Methods
-3 Results
+3 Methods
+4 Results
 References
 I. Example Author
 Appendix A Additional checks
@@ -237,8 +237,8 @@ A.1 Robustness tests
                 "1 Introduction",
                 "1.1 Survey design",
                 "§ 2 Definitions",
-                "2 Methods",
-                "3 Results",
+                "3 Methods",
+                "4 Results",
                 "References",
                 "Appendix A Additional checks",
                 "A.1 Robustness tests",
@@ -287,6 +287,93 @@ III.1.1 2025 October
                 "5.2 21 cm power spectrum at z = 2",
                 "6 Conclusions",
             ],
+        )
+
+    def test_outline_keeps_the_numbers_that_ascend_in_reading_order(self):
+        article = """1 Guangxi Key Laboratory for Relativistic Astrophysics
+ABSTRACT
+1 INTRODUCTION
+2 DATA AND MODELS
+2.1 Data
+28 January to 29 August 2024, accumulating a total exposure of 33.86
+2.2 Energy and waiting time distribution models
+3 MODEL OF REPEATING FRBS
+21.9 Na n0t .5
+3.1 Fluence distribution
+1 Jy ms
+3.2 Spectral properties
+I. Cognard
+36 5 4 3 2 1 0 1 log10(R) where R(F >1 Jy ms) [day 1 ]
+4 RESULTS
+1 Jy ms, which translates to an energy threshold E given by the relation of
+5 CONCLUSIONS
+REFERENCES
+"""
+        self.assertEqual(
+            fulltext.infer_text_outline(article),
+            [
+                "1 Guangxi Key Laboratory for Relativistic Astrophysics",
+                "ABSTRACT",
+                "1 INTRODUCTION",
+                "2 DATA AND MODELS",
+                "2.1 Data",
+                "2.2 Energy and waiting time distribution models",
+                "3 MODEL OF REPEATING FRBS",
+                "3.1 Fluence distribution",
+                "3.2 Spectral properties",
+                "4 RESULTS",
+                "5 CONCLUSIONS",
+                "REFERENCES",
+            ],
+        )
+        self.assertEqual(
+            fulltext.ordered_numbering(
+                ["V. Ravi", "C. Tiburzi", "I. INTRODUCTION", "II. DATA", "IV. RESULTS"]
+            ),
+            ["I. INTRODUCTION", "II. DATA", "IV. RESULTS"],
+        )
+        # Numbering starts again after an unnumbered heading such as Methods.
+        restarted = ["1 Results", "2 Discussion", "Methods", "1 Observations", "2 Analysis"]
+        self.assertEqual(fulltext.ordered_numbering(restarted), restarted)
+        self.assertEqual(fulltext.section_number("IV. RESULTS"), ((4,), (True, ".")))
+        self.assertEqual(fulltext.section_number("3.10 Notes"), ((3, 10), (False, "")))
+        self.assertIsNone(fulltext.section_number("Appendix A Checks"))
+
+    def test_markup_headings_outrank_a_noisy_inference(self):
+        authors = "\n".join(f"{initial}. Author{index}" for index, initial in enumerate("VCLVCLVC"))
+        text = (
+            f"A Survey of Bursts\n{authors}\nAbstract\nShort.\n1 Introduction\nBody.\n"
+            "2.1 Profiles with a single orthogonal PA\njump\nMore.\n3 Results\nEnd.\n"
+            "4 Discussion\nText.\n5 Conclusions\nDone.\n"
+        )
+        markup = [
+            "A Survey of Bursts",
+            "Abstract",
+            "1 Introduction",
+            "2.1 Profiles with a single orthogonal PA\njump",
+            "3 Results",
+            "4 Discussion",
+            "5 Conclusions",
+        ]
+        manifest = {"selected": {"actual_format": "html", "statistics": {"outline": markup}}}
+        sections = fulltext.article_outline(text, manifest)
+        self.assertEqual(
+            [section["heading"] for section in sections],
+            [
+                "A Survey of Bursts",
+                "Abstract",
+                "1 Introduction",
+                "2.1 Profiles with a single orthogonal PA jump",
+                "3 Results",
+                "4 Discussion",
+                "5 Conclusions",
+            ],
+        )
+        # Markup that names almost nothing leaves the outline to the text inference.
+        sparse = {"selected": {"actual_format": "html", "statistics": {"outline": markup[:1]}}}
+        self.assertIn(
+            "3 Results",
+            [section["heading"] for section in fulltext.article_outline(text, sparse)],
         )
 
     def test_pdf_manifest_outline_is_inferred_again_from_the_text(self):

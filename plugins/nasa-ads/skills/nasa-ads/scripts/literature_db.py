@@ -26,7 +26,7 @@ import library_catalog
 
 sys.modules.setdefault("literature_db", sys.modules[__name__])
 
-VERSION = "3.2.1"
+VERSION = "3.2.2"
 DATABASE_SCHEMA_VERSION = 4
 DIGEST_SCHEMA_VERSION = 4
 DIGEST_REQUIRED_FIELDS = ("schema_version", "language", "facets", "reading")
@@ -1289,48 +1289,7 @@ def iter_findings(
             yield finding_id(facet["key"], index), facet, finding
 
 
-STATEMENT_REFERENCE_PATTERN = re.compile(
-    r"\b(?:FRB|PSR|SGR|GRB|AT|SN|XTE|GW|J|B|AR|Abell|NGC|IC|UGC|HD|Mrk)\s?\d[\w.+-]*"
-    r"|\b(?:19|20)\d{2}[a-z]?\b"
-    r"|\b(?:fig(?:ure)?s?|tab(?:le)?s?|sect(?:ion)?s?|eqs?|equations?|appendix|"
-    r"chapter|paper|model|case|run|component|stage|phase|step)\.?\s*\(?[a-z]?\d[\d.]*"
-    r"|(?:图|表|式|公式|方程|附录|节|章|模型|情形|成分|阶段|步骤)\s*\(?[A-Za-z]?\d[\d.]*"
-    r"|第\s*\d+",
-    re.IGNORECASE,
-)
-# A digit right after a comma is a subscript, and one right after an operator belongs
-# to an expression such as a slope plus one; neither is a reported number.
-STATEMENT_NUMBER_PATTERN = re.compile(r"(?<![\w.,+\-^_*/])[-+\u2212]?\d+(?:\.\d+)?")
-RANGE_TEXT_PATTERN = re.compile(
-    r"\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*(?:-|\u2013|\u2014|to|~)\s*"
-    r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*"
-)
-UNCERTAINTY_TEXT_PATTERN = re.compile(
-    r"\u00b1|\+/-|\+-|plus or minus|\+\s*\d[\d.]*\s*/\s*-\s*\d", re.IGNORECASE
-)
-LIMIT_TEXT_PATTERN = re.compile(
-    r"^\s*(?:~\s*)?(?:<|>|\u2264|\u2265|less than|greater than|below|above|at most|at least)",
-    re.IGNORECASE,
-)
-MULTIPLE_NUMBER_PATTERN = re.compile(r"\d\s*;\s*[-+]?\d|\d,\s+[-+]?\d")
-SECTION_LABEL_PATTERN = re.compile(
-    r"\b(?:tab(?:le)?|fig(?:ure)?|eq(?:uation)?)\.?\s*[A-Z]?\d", re.IGNORECASE
-)
-SEVERAL_WORKS_PATTERN = re.compile(r";|；")
-MAX_VALUES_PER_FINDING = 8
-MAX_VALUES_PER_DIGEST = 60
-MAX_FINDINGS_PER_DIGEST = 40
-MAX_STATEMENT_CHARS = 400
-MAX_QUOTE_CHARS = 300
 MIN_QUOTE_ANCHOR_CHARS = 12
-
-
-def looks_computed(value: Any) -> bool:
-    """A float with more significant digits than an article prints."""
-    if not isinstance(value, float):
-        return False
-    digits = re.sub(r"[^0-9]", "", repr(value).split("e")[0]).lstrip("0")
-    return len(digits) >= 15
 
 
 def listed_ids(ids: Sequence[str], limit: int = 12) -> str:
@@ -1343,84 +1302,40 @@ def digest_warnings(
     anchors: Mapping[str, Any] | None = None,
     coverage: Mapping[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Flag likely losses of citable structure, thin summaries, and excess detail.
+    """Flag findings without a traceable quote and thin section summaries.
 
     The reader fixes each warning or confirms it is a false positive.
     """
     warnings: list[dict[str, str]] = []
-
-    def warn(path: str, message: str) -> None:
-        warnings.append({"path": path, "message": message})
-
-    total_values = 0
-    total_findings = 0
-    unquoted: list[str] = []
-    for facet_index, facet in enumerate(digest.get("facets", [])):
-        for finding_index, finding in enumerate(facet.get("findings", [])):
-            total_findings += 1
-            path = f"facets[{facet_index}].findings[{finding_index}]"
-            values = finding.get("values", [])
-            total_values += len(values)
-            statement = finding.get("statement", "")
-            stripped = STATEMENT_REFERENCE_PATTERN.sub(" ", statement)
-            if not values and STATEMENT_NUMBER_PATTERN.search(stripped):
-                warn(path, "The statement reports a number that is missing from values.")
-            if len(statement) > MAX_STATEMENT_CHARS:
-                warn(path, "Keep one citable result per finding; shorten or split the statement.")
-            if len(finding.get("quote", "")) > MAX_QUOTE_CHARS:
-                warn(path, "Shorten the quote to the words that state the result.")
-            if not finding.get("quote"):
-                unquoted.append(finding_id(facet["key"], finding_index))
-            if len(values) > MAX_VALUES_PER_FINDING:
-                warn(path, "Keep the numbers a manuscript would quote; summarize long tables with counts and ranges and register the table under data_products.")
-            if SECTION_LABEL_PATTERN.search(finding.get("locator", {}).get("section", "")):
-                warn(path, "Put table, figure, and equation labels in their own locator fields.")
-            if SEVERAL_WORKS_PATTERN.search(finding.get("cited_from", "")):
-                warn(path, "Name one source in cited_from; split findings that draw on several works.")
-            for value_index, value in enumerate(values):
-                value_path = f"{path}.values[{value_index}]"
-                reported = value.get("value")
-                if looks_computed(reported) or any(
-                    looks_computed(bound) for bound in value.get("range") or []
-                ):
-                    warn(value_path, "Copy the value as printed, as a string when it is long or in scientific notation.")
-                if value.get("status") == "fitted" and not value.get("model"):
-                    warn(value_path, "Name the model behind the fitted value.")
-                if SEVERAL_WORKS_PATTERN.search(value.get("cited_from", "")):
-                    warn(value_path, "Name one source in cited_from.")
-                if isinstance(reported, str):
-                    if LIMIT_TEXT_PATTERN.search(reported):
-                        warn(value_path, "Record a limit as status upper-limit or lower-limit with the bound as value.")
-                    elif UNCERTAINTY_TEXT_PATTERN.search(reported):
-                        warn(value_path, "Move the uncertainty from value to uncertainty.")
-                    elif RANGE_TEXT_PATTERN.fullmatch(reported):
-                        warn(value_path, "Record an interval as range [low, high].")
-                    elif MULTIPLE_NUMBER_PATTERN.search(reported):
-                        warn(value_path, "Record each number as its own value with its condition.")
-                if UNCERTAINTY_TEXT_PATTERN.search(str(value.get("qualifier", ""))):
-                    warn(value_path, "Move the uncertainty from qualifier to uncertainty.")
-    if total_values > MAX_VALUES_PER_DIGEST:
-        warn("facets", "Keep the values a manuscript would quote; leave configuration, sample logs, and table rows to the stored article.")
-    if total_findings > MAX_FINDINGS_PER_DIGEST:
-        warn("facets", "Keep the results a manuscript would cite; merge findings that are always cited together.")
+    unquoted = [
+        identifier
+        for identifier, _facet, finding in iter_findings(digest)
+        if not finding.get("quote")
+    ]
     if digest.get("reading", {}).get("status") == "full" and unquoted:
-        warn(
-            "facets",
-            f"Add a short verbatim quote to {listed_ids(unquoted)} so passage can return the paragraph that states each result.",
+        warnings.append(
+            {
+                "path": "facets",
+                "message": f"Add a short verbatim quote to {listed_ids(unquoted)} so "
+                "passage can return the paragraph that states each result.",
+            }
         )
     if anchors and anchors.get("unlocated"):
-        warn(
-            "facets",
-            "Quotes for "
-            f"{listed_ids(anchors['unlocated'])} do not occur in the article text; "
-            "copy each one verbatim from the prepared text.",
+        warnings.append(
+            {
+                "path": "facets",
+                "message": f"Quotes for {listed_ids(anchors['unlocated'])} do not occur "
+                "in the article text; copy each one verbatim from the prepared text.",
+            }
         )
     if coverage and coverage["thin"]:
-        warn(
-            "reading.sections",
-            f"The summaries of {listed_ids(coverage['thin'])} are short for those "
-            "sections; state what each establishes: its argument, procedure, "
-            "results, and numbers.",
+        warnings.append(
+            {
+                "path": "reading.sections",
+                "message": f"The summaries of {listed_ids(coverage['thin'])} are short "
+                "for those sections; state what each section says, in proportion "
+                "to its length.",
+            }
         )
     return warnings
 
@@ -1476,6 +1391,7 @@ def digest_template() -> dict[str, Any]:
                             }
                         ],
                         "cited_from": "",
+                        "compared_with": [],
                     },
                 ],
             },
@@ -3406,20 +3322,12 @@ def quote_anchors(
 SUMMARIZED_SECTION_WORDS = 150
 WORDS_PER_SUMMARY_CHAR = 20
 MAX_REQUIRED_SUMMARY_CHARS = 200
-UNSUMMARIZED_HEADINGS = {
-    fulltext.FRONT_MATTER_HEADING.casefold(),
-    "abstract",
-    "references",
-    "bibliography",
-    "acknowledgments",
-    "acknowledgements",
-    "acknowledgment",
-    "acknowledgement",
-    "author contributions",
-    "competing interests",
-    "conflict of interest",
-    "orcid ids",
-}
+UNSUMMARIZED_HEADING_RE = re.compile(
+    r"front matter|abstract|key ?words?|"
+    r"(?:notes and )?references?(?: and notes| cited| list)?|bibliography|literature cited|"
+    r"acknowledge?ments?(?: and funding)?|funding|authors?'? contributions?|"
+    r"competing interests?|conflicts? of interest|orcid ids"
+)
 
 
 def summaries_by_section(
@@ -3445,7 +3353,8 @@ def section_coverage(
 
     A full reading summarizes every section of at least ``SUMMARIZED_SECTION_WORDS``
     words, apart from the front matter (the text under the article ``title`` and
-    before the abstract), the abstract, the reference list, and acknowledgments;
+    before the abstract), the abstract, the reference list, and acknowledgment,
+    funding, and author statements;
     one that leaves such a section out is rejected. Returns the number of article
     sections with a summary and the headings whose summary is thin: shorter than
     one character per ``WORDS_PER_SUMMARY_CHAR`` words of the section, up to
@@ -3471,7 +3380,7 @@ def section_coverage(
             if (
                 full
                 and words >= SUMMARIZED_SECTION_WORDS
-                and name not in UNSUMMARIZED_HEADINGS
+                and not UNSUMMARIZED_HEADING_RE.fullmatch(name)
                 and section["start"] >= body_start
                 and fulltext.heading_key(section["heading"]) != title_key
             ):
