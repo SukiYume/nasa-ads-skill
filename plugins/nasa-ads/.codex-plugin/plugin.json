@@ -1,6 +1,6 @@
 {
   "name": "nasa-ads",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "description": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations.",
   "author": {
     "name": "Echo",
@@ -26,8 +26,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "NASA ADS",
-    "shortDescription": "SciX research and a reusable personal literature library",
-    "longDescription": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations. Every investigated paper keeps a version-specific digest whose findings and values can be queried later for comparison tables and citations, and the stored article returns the paragraph that states each result.",
+    "shortDescription": "SciX research with full-paper digests and a reusable library",
+    "longDescription": "Search SciX (formerly NASA ADS), read each paper in full once, and silently build a classified literature library of whole-article digests: one-line and paragraph summaries, a summary of every section, and citable findings with key values, locators, and verbatim anchors. Later work starts from the stored record, rereads only the exact paragraph behind a citation, browses with adslib, and exports citations. Stored findings and values belong to an exact article version and can be queried later for comparison tables.",
     "developerName": "Echo",
     "category": "Research",
     "capabilities": [

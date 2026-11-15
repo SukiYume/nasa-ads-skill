@@ -7,7 +7,7 @@
 Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-3.2.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-3.2.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#open-the-web-library)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -31,7 +31,7 @@ Literature reviews · Manuscript evidence · Local Web · BibTeX
 
 Every task also builds a library you keep:
 
-- **Whole papers, not abstracts.** Each paper the agent opens is read in full, once, and the whole article is summarized into your library, whatever the question was: a one-line summary, a paragraph summary, a summary of every section, and each citable result with its key numbers, its section, table, figure, or equation, and a short verbatim quote. The next question about that paper starts from the saved summary.
+- **Whole papers, read once.** Whatever the question was, each paper the agent opens is read in full and summarized into your library as a [layered reading](#inside-a-complete-reading): summaries of the paper and of every section, and each citable result with its key numbers, location, and a short verbatim quote. The next question about that paper starts from the saved summary.
 - **Cite the exact result.** A manuscript often cites a paper for one number or one inference. You can later retrieve that specific result with its location, citation key, and original source, and reopen only the paragraph of the saved article that states it.
 - **Browse and export.** A local Web page lets you browse the library by topic and writing role, and export BibTeX.
 
@@ -161,7 +161,7 @@ Start `gemini`, then run `/memory reload` and `/memory show`; the loaded memory 
 
 ### Other Hosts
 
-Clone the repository, copy the complete `plugins/nasa-ads/skills/nasa-ads/` folder into the host's skill or prompt directory, and configure the host to load `SKILL.md`. The host needs Python 3 to run the bundled scripts. Discovery directories and invocation syntax depend on the host's own documentation.
+Clone the repository, copy the complete `plugins/nasa-ads/skills/nasa-ads/` folder into the host's skill or prompt directory, and configure the host to load `SKILL.md`. The host needs Python 3.10 or newer to run the bundled scripts. Discovery directories and invocation syntax depend on the host's own documentation.
 
 ### Register the adslib Command
 
@@ -179,7 +179,14 @@ python3 "$HOME/.agents/skills/nasa-ads/scripts/adslib.py" install     # macOS, L
 python "$HOME\.agents\skills\nasa-ads\scripts\adslib.py" install       # Windows PowerShell
 ```
 
-A Claude Code standalone skill uses `~/.claude/skills/nasa-ads/scripts/adslib.py`, Gemini uses the script inside `~/.gemini/nasa-ads-skill`, and a plugin uses the folder that holds its loaded `SKILL.md`, which the agent can tell you.
+Other installations run the same script from their own skill folder:
+
+| Installation | Skill folder |
+| --- | --- |
+| Codex standalone skill | `~/.agents/skills/nasa-ads` |
+| Claude Code standalone skill | `~/.claude/skills/nasa-ads` |
+| Gemini CLI | `~/.gemini/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads` |
+| Plugin | The folder that holds its loaded `SKILL.md`, which the agent can tell you |
 
 The installer creates `~/.local/bin/adslib` (plus `adslib.cmd` on Windows) and adds that directory to your PATH when needed, keeping your existing settings and any unrelated `adslib` command. Use `install --bin-dir <directory> --no-path` to choose a directory whose PATH you manage yourself. Open a new terminal and check `adslib --version`. Run `install` again after moving the skill, changing Python, or updating a plugin, since plugin updates use a new folder.
 
@@ -223,7 +230,7 @@ Ask your agent:
 
 In Claude Code you can also run `/nasa-ads:ads-search bibcode:2016PhRvL.116f1102A`. The answer should be *Observation of Gravitational Waves from a Binary Black Hole Merger* (2016). A missing-token message means the agent did not inherit `ADS_API_TOKEN`; restart it from a terminal where the token is set.
 
-To check the scripts yourself, point a variable at the installed skill folder; the commands below in this README reuse it. The examples use the Codex standalone location; replace it with `~/.claude/skills/nasa-ads`, `~/.gemini/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads`, or the plugin folder your agent reports.
+To check the scripts yourself, point a variable at the installed skill folder; the commands below in this README reuse it. The examples use the Codex standalone location; for another installation, use its [skill folder](#register-the-adslib-command).
 
 macOS, Linux, or WSL:
 
@@ -247,7 +254,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/ads_api.py" --no-store search --query 'bibcode:2016PhRvL.116f1102A' --fields 'bibcode,title,year' --rows 1
 ```
 
-All four versions should read `3.2.2`, and the search should return `2016PhRvL.116f1102A`. Use `py -3` where Windows registers Python that way. `--no-store` keeps test results out of your library.
+All four versions should read `3.2.3`, and the search should return `2016PhRvL.116f1102A`. Use `py -3` where Windows registers Python that way. `--no-store` keeps test results out of your library.
 
 <details>
 <summary><strong>Full-text and library checks</strong></summary>
@@ -264,7 +271,7 @@ python "$nasaAdsSkill/scripts/fulltext.py" fetch 'arXiv:1901.04502' --source arx
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-The fetch should report `status: fulltext` from `https://arxiv.org/html/1901.04502` and list `artifact_path`, `text_path`, and `manifest_path` in the download cache; `fulltext.py outline <text_path>` shows the inferred sections with their starting lines. `--format pdf` requests the PDF for equations, figures, or page layout. The template prints the schema 4 reading record with `overview`, `facets`, `findings`, and `reading.sections`.
+The fetch should report `status: fulltext` from `https://arxiv.org/html/1901.04502` and list `artifact_path`, `text_path`, and `manifest_path` in the download cache; `fulltext.py outline <manifest_path>` shows the article's sections with their starting lines. `--format pdf` requests the PDF for equations, figures, or page layout. The template prints an empty reading record, with `overview`, `facets`, and `reading` among its fields.
 
 </details>
 
@@ -288,7 +295,7 @@ Describe the scientific question and the evidence you need:
 | **A specific result** | “Find the inference in my library that links burst polarization to a magnetospheric origin, give its section and citation key, and check whether it restates earlier work.” |
 | **Citations** | “Give me AASTeX references for these three bibcodes” or “Format them as an MNRAS reference list.” |
 | **A reference list** | “Match the reference list of my draft to SciX records and export it as BibTeX.” |
-| **SciX account tools** | “List my SciX libraries” or “Show citation metrics for these bibcodes.” |
+| **SciX libraries and metrics** | “List my SciX libraries” or “Show citation metrics for these bibcodes.” |
 
 What to expect:
 
@@ -322,7 +329,7 @@ Your library lives on this computer, separate from the installed skill; a new co
 | **Abstract** | Statements about what the abstract reports |
 | **Complete or visual reading** | Claims about the paper's data, methods, values, figures, tables, and conclusions, for one exact article version |
 
-Papers found in a broad search usually stay at the metadata or abstract level. Papers the agent investigates receive a complete reading; a scanned PDF is read page by page as a visual reading. A paper can have several saved versions, such as a preprint and its journal article, so paper counts and reading counts can differ. A journal version fetched after its preprint was read gets its own reading.
+Papers found in a broad search usually stay at the metadata or abstract level, and the papers the agent investigates reach a complete reading; a scanned PDF is read page by page as a visual reading. A paper can have several saved versions, such as a preprint and its journal article, so paper counts and reading counts can differ. A journal version fetched after its preprint was read gets its own reading.
 
 ### Inside a Complete Reading
 
@@ -351,7 +358,7 @@ Ask in plain language:
 
 > List the upper limits on persistent radio source luminosity stored in my library, with their confidence levels, conditions, and citation keys.
 
-> Which values in my library come from earlier work rather than the paper's own analysis? Trace each to its original source.
+> Which values in my library does a paper take from earlier work? Trace each to its original source.
 
 Or query directly: `findings` lists citable statements, `parameters` lists values, and `--format csv --output <file>` writes a table that opens in spreadsheet tools.
 
@@ -369,7 +376,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" parameters --paper "2016PhRvL.11
 
 Each row shows the citation key, article version, reading level, finding and its `finding_id`, location, and the original source in `cited_from` when the paper restates earlier work. `--kind prediction` selects model predictions, and `--status fitted` or `--status upper-limit` narrows the value type. Results come only from complete readings; a requested paper listed under `without_complete_digest` still needs to be read.
 
-`passage` prints a small part of a saved article: the paragraph behind a finding, one section, or the paragraphs that mention a term. Checking a cited number this way reads one paragraph instead of the whole paper.
+`passage` prints a small part of a saved article: the paragraph behind a finding, one section, or the paragraphs that mention a term. Checking a cited number this way takes one paragraph of reading.
 
 ```bash
 python3 "$nasa_ads_skill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --finding "<finding_id>"
@@ -423,7 +430,13 @@ It starts a background service and opens the browser; you can close the terminal
 | `adslib stop` / `adslib restart` | Stop or restart the service |
 | `adslib serve` | Run in the foreground until `Ctrl+C` |
 
-`--library-dir "<folder>"` opens another library and `--port 8766` picks a port, for example `adslib --library-dir "$HOME/other-library" --port 8766`. `status`, `stop`, and `restart` find the selected library's service on whatever port it uses, so pass `--library-dir` to them for another library and `--port` only to choose among several services. `--no-open` skips the browser. The default address is `http://127.0.0.1:8765`; a busy port is replaced by a free one, so use the printed URL. Startup prints a log path; logs and service records live in `%LOCALAPPDATA%\nasa-ads\runtime` on Windows or `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime` elsewhere, or in `NASA_ADS_RUNTIME_DIR`. Before registration, run `scripts/adslib.py` from the installed skill folder directly.
+| Option | Effect |
+| --- | --- |
+| `--library-dir "<folder>"` | Opens another library. Pass it to `status`, `stop`, and `restart` as well; they find that library's service on whatever port it uses |
+| `--port <number>` | Picks a port; the default address is `http://127.0.0.1:8765`. A busy port is replaced by a free one, so use the printed URL. With several services for one library, it chooses among them |
+| `--no-open` | Skips the browser |
+
+For example, `adslib --library-dir "$HOME/other-library" --port 8766` opens a second library on its own port. Startup prints a log path; logs and service records live in `%LOCALAPPDATA%\nasa-ads\runtime` on Windows or `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime` elsewhere, or in `NASA_ADS_RUNTIME_DIR`. Before registration, run `scripts/adslib.py` from the installed skill folder directly.
 
 | What you want | How |
 | --- | --- |
@@ -432,8 +445,8 @@ It starts a background service and opens the browser; you can close the terminal
 | Search a specific layer | Choose metadata, summaries, or stored full text |
 | Limit years | Open the year control, enter a range, and apply it |
 | Browse by SciX subject | Click a subject term in a paper's overview |
-| Read a paper's findings | Switch between overview, scientific facets, citations, and article versions |
-| See data, methods, and values | The overview starts with the one-line summary and lists study type, objects, observations, methods, limitations, and the reader's assessment; scientific facets show each finding with its id, location, quote, and sources, and each value with its uncertainty, type, and model |
+| Read a paper | Switch between overview, scientific facets, citations, and article versions |
+| See data, methods, and values | The overview holds the summaries, objects, data, methods, limitations, and assessment; scientific facets hold each finding with its values, as [Inside a Complete Reading](#inside-a-complete-reading) lists them |
 | Return to the same view | Copy the page link; it keeps filters, page, paper, and tab |
 | Use the keyboard | `/` focuses search; Escape closes the year control or reader; arrow keys switch tabs |
 | See new papers | Click refresh after the agent updates the library |
@@ -500,11 +513,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" check
 python "$nasaAdsSkill/scripts/literature_db.py" audit
 ```
 
-`stats` shows counts and the library folder. `check` lists papers still waiting for a summary or a topic, and article versions that were downloaded and never read into the library, such as a journal version fetched after its preprint was read, and exits with 1 while any remain; `check --recent 12` limits it to the last 12 hours of work. `audit` checks the database, saved files, metadata, and citation caches; some publications legitimately lack fields such as an abstract, and the report separates those from real errors. After large cleanups, `compact` shrinks the database file to its real size.
-
-If the agent reports two different readings of the same article, a preprint and its journal version were saved separately and each was read in full. Nothing is lost; ask the agent to reconcile them, and the two entries become one.
-
-If a search misses text you expect, pick the matching scope: metadata for titles and abstracts, summaries for the agent's readings, or full text for the saved article. Chinese terms match as substrings.
+`stats` shows counts and the library folder. `check` lists papers still waiting for a summary or a topic and article versions that were downloaded and never read into the library, and exits with 1 while any remain; `check --recent 12` limits it to the last 12 hours of work. `audit` checks the database, saved files, metadata, and citation caches; some publications legitimately lack fields such as an abstract, and the report separates those from real errors. After large cleanups, `compact` shrinks the database file to its real size.
 
 ### Refresh SciX Metadata
 
@@ -556,9 +565,9 @@ After a plugin update, run `adslib.py install` from the new plugin folder; then 
 | The Web page cannot connect | Run `adslib`, keep the service running, and open the exact printed URL |
 | Web shows an unexpected count or an empty library | Check the library folder shown on the page, the active filters, and your [data location](#data-location) |
 | Papers are marked pending or unclassified | Ask the agent to finish their summaries and topics |
-| The agent reports two different readings of one article | Ask it to reconcile them ([details](#check-library-health)) |
+| The agent reports two different readings of one article | One article text was saved under two library entries, such as its arXiv record and its journal record before SciX linked them, and read once under each. Nothing is lost; ask the agent to reconcile them, and the two entries become one |
 | Full text is unavailable | The answer uses the available metadata or abstract and reports the gap; download the article through your own access and give the agent its file path to have it read in full |
-| A local search misses a phrase | Search the stored full text ([search scopes](#check-library-health)) |
+| A local search misses text you expect | Pick the scope that holds it: metadata for titles and abstracts, summaries for the agent's readings, or full text for the saved article. Chinese terms match as substrings |
 | The agent reports that the library comes from an earlier release | Ask it to migrate the library; `literature_db.py migrate` backs it up first and prints the backup location |
 
 ## Privacy and Further Reading

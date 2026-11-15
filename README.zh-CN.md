@@ -7,7 +7,7 @@
 文献综述 · 写作证据 · 本地 Web · BibTeX
 
 [![SciX](https://img.shields.io/badge/Literature-SciX-0B3D91)](https://scixplorer.org/)
-[![Version](https://img.shields.io/badge/version-3.2.2-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-3.2.3-6f42c1)](plugins/nasa-ads/.codex-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
 [![Local Web](https://img.shields.io/badge/Library-Local%20Web-167D8D)](#打开-web-文献库)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
@@ -31,7 +31,7 @@
 
 每次任务还会为你积累一个个人文献库：
 
-- **读全文，而不只看摘要。** Agent 打开过正文的每篇论文都会完整读一遍，并且无论当时问的是什么，都把整篇文章总结入库：一句话总结、一段式总结、每个章节的摘要，以及每条可引用结果的关键数值、所在章节、表格、图或公式，和一小段原文摘句。下次再用到这篇论文时，直接从已存的总结开始。
+- **整篇阅读，只读一次。** 无论当时问的是什么，Agent 打开过正文的每篇论文都会完整阅读，并整理成一份[分层的阅读记录](#完整阅读记录的内容)入库：全文和每个章节的总结，以及每条可引用结果的关键数值、原文位置和一小段原文摘句。下次再用到这篇论文时，直接从已存的总结开始。
 - **精确引用具体结果。** 写论文时常常只引用一篇文章中的某个数值或某条推论。之后可以直接取出这条结果，附原文位置、引用键和原始出处，并且只重新打开已存原文中陈述它的那一段。
 - **浏览与导出。** 本地 Web 页面可以按主题和写作用途浏览文献库，并导出 BibTeX。
 
@@ -161,7 +161,7 @@ Add-Content -Path "$HOME\.gemini\GEMINI.md" -Value "`n@./nasa-ads-skill/plugins/
 
 ### 其他宿主
 
-克隆仓库，把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主的 skill 或提示词目录，并让宿主加载 `SKILL.md`。宿主需要能用 Python 3 运行自带脚本。发现目录和调用方式以宿主自身的文档为准。
+克隆仓库，把完整的 `plugins/nasa-ads/skills/nasa-ads/` 目录复制到宿主的 skill 或提示词目录，并让宿主加载 `SKILL.md`。宿主需要能用 Python 3.10 或更新版本运行自带脚本。发现目录和调用方式以宿主自身的文档为准。
 
 ### 注册 adslib 命令
 
@@ -179,7 +179,14 @@ python3 "$HOME/.agents/skills/nasa-ads/scripts/adslib.py" install     # macOS, L
 python "$HOME\.agents\skills\nasa-ads\scripts\adslib.py" install       # Windows PowerShell
 ```
 
-Claude Code 独立 skill 使用 `~/.claude/skills/nasa-ads/scripts/adslib.py`，Gemini 使用 `~/.gemini/nasa-ads-skill` 中的脚本，插件使用其已加载 `SKILL.md` 所在的目录，Agent 可以告诉你具体位置。
+其他安装方式从各自的 skill 目录运行同一脚本：
+
+| 安装方式 | skill 目录 |
+| --- | --- |
+| Codex 独立 skill | `~/.agents/skills/nasa-ads` |
+| Claude Code 独立 skill | `~/.claude/skills/nasa-ads` |
+| Gemini CLI | `~/.gemini/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads` |
+| 插件 | 已加载的 `SKILL.md` 所在的目录，Agent 可以告诉你具体位置 |
 
 安装程序会创建 `~/.local/bin/adslib`（Windows 上另有 `adslib.cmd`），并在需要时把该目录加入 PATH，同时保留你现有的设置和其他同名命令。如果想自行管理 PATH，可以用 `install --bin-dir <目录> --no-path` 指定目录。打开新终端检查 `adslib --version`。移动 skill、更换 Python 或更新插件后需要重新执行 `install`，因为插件更新后会使用新的目录。
 
@@ -223,7 +230,7 @@ if ($env:ADS_API_TOKEN) { 'SciX token is set' } else { 'SciX token is missing' }
 
 在 Claude Code 中也可以执行 `/nasa-ads:ads-search bibcode:2016PhRvL.116f1102A`。结果应为 *Observation of Gravitational Waves from a Binary Black Hole Merger*（2016）。如果提示缺少 token，说明 Agent 没有继承 `ADS_API_TOKEN`，请在已设置 token 的终端中重新启动它。
 
-如果想自己检查脚本，先用一个变量指向已安装的 skill 目录，本文后面的命令都会沿用它。示例使用 Codex 独立 skill 的位置；其他安装请替换为 `~/.claude/skills/nasa-ads`、`~/.gemini/nasa-ads-skill/plugins/nasa-ads/skills/nasa-ads`，或 Agent 报告的插件目录。
+如果想自己检查脚本，先用一个变量指向已安装的 skill 目录，本文后面的命令都会沿用它。示例使用 Codex 独立 skill 的位置；其他安装方式请改用各自的 [skill 目录](#注册-adslib-命令)。
 
 macOS、Linux 或 WSL：
 
@@ -247,7 +254,7 @@ python "$nasaAdsSkill/scripts/adslib.py" --version
 python "$nasaAdsSkill/scripts/ads_api.py" --no-store search --query 'bibcode:2016PhRvL.116f1102A' --fields 'bibcode,title,year' --rows 1
 ```
 
-四个版本号都应为 `3.2.2`，检索结果应包含 `2016PhRvL.116f1102A`。如果 Windows 上以 `py -3` 注册 Python，请改用 `py -3`。`--no-store` 让测试结果不进入你的文献库。
+四个版本号都应为 `3.2.3`，检索结果应包含 `2016PhRvL.116f1102A`。如果 Windows 上以 `py -3` 注册 Python，请改用 `py -3`。`--no-store` 让测试结果不进入你的文献库。
 
 <details>
 <summary><strong>全文与文献库检查</strong></summary>
@@ -264,7 +271,7 @@ python "$nasaAdsSkill/scripts/fulltext.py" fetch 'arXiv:1901.04502' --source arx
 python "$nasaAdsSkill/scripts/literature_db.py" template
 ```
 
-抓取结果应报告来自 `https://arxiv.org/html/1901.04502` 的 `status: fulltext`，并在下载缓存中列出 `artifact_path`、`text_path` 和 `manifest_path`；`fulltext.py outline <text_path>` 可以查看推断出的章节及其起始行号。需要公式、图表或页面版式时，`--format pdf` 会获取 PDF。模板会输出 schema 4 阅读记录，包含 `overview`、`facets`、`findings` 和 `reading.sections`。
+抓取结果应报告来自 `https://arxiv.org/html/1901.04502` 的 `status: fulltext`，并在下载缓存中列出 `artifact_path`、`text_path` 和 `manifest_path`；`fulltext.py outline <manifest_path>` 可以查看文章的章节及其起始行号。需要公式、图表或页面版式时，`--format pdf` 会获取 PDF。模板会输出一份空白的阅读记录，字段包括 `overview`、`facets` 和 `reading` 等。
 
 </details>
 
@@ -288,7 +295,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" template
 | **引用具体结果** | “在文献库中找出由爆发偏振推断磁层起源的那条推论，给出章节和引用键，并核对它是否转述自更早的工作。” |
 | **导出引用** | “给我这三个 bibcode 的 AASTeX 格式参考文献”，或“把它们排成 MNRAS 格式的参考文献列表。” |
 | **匹配参考文献列表** | “把我草稿里的参考文献列表匹配到 SciX 记录，并导出为 BibTeX。” |
-| **SciX 账号工具** | “列出我的 SciX libraries”，或“查看这些 bibcode 的引用指标。” |
+| **SciX libraries 与引用指标** | “列出我的 SciX libraries”，或“查看这些 bibcode 的引用指标。” |
 
 你可以预期：
 
@@ -322,14 +329,14 @@ Claude Code 还提供斜杠命令：
 | **摘要** | 关于摘要所报告内容的陈述 |
 | **完整阅读或视觉阅读** | 关于某个精确文章版本的数据、方法、数值、图表和结论的论断 |
 
-宽泛检索找到的论文通常停留在题录或摘要层级。Agent 深入调研的论文会得到完整阅读；扫描版 PDF 会逐页做视觉阅读。一篇论文可以保存多个版本，例如预印本和期刊版，因此论文数和阅读数可能不同。读过预印本之后再获取的期刊版，会另做一次完整阅读。
+宽泛检索找到的论文通常停留在题录或摘要层级，Agent 深入调研的论文则达到完整阅读；扫描版 PDF 会逐页做视觉阅读。一篇论文可以保存多个版本，例如预印本和期刊版，因此论文数和阅读数可能不同。读过预印本之后再获取的期刊版，会另做一次完整阅读。
 
 ### 完整阅读记录的内容
 
 完整阅读记录是分层的，之后的问题只需读到所需的深度：
 
 - **一句话总结与一段式总结**：论文做了什么、发现了什么，附关键数值、研究问题和研究类型。
-- **章节摘要**：文章的每个章节都有一段摘要，说明它的论点、数据、方法、结果和注意事项。合起来就是整篇文章的总结。
+- **章节总结**：文章的每个章节都有一段总结，说明它的论点、数据、方法、结果和注意事项。合起来就是整篇文章的总结。
 - **结论**：论文中值得写进文章引用的结果，按科学主题分组：测量、约束、未探测、作者推论、模型预测、与其他工作的比较以及作者说明的局限。每条都带章节、图、表或公式位置、作者对它的确定程度、形如 `polarization.2` 的编号，以及一小段原文摘句，用来定位已存原文中的对应段落。
 - **数值**：关键数值及其符号、单位、不确定度或区间，是测量、拟合、推导、假设、预测还是上下限，以及适用的模型和条件。
 - **研究对象、数据与方法**：涉及的天体和设施及其其他名称，每组观测或样本，每种分析方法及其假设。
@@ -341,7 +348,7 @@ Claude Code 还提供斜杠命令：
 
 ### 主题、用途与笔记
 
-主题采用层级结构，例如 `快速射电暴/传播效应/散射`，一篇论文可以属于多个主题。写作用途（综述、引言、方法、讨论、结果比较）标记论文在你稿件中的作用。标签和个人笔记便于以后查找，主题还可以附一段简短综述。主题、用途和笔记的新建或修改都交给 Agent 完成。
+主题采用层级结构，例如 `FRB/Propagation/Scattering`，一篇论文可以属于多个主题。写作用途（综述、引言、方法、讨论、结果比较）标记论文在你稿件中的作用。标签和个人笔记便于以后查找，主题还可以附一段简短综述。主题、用途和笔记的新建或修改都交给 Agent 完成。
 
 ## 复用结论、数值与引用
 
@@ -351,7 +358,7 @@ Claude Code 还提供斜杠命令：
 
 > 列出文献库中已存的持续射电源光度上限，附置信水平、适用条件和引用键。
 
-> 文献库里哪些数值是文章引用前人工作而非自己分析得到的？逐一追溯到原始出处。
+> 文献库里哪些数值是文章从前人工作中引用的？逐一追溯到原始出处。
 
 也可以直接查询：`findings` 列出可引用的结论，`parameters` 列出数值，加上 `--format csv --output <文件>` 可写出能用表格软件打开的文件。
 
@@ -369,7 +376,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" parameters --paper "2016PhRvL.11
 
 每一行显示引用键、文章版本、阅读层级、对应结论及其 `finding_id`、原文位置；文章转述前人结果时，`cited_from` 给出原始出处。`--kind prediction` 筛选模型预测，`--status fitted` 或 `--status upper-limit` 限定数值类型。结果只来自完整阅读；出现在 `without_complete_digest` 中的论文仍需阅读。
 
-`passage` 只输出已存原文的一小部分：某条结论所在的段落、一个章节，或提到某个词的段落。用它核对引用的数值，只需读一段而不是整篇论文。
+`passage` 只输出已存原文的一小部分：某条结论所在的段落、一个章节，或提到某个词的段落。用它核对引用的数值，只需读一段。
 
 ```bash
 python3 "$nasa_ads_skill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --finding "<finding_id>"
@@ -383,7 +390,7 @@ python "$nasaAdsSkill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --
 python "$nasaAdsSkill/scripts/literature_db.py" passage "2016PhRvL.116f1102A" --grep "false alarm"
 ```
 
-`passage <paper> --outline` 列出已存章节及其摘要，是回顾一篇论文内容最快的方式。
+`passage <paper> --outline` 列出已存章节及其总结，是回顾一篇论文内容最快的方式。
 
 ### 导出引用
 
@@ -423,7 +430,13 @@ adslib
 | `adslib stop` / `adslib restart` | 停止或重启服务 |
 | `adslib serve` | 前台运行，按 `Ctrl+C` 停止 |
 
-`--library-dir "<目录>"` 打开另一个文献库，`--port 8766` 指定端口，例如 `adslib --library-dir "$HOME/other-library" --port 8766`。`status`、`stop` 和 `restart` 会找到所选文献库的服务，无论它用的是哪个端口；操作其他文献库时传 `--library-dir`，只有同一文献库运行了多个服务时才需要用 `--port` 指定。`--no-open` 不打开浏览器。默认地址是 `http://127.0.0.1:8765`；端口被占用时会改用空闲端口，请以输出的地址为准。启动时会打印日志路径；日志和服务记录在 Windows 上位于 `%LOCALAPPDATA%\nasa-ads\runtime`，其他系统位于 `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime`，也可以用 `NASA_ADS_RUNTIME_DIR` 指定。注册命令之前，可以直接运行已安装 skill 目录中的 `scripts/adslib.py`。
+| 选项 | 作用 |
+| --- | --- |
+| `--library-dir "<目录>"` | 打开另一个文献库。对 `status`、`stop` 和 `restart` 也要传入它；无论该文献库的服务用的是哪个端口，它们都能找到 |
+| `--port <端口>` | 指定端口；默认地址是 `http://127.0.0.1:8765`。端口被占用时会改用空闲端口，请以输出的地址为准。同一文献库运行了多个服务时，用它指定其中一个 |
+| `--no-open` | 不打开浏览器 |
+
+例如，`adslib --library-dir "$HOME/other-library" --port 8766` 会在单独的端口上打开第二个文献库。启动时会打印日志路径；日志和服务记录在 Windows 上位于 `%LOCALAPPDATA%\nasa-ads\runtime`，其他系统位于 `${XDG_STATE_HOME:-~/.local/state}/nasa-ads/runtime`，也可以用 `NASA_ADS_RUNTIME_DIR` 指定。注册命令之前，可以直接运行已安装 skill 目录中的 `scripts/adslib.py`。
 
 | 你想做的事 | 操作 |
 | --- | --- |
@@ -432,8 +445,8 @@ adslib
 | 检索特定层级 | 选择题录、总结或已存全文 |
 | 限定年份 | 打开年份控件，输入范围后应用 |
 | 按 SciX 主题词浏览 | 点击论文概览中的主题词 |
-| 阅读论文结论 | 在概览、科学维度、引用和全文版本之间切换 |
-| 查看数据、方法与数值 | 概览以一句话总结开头，列出研究类型、研究对象、观测、方法、局限和阅读评估；科学维度显示每条结论的编号、位置、原文摘句和出处，以及每个数值的不确定度、类型和模型 |
+| 阅读一篇论文 | 在概览、科学维度、引用和全文版本之间切换 |
+| 查看数据、方法与数值 | 概览包含总结、研究对象、数据、方法、局限和阅读评估；科学维度包含每条结论及其数值，各项内容见[完整阅读记录的内容](#完整阅读记录的内容) |
 | 回到同一视图 | 复制页面链接，它会保留筛选、页码、论文和标签页 |
 | 使用键盘 | `/` 聚焦搜索框；Escape 关闭年份控件或阅读面板；方向键切换标签页 |
 | 查看新入库的论文 | Agent 更新文献库后点击刷新 |
@@ -500,17 +513,13 @@ python "$nasaAdsSkill/scripts/literature_db.py" check
 python "$nasaAdsSkill/scripts/literature_db.py" audit
 ```
 
-`stats` 显示各项数量和文献库目录。`check` 列出仍待总结或待分类的论文，以及已下载但尚未读入文献库的文章版本（例如读过预印本之后才获取的期刊版），只要还有待办，退出码就是 1；`check --recent 12` 只检查最近 12 小时的工作。`audit` 检查数据库、已存文件、元数据和引用缓存；有些出版物本来就缺少摘要等字段，报告会把这类情况与真正的错误区分开。大规模清理之后，`compact` 可以把数据库文件压缩回实际大小。
-
-如果 Agent 提示同一篇文章有两份不同的阅读记录，说明预印本和期刊版曾分别入库并各自完整阅读。数据不会丢失；请 Agent 统一两份阅读，之后两条记录会合并为一条。
-
-如果检索找不到预期的内容，请选择对应的范围：题录对应标题和摘要，总结对应 Agent 的阅读记录，全文对应已存文章。中文词语按子串匹配。
+`stats` 显示各项数量和文献库目录。`check` 列出仍待总结或待分类的论文，以及已下载但尚未读入文献库的文章版本，只要还有待办，退出码就是 1；`check --recent 12` 只检查最近 12 小时的工作。`audit` 检查数据库、已存文件、元数据和引用缓存；有些出版物本来就缺少摘要等字段，报告会把这类情况与真正的错误区分开。大规模清理之后，`compact` 可以把数据库文件压缩回实际大小。
 
 ### 刷新 SciX 元数据
 
 > 备份我的个人文献库，从 SciX 刷新所有已存论文的元数据，补齐缺少的来源总结，并为缺少官方 BibTeX 的论文缓存官方条目。
 
-刷新会纠正书目字段，补充 SciX 主题词和新出现的摘要，把预印本和临时 bibcode 更新为期刊记录，并合并身份核实后的重复记录，保留它们的阅读、主题、标签和笔记。引用信息变化后，旧的缓存引用会被替换。文献库中的论文陆续正式发表后执行。刷新需要 SciX token。
+刷新会纠正书目字段，补充 SciX 主题词和新出现的摘要，把预印本和临时 bibcode 更新为期刊记录，并合并身份核实后的重复记录，保留它们的阅读、主题、标签和笔记。引用信息变化后，旧的缓存引用会被替换。文献库中的论文陆续正式发表后，可以执行一次刷新。刷新需要 SciX token。
 
 ## 更新 skill
 
@@ -556,9 +565,9 @@ Gemini CLI：在任一 shell 中执行 `git -C "$HOME/.gemini/nasa-ads-skill" pu
 | Web 页面连接失败 | 运行 `adslib`，保持服务运行，并打开它输出的准确地址 |
 | Web 数量不符合预期或显示空库 | 核对页面显示的文献库目录、当前筛选和[数据位置](#数据位置) |
 | 论文显示待总结或待分类 | 让 Agent 完成相关总结和主题分类 |
-| Agent 提示同一篇文章有两份不同的阅读 | 请它统一两份阅读（[详情](#检查文献库状态)） |
+| Agent 提示同一篇文章有两份不同的阅读 | 同一份正文曾保存在两条文献记录下（例如 SciX 尚未关联的 arXiv 记录和期刊记录），并各读了一遍。数据不会丢失；请 Agent 统一两份阅读，之后两条记录会合并为一条 |
 | 全文无法获取 | 回答会使用现有题录或摘要，并说明缺口；你可以通过自己的访问权限下载文章，把文件路径交给 Agent 完整阅读 |
-| 本地检索找不到原句 | 改为搜索已存全文（[检索范围](#检查文献库状态)） |
+| 本地检索找不到预期的内容 | 选择包含它的范围：题录对应标题和摘要，总结对应 Agent 的阅读记录，全文对应已存文章。中文词语按子串匹配 |
 | Agent 提示文献库来自较早版本 | 让 Agent 迁移文献库；`literature_db.py migrate` 会先备份，并给出备份位置 |
 
 ## 隐私与延伸阅读

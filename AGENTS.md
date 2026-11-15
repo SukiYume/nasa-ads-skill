@@ -57,7 +57,7 @@ Bundled Python CLIs handle stable read-only API calls, deterministic lawful full
 - `README.md` is the only user document. It follows the reader's path: overview, installation, token, verification, first use, what the library keeps, reuse and citation export, Web, library management, updates, and troubleshooting. `README.zh-CN.md` keeps the same heading structure. README images live in `.github/images/`; the repository has no separate user-guide directory.
 - Keep the copyable agent-install prompt directly after the README overview, listing every packaged skill file and the version, token-safety, and smoke-test checks.
 - Use the Codex standalone location `~/.agents/skills/<skill-name>`. Give Windows PowerShell and macOS/Linux/WSL commands where syntax differs. State that Python 3.10 or newer runs the bundled CLIs and document the direct HTTP fallback.
-- Document the current release only. Version history, upgrade paths from old releases, and migration notes stay out of the README and the skill.
+- Document the current release only. The `migrate` command and the state of the records it converts belong to the current release; version history, descriptions of earlier schemas, and release notes stay out of the README and the skill.
 - Write direct prose and avoid contrastive turn-away phrasing.
 
 ## Release Sync

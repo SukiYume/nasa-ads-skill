@@ -11,9 +11,8 @@ allowed-tools:
 
 Identifiers and format: $ARGUMENTS
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` for shared routing and Core Invariants. Bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`. Citation-only requests do not open article content.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md`; bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`.
 
 1. Parse the identifiers and optional `--format`; the default is `bibtex`.
-2. For BibTeX, follow the Citation Export section of `references/literature-memory.md`: export with `literature_db.py citations <identifiers>`, add `--fetch` for publication-ready official entries, and retrieve missing papers with `ads_api.py bigquery` before exporting.
-3. For other formats, a fresh remote export, or the no-write opt-out, run `ads_api.py export <bibcodes> --format <format>` as described in `references/ads-cli.md`; a journal-style reference list uses `--format csl --style <journal>`, and custom keys or layouts use `--format custom --custom-format <format>`.
-4. Check the exit status. Return the entries in a code block or write the requested file and report its path, keys, missing entries, and official or metadata-generated provenance.
+2. BibTeX follows the Citation Export section of `references/literature-memory.md`. Other formats, a fresh remote export, and the no-write opt-out follow the Citation Export section of `references/ads-cli.md`, where `csl` with `--style <journal>` gives a journal-style reference list and `custom` gives custom keys or layouts.
+3. Return the citation export result named in Completion and Handoff, in a code block or the requested file.

@@ -14,7 +14,7 @@ Keep read-only calls as the default. Verify explicit authorization for:
 - replacing or deleting a document note;
 - transferring library ownership.
 
-An explicit user request for an exact action and scope supplies authorization. Prepare the exact target and effects before asking for any missing authorization. Preserve existing authorization across turns.
+An explicit user request for an exact action and scope supplies authorization, and it stays valid in later turns for that same action and scope. Prepare the exact target and effects before asking for any missing authorization.
 
 Use the library ID returned by SciX. A library name is not an endpoint identifier.
 

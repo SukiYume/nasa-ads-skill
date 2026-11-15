@@ -10,14 +10,14 @@ All commands below run `python3 "<skill-dir>/scripts/literature_db.py" [--librar
 
 The default root is `%LOCALAPPDATA%/nasa-ads/literature` on Windows and `${XDG_DATA_HOME:-~/.local/share}/nasa-ads/literature` on macOS/Linux. `NASA_ADS_LITERATURE_DIR` or `--library-dir <path>` selects another root. The root holds `literature.sqlite3` and a verified `objects/` tree; manage both only through the CLI.
 
-| Layer | Contents | Supports |
-|---|---|---|
-| Metadata record | Bibliographic identity without an abstract | Identification and relevance triage |
-| Abstract record | Source abstract plus an agent-authored source summary | Abstract-level statements and later selection |
-| Complete article version | Verified article and text, full or whole-document visual reading, one digest of the whole article | Claims about data, methods, parameters, figures, tables, and limitations, with locators |
-| Organization | Hierarchical collections, tags, writing roles, personal notes | Reuse across projects and manuscript sections |
+| Layer | Contents |
+|---|---|
+| Metadata record | Bibliographic identity without an abstract |
+| Abstract record | Source abstract plus an agent-authored source summary |
+| Complete article version | Verified article and text, full or whole-document visual reading, one digest of the whole article |
+| Organization | Hierarchical collections, tags, writing roles, personal notes |
 
-Abstract summaries and article digests have separate source identities. A changed abstract keeps earlier snapshots and summaries; changed article content receives a new exact-version digest. A pending record never claims completed reading.
+The first three layers are the evidence levels of [Core Invariants](../SKILL.md#core-invariants), which state what each supports. Abstract summaries and article digests have separate source identities. A changed abstract keeps earlier snapshots and summaries; changed article content receives a new exact-version digest. A pending record never claims completed reading.
 
 ## Screening Before Capture
 
@@ -82,14 +82,14 @@ Use `lookup` to decide whether a paper needs reading:
 lookup "<identifier>" --topic "<scientific dimension>"
 ```
 
-`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Read the stored summary of each section with `passage "<identifier>" --outline`, retrieve the citable results with `findings --paper "<identifier>"`, and read their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version. A `--topic` is covered when it occurs in a facet's text, findings, quotes, or value names, models, and conditions, among the paper's entities, keywords, datasets, and methods, or in the heading and summary of one section.
+`lookup` returns the paper's overview (tldr, summary, questions, study types) and its facet labels with finding counts. Read the stored summary of each section with `passage "<identifier>" --outline`, retrieve the citable results with `findings --paper "<identifier>"`, and read their passages with [`passage`](#read-stored-passages); `--include-digest` adds the complete stored digest, and `show` lists every stored version. `--topic` names a scientific dimension of the paper's content, separate from the collection topics of [classification](#classification-and-manuscript-roles); it is covered when it occurs in a facet's text, findings, quotes, or value names, models, and conditions, among the paper's entities, keywords, datasets, and methods, or in the heading and summary of one section.
 
 | Lookup state | Action |
 |---|---|
 | `not_found` | Retrieve metadata and the article version, or [import](fulltext.md#import-a-local-copy) a copy the user supplies, then complete its source summary and digest. |
 | `needs_reading` | Inspect any reported integrity failure, reuse valid local material, and complete the whole-article reading and digest. |
-| `reusable` | Reuse the complete version: section summaries through `passage --outline`, results through `findings` and `parameters`, and exact wording through `passage`. |
-| `targeted_reading` | Find the relevant sections with `passage --outline` or `--grep`, read them with `passage --section`, and merge their summaries and the missing facets. |
+| `reusable` | Reuse the complete version through the commands above. |
+| `targeted_reading` | The complete version leaves the requested `--topic` uncovered; merge a [targeted digest](digest-schema.md#validation-and-ingest) of the sections that cover it. |
 | `version_changed` | Retrieve and read the exact requested version. |
 
 An explicit arXiv suffix such as `v2` requires matching stored version provenance. `--sha256` selects a known artifact, text, or canonical-content hash, including historical artifacts. Lookup verifies stored article and text integrity, and its `version.manifest_path` points to durable stored objects suitable for later merging, so clearing the download cache keeps local reuse intact.
@@ -197,4 +197,4 @@ python3 "<skill-dir>/scripts/adslib.py" install
 adslib --version
 ```
 
-Registration writes a user-level wrapper pointing at this installed script and the working Python: `~/.local/bin/adslib.cmd` plus a Git Bash script on Windows, and `~/.local/bin/adslib` with a managed PATH block for bash, zsh, or sh on macOS, Linux, and WSL. Existing PATH entries and foreign launchers are preserved. `install --bin-dir <path> --no-path` uses a user-managed directory. Re-register after moving the skill or changing Python. Standalone installs usually live at `~/.agents/skills/nasa-ads` (Codex) or `~/.claude/skills/nasa-ads` (Claude); marketplace plugins use the loaded skill's path.
+Registration writes a user-level wrapper pointing at this installed script and the working Python: `~/.local/bin/adslib.cmd` plus a Git Bash script on Windows, and `~/.local/bin/adslib` with a managed PATH block for bash, zsh, or sh on macOS, Linux, and WSL. Existing PATH entries and foreign launchers are preserved. `install --bin-dir <path> --no-path` uses a user-managed directory. Re-register after moving the skill, changing Python, or updating a plugin, whose update lands in a new folder.

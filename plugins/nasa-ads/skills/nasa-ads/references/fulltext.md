@@ -32,7 +32,7 @@ Useful options:
 
 `--format auto` selects validated structured HTML within the best available version and falls back to PDF. Use `--format pdf` for equations, figures, tables, pagination, or visual review. Explicit format requests validate the response format.
 
-Fetch captures available article metadata and abstracts by default, including an abstract-only result. Each result's `literature.owed` lists what the paper still needs: its source summary, a topic, and, for a prepared article version that no complete digest settles, the full reading and `ingest` with that manifest. Complete [source summaries](literature-memory.md#automatic-capture-and-summary-completion) for each returned `literature.run_id`; `check` keeps reporting the fetched version under `needs_reading` until its digest is ingested. A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Under the no-write opt-out, preparation still uses the download cache.
+Fetch captures available article metadata and abstracts by default, including an abstract-only result, and each result carries `literature.owed`; finish what it lists as in [capture and summary completion](literature-memory.md#automatic-capture-and-summary-completion). A local persistence failure keeps the prepared files and exits nonzero; apply [failure routing](../SKILL.md#failure-routing).
 
 After a text-bearing fetch, inventory the article structure:
 
@@ -72,7 +72,7 @@ https://arxiv.org/pdf/<arxiv-id>
 
 `https://arxiv.org/abs/<arxiv-id>` supplies metadata. Preserve explicit arXiv version suffixes such as `v2`.
 
-An explicit version selects matching metadata and article URLs. A failed exact-version lookup remains unresolved until that version is obtained. Stored versions are selected by authority and explicit version identity. An uncovered topic in a complete local record can be checked using its verified local artifact and durable manifest.
+An explicit version selects matching metadata and article URLs. A failed exact-version lookup remains unresolved until that version is obtained. Stored versions are selected by authority and explicit version identity. A scientific dimension that a complete local record leaves uncovered can be checked using its verified local artifact and durable manifest.
 
 Automatic ranking uses two dimensions:
 

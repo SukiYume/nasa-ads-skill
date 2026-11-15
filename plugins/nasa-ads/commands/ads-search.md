@@ -11,12 +11,8 @@ allowed-tools:
 
 Research request: $ARGUMENTS
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` and follow its Literature Research workflow, Core Invariants, and completion criteria. Bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md`; bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`.
 
 1. Treat `$ARGUMENTS` as a research question or a native SciX query, keeping its explicit source, time, and selection constraints.
-2. Check local evidence first with `search`, `parameters`, and `lookup` from `references/literature-memory.md`.
-3. Discover missing or current work with `references/ads-cli.md`: preview with `--no-store`, screen, then capture retained records and complete their summaries and topics.
-4. Load `references/research-writing.md` for reviews or manuscript sections.
-5. Read every paper in the investigation set in full and store its whole-article digest, as the Reading Scope requires.
-6. Run `check --recent <hours>` and finish the summaries, topics, and readings it reports.
-7. Return the synthesis or results with traceable sources, the searched scope (total matches, returned records, retained candidates), and evidence limits. A search without matches reports its queries, filters, and coverage gap.
+2. Select its row in Task Routing: a research question follows the Literature Research workflow with the references each step links, and an identifier or metadata query runs `ads_api.py search` as in `references/ads-cli.md`.
+3. Return the result named in Completion and Handoff.

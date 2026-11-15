@@ -10,7 +10,7 @@ allowed-tools:
 
 Bibcodes: $ARGUMENTS
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/ads-cli.md` for launch, token, and the Metrics section.
+Read the Setup section of `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` and the Metrics section of `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/references/ads-cli.md`.
 
 1. Run `ads_api.py metrics <bibcodes>`.
 2. Interpret the response keys and the paper set as the Metrics section describes.

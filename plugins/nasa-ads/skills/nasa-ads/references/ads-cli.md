@@ -11,7 +11,7 @@ Load this reference before using `scripts/ads_api.py`, the standard-library clie
 --no-store
 ```
 
-JSON endpoints print UTF-8 JSON and `export` prints citation text. `search` and `bigquery` capture returned records by default and add a `literature` object; use `--no-store` for exploratory previews, then follow [screening before capture](literature-memory.md#screening-before-capture) and [summary completion](literature-memory.md#automatic-capture-and-summary-completion). A storage failure keeps the SciX response and exits nonzero; apply [failure routing](../SKILL.md#failure-routing).
+JSON endpoints print UTF-8 JSON and `export` prints citation text. `search` and `bigquery` capture returned records by default and add a `literature` object; use `--no-store` for exploratory previews, then follow [screening before capture](literature-memory.md#screening-before-capture) and [summary completion](literature-memory.md#automatic-capture-and-summary-completion). A storage failure keeps the SciX response and exits nonzero; apply [failure routing](../SKILL.md#failure-routing). Every other subcommand writes nothing to the library; retrieve metadata for the papers it surfaces with `bigquery`, which captures them for summaries and citation export.
 
 ## Search
 
@@ -55,7 +55,7 @@ python3 "<skill-dir>/scripts/ads_api.py" search \
 
 `--param <key>=<value>` passes another search parameter, such as `hl.fragsize=300` or `facet.prefix=Ap`; `q`, `fl`, `rows`, `start`, `sort`, and `fq` come from their own options.
 
-Repeat `--collection 'FRB/Propagation'` and `--role methods` to organize captured results. Roles accept `review`, `intro`, `methods`, `discussion`, and `comparison`. Stored searches add the complete metadata fields to custom `--fields`; `--no-store` preserves the requested field set. Search runs retain query parameters, total matches, returned records, and summary progress.
+Repeat `--collection 'FRB/Propagation'` and `--role methods` to give captured results a topic path and a [writing role](literature-memory.md#classification-and-manuscript-roles). Stored searches add the complete metadata fields to custom `--fields`; `--no-store` preserves the requested field set.
 
 Useful query forms:
 
@@ -185,7 +185,7 @@ python3 "<skill-dir>/scripts/ads_api.py" reference \
   'Lorimer D. R. et al., 2007, Science, 318, 777'
 ```
 
-Use `--references-file <path>` for one reference per line. The CLI sends batches of 16, the service's request limit, and returns `count`, `resolved_count`, and `resolved` entries with `refstring`, `score`, and `bibcode`; an unresolved entry has a null `bibcode` and a `comment`. A score below `1.0` marks an approximate match, so compare its record with the reference before citing it. Each batch counts against a separate, much smaller reference-service quota that `--show-rate-limit` reports. Retrieve metadata for the resolved bibcodes with `bigquery`, which captures them for summaries and citation export.
+Use `--references-file <path>` for one reference per line. The CLI sends batches of 16, the service's request limit, and returns `count`, `resolved_count`, and `resolved` entries with `refstring`, `score`, and `bibcode`; an unresolved entry has a null `bibcode` and a `comment`. A score below `1.0` marks an approximate match, so compare its record with the reference before citing it. Each batch counts against a separate, much smaller reference-service quota that `--show-rate-limit` reports.
 
 Resolve object names to SIMBAD and NED identifiers, or translate an `object:` query into the search query SciX runs for it:
 
@@ -203,11 +203,9 @@ python3 "<skill-dir>/scripts/ads_api.py" journals 'Monthly Notices'
 python3 "<skill-dir>/scripts/ads_api.py" journals MNRAS --summary
 ```
 
-A journal summary leaves out its per-volume completeness table, listed in `omitted`, unless `--completeness` is given. These subcommands print the service JSON and write nothing to the library.
+A journal summary leaves out its per-volume completeness table, listed in `omitted`, unless `--completeness` is given.
 
 ## Discovery Aids
-
-These subcommands print the service JSON and write nothing to the library. Retrieve metadata for the papers they surface with `bigquery`, which captures them for summaries.
 
 Group papers by the references they share, or their authors by coauthorship. A few dozen bibcodes form groups; a paper network returns them in `data.summaryGraph` with paper counts, top terms, and shared references, and `--full` adds the per-paper graph. Sets too small to group return the per-paper graph alone:
 

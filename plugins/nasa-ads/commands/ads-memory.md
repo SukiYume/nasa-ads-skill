@@ -11,18 +11,8 @@ allowed-tools:
 
 Request: $ARGUMENTS
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md` for routing and Core Invariants. Run `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/scripts/literature_db.py` with the first working Python command; manage the database and object store only through this CLI. Local operations need no SciX token.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/SKILL.md`; bundled scripts and references live under `${CLAUDE_PLUGIN_ROOT}/skills/nasa-ads/`.
 
-Map the request to the narrowest operation and load its reference section:
-
-| Need | Commands | Reference |
-|---|---|---|
-| Find stored papers, findings, or text; recall what a read paper says | `lookup`, `show`, `search`, `list`, `passage`; `passage --outline` for the section summaries | `references/literature-memory.md` (Local Lookup, Read Stored Passages, Query Stored Evidence) |
-| Reuse or cite a stored result, inference, or value | `findings "<topic>"`, `parameters "<quantity>"`, `--paper`, `--entity`, `--kind`, `--status`, `--format csv`; `passage --finding <finding_id>` to recheck the source paragraph | `references/literature-memory.md` (Query Stored Evidence, Read Stored Passages) |
-| Finish summaries and reading | `pending`, `summarize`, `check --run-id`, `check --recent`, `reading-check` | `references/literature-memory.md` |
-| Organize | `collections`, `annotate`, `organize` | `references/literature-memory.md` (Classification) |
-| Citations | `citations`, `--fetch`, `--output` | `references/literature-memory.md` (Citation Export) |
-| Web library | `adslib` or `scripts/adslib.py`; `install` registers the command | `references/literature-memory.md` (Web Library) |
-| Health, backup, restore, metadata refresh, duplicates, upgrade from the previous release | `stats`, `audit`, `backup`, `restore`, `enrich`, `import-citations`, `reindex`, `compact`, `migrate` | `references/library-maintenance.md` |
-
-Content questions follow the Reading Scope with `references/fulltext.md` and `references/digest-schema.md`. Return the handoff from Completion and Handoff in `SKILL.md`.
+1. Treat `$ARGUMENTS` as a `literature_db.py` subcommand with its arguments, `adslib`, or a plain-language request about the local library.
+2. Select its row in Task Routing and load the section that row names: `references/literature-memory.md` covers lookup, stored passages, stored evidence, summary completion, classification, citations, and the Web library, and `references/library-maintenance.md` covers health checks, backup, restore, metadata refresh, duplicates, and migration.
+3. A content question about a paper follows the Reading Scope. Return the result named in Completion and Handoff.

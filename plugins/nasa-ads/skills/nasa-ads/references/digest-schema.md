@@ -112,7 +112,7 @@ The report gives `anchors`, the quotes it cannot find in the text, and `section_
 
 The first ingest of an exact version needs `full` or whole-document `visual` coverage. A `needs_visual_reading` manifest takes a `visual` digest whose page ranges cover every page, and an `abstract_only` manifest cannot be ingested. After ingest, assign a missing topic with `annotate` or `organize`.
 
-When a later question needs a result the stored digest lacks, read the relevant complete sections with `passage --section` and merge a targeted digest that holds their summaries and the new facets and findings, using the durable `manifest_path` that `lookup` returns:
+When a later question needs a result the stored digest lacks, locate the relevant sections through the summaries in `passage --outline` or with `passage --grep`, read them completely with `passage --section`, and merge a targeted digest that holds their summaries and the new facets and findings, using the durable `manifest_path` that `lookup` returns:
 
 ```bash
 python3 "<skill-dir>/scripts/literature_db.py" ingest --manifest "<manifest.json>" --digest "<targeted-digest.json>" --merge
